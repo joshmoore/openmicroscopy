@@ -226,6 +226,7 @@ public class RenderingBean extends AbstractLevel2Service implements
         }
     }
 
+    @RolesAllowed("user")
     @Remove
     public void close() {
         // don't need to do anything.

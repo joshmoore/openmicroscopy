@@ -180,6 +180,7 @@ public class ThumbnailBean extends AbstractLevel2Service implements
      * 
      * @see ome.api.StatefulServiceInterface#close()
      */
+    @RolesAllowed("user")
     @Remove
     public void close() {
         // don't need to do anything.
