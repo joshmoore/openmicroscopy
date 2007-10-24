@@ -29,7 +29,6 @@
     <dependency org="dbunit" name="dbunit" rev="2.1" conf="build->default"/>
     <dependency org="drools" name="drools-all-jdk5" rev="2.5-beta-2" conf="build->default"/>
     <dependency org="eclipse" name="jdtcore" rev="3.1.0" conf="build->default"/>
-    <dependency org="jamon" name="jamon" rev="1.0" conf="build->default"/>
     <dependency org="jmock" name="jmock" rev="1.0.1" conf="build->default"/>
     <dependency org="lucene" name="lucene" rev="1.4.3" conf="build->default"/>
     <dependency org="omero" name="jbosssx" rev="${versions.jboss}" conf="build->default"/>

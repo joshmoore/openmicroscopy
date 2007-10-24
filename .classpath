@@ -82,5 +82,8 @@
 	<classpathentry exported="true" kind="lib" path="target/libs/common.jar"/>
 	<classpathentry exported="true" kind="lib" path="target/libs/ome-java.jar"/>
 	<classpathentry exported="true" kind="lib" path="target/libs/server.jar"/>
+	<classpathentry kind="lib" path="target/libs/jhdf5.jar"/>
+	<classpathentry kind="lib" path="target/libs/jhdf5obj.jar"/>
+	<classpathentry kind="lib" path="target/libs/jhdfobj.jar"/>
 	<classpathentry kind="output" path="target/eclipse-bin"/>
 </classpath>

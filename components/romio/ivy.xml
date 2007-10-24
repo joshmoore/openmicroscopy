@@ -14,5 +14,9 @@
   <dependencies>
     <!-- Internal -->
     <dependency name="common" rev="${omero.version}" changing="true" />
+    <!-- Other -->
+    <dependency org="hdf" name="jhdfobj" rev="${versions.jhdf}" conf="build->default"/>
+    <dependency org="hdf" name="jhdf5obj" rev="${versions.jhdf}" conf="build->default"/>
+    <dependency org="hdf" name="jhdf5" rev="${versions.jhdf}" conf="build->default"/>
   </dependencies>
 </ivy-module>

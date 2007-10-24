@@ -10,7 +10,6 @@ package ome.services;
 import java.io.IOException;
 import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
-import java.nio.MappedByteBuffer;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
@@ -25,15 +24,6 @@ import javax.ejb.TransactionManagement;
 import javax.ejb.TransactionManagementType;
 import javax.interceptor.Interceptors;
 
-// Third-party libraries
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.jboss.annotation.ejb.LocalBinding;
-import org.jboss.annotation.ejb.RemoteBinding;
-import org.jboss.annotation.security.SecurityDomain;
-import org.springframework.transaction.annotation.Transactional;
-
-// Application-internal dependencies
 import ome.api.IPixels;
 import ome.api.IRepositoryInfo;
 import ome.api.RawPixelsStore;
@@ -45,15 +35,21 @@ import ome.io.nio.PixelBuffer;
 import ome.io.nio.PixelsService;
 import ome.model.core.Pixels;
 import ome.services.util.OmeroAroundInvoke;
-
 import omeis.providers.re.RenderingEngine;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.jboss.annotation.ejb.LocalBinding;
+import org.jboss.annotation.ejb.RemoteBinding;
+import org.jboss.annotation.security.SecurityDomain;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * @author <br>
  *         Josh Moore&nbsp;&nbsp;&nbsp;&nbsp; <a
  *         href="mailto:josh.moore@gmx.de"> josh.moore@gmx.de</a>
- * @version 3.0 <small> (<b>Internal version:</b> $Revision$ $Date:
- *          2005/07/05 16:13:52 $) </small>
+ * @version 3.0 <small> (<b>Internal version:</b> $Revision$ $Date: 2005/07/05
+ *          16:13:52 $) </small>
  * @since OMERO3
  */
 @TransactionManagement(TransactionManagementType.BEAN)
@@ -65,14 +61,15 @@ import omeis.providers.re.RenderingEngine;
 @LocalBinding(jndiBinding = "omero/local/ome.api.RawPixelsStore")
 @Interceptors( { OmeroAroundInvoke.class })
 @SecurityDomain("OmeroSecurity")
-public class RawPixelsBean extends AbstractStatefulBean implements RawPixelsStore {
+public class RawPixelsBean extends AbstractStatefulBean implements
+        RawPixelsStore {
     /** The logger for this particular class */
     private static Log log = LogFactory.getLog(RawPixelsBean.class);
 
     private static final long serialVersionUID = -6640632220587930165L;
 
     private Long id;
-    
+
     private transient Long reset = null;
 
     private transient Pixels pixelsInstance;
@@ -88,23 +85,25 @@ public class RawPixelsBean extends AbstractStatefulBean implements RawPixelsStor
 
     /** is file service checking for disk overflow */
     private transient boolean diskSpaceChecking;
-    
+
     /** A copy buffer for the pixel retrieval. */
     private transient byte[] readBuffer;
 
     /**
      * default constructor
      */
-    public RawPixelsBean() {}
-    
+    public RawPixelsBean() {
+    }
+
     /**
      * overriden to allow Spring to set boolean
+     * 
      * @param checking
      */
     public RawPixelsBean(boolean checking) {
-    	this.diskSpaceChecking = checking;
+        this.diskSpaceChecking = checking;
     }
-    
+
     public Class<? extends ServiceInterface> getServiceInterface() {
         return RawPixelsStore.class;
     }
@@ -121,14 +120,16 @@ public class RawPixelsBean extends AbstractStatefulBean implements RawPixelsStor
 
     /**
      * Disk Space Usage service Bean injector
+     * 
      * @param iRepositoryInfo
-     *   		  	an <code>IRepositoryInfo</code>
+     *            an <code>IRepositoryInfo</code>
      */
     public final void setIRepositoryInfo(IRepositoryInfo iRepositoryInfo) {
-        getBeanHelper().throwIfAlreadySet(this.iRepositoryInfo, iRepositoryInfo);
+        getBeanHelper()
+                .throwIfAlreadySet(this.iRepositoryInfo, iRepositoryInfo);
         this.iRepositoryInfo = iRepositoryInfo;
     }
-    
+
     // ~ Lifecycle methods
     // =========================================================================
 
@@ -136,7 +137,7 @@ public class RawPixelsBean extends AbstractStatefulBean implements RawPixelsStor
     @PostActivate
     public void create() {
         selfConfigure();
-        // no longer trying to recreate here because of transactional 
+        // no longer trying to recreate here because of transactional
         // difficulties. instead we'll set reset, and let errorIfNotLoaded()
         // do the work.
         if (id != null) {
@@ -160,28 +161,25 @@ public class RawPixelsBean extends AbstractStatefulBean implements RawPixelsStor
     @Remove
     @Transactional(readOnly = true)
     public void close() {
-    	closePixelBuffer();
+        closePixelBuffer();
     }
-    
+
     /**
      * Close the active pixel buffer, cleaning up any potential messes left by
      * the pixel buffer itself.
      */
-    private void closePixelBuffer()
-    {
-		try
-		{
-			if (buffer != null)
-				buffer.close();
-		}
-		catch (IOException e)
-		{
+    private void closePixelBuffer() {
+        try {
+            if (buffer != null) {
+                buffer.close();
+            }
+        } catch (IOException e) {
             if (log.isDebugEnabled()) {
                 log.debug("Buffer could not be closed successfully.", e);
             }
-			throw new ResourceError(
-					e.getMessage() + " Please check server log.");
-		}
+            throw new ResourceError(e.getMessage()
+                    + " Please check server log.");
+        }
     }
 
     @RolesAllowed("user")
@@ -229,28 +227,30 @@ public class RawPixelsBean extends AbstractStatefulBean implements RawPixelsStor
 
     @RolesAllowed("user")
     public byte[] getPlaneRegion(Integer z, Integer c, Integer t,
-    		Integer count, Integer offset) {
+            Integer count, Integer offset) {
         errorIfNotLoaded();
 
         int size = buffer.getByteWidth() * count;
-        if (readBuffer == null || readBuffer.length != size)
-        	readBuffer = new byte[size];
+        if (readBuffer == null || readBuffer.length != size) {
+            readBuffer = new byte[size];
+        }
         try {
-            readBuffer = buffer.getPlaneRegionDirect(z, c, t, count,
-                                                     offset, readBuffer);
+            readBuffer = buffer.getPlaneRegionDirect(z, c, t, count, offset,
+                    readBuffer);
         } catch (Exception e) {
             handleException(e);
         }
         return readBuffer;
     }
-    
+
     @RolesAllowed("user")
     public byte[] getPlane(Integer arg0, Integer arg1, Integer arg2) {
         errorIfNotLoaded();
 
         int size = buffer.getPlaneSize();
-        if (readBuffer == null || readBuffer.length != size)
-        	readBuffer = new byte[size];
+        if (readBuffer == null || readBuffer.length != size) {
+            readBuffer = new byte[size];
+        }
         try {
             readBuffer = buffer.getPlaneDirect(arg0, arg1, arg2, readBuffer);
         } catch (Exception e) {
@@ -282,7 +282,7 @@ public class RawPixelsBean extends AbstractStatefulBean implements RawPixelsStor
     public byte[] getRegion(Integer arg0, Long arg1) {
         errorIfNotLoaded();
 
-        MappedByteBuffer region = null;
+        ByteBuffer region = null;
         try {
             region = buffer.getRegion(arg0, arg1).getData();
         } catch (Exception e) {
@@ -296,10 +296,12 @@ public class RawPixelsBean extends AbstractStatefulBean implements RawPixelsStor
         errorIfNotLoaded();
 
         int size = buffer.getRowSize();
-        if (readBuffer == null || readBuffer.length != size)
-        	readBuffer = new byte[size];
+        if (readBuffer == null || readBuffer.length != size) {
+            readBuffer = new byte[size];
+        }
         try {
-            readBuffer = buffer.getRowDirect(arg0, arg1, arg2, arg3, readBuffer);
+            readBuffer = buffer
+                    .getRowDirect(arg0, arg1, arg2, arg3, readBuffer);
         } catch (Exception e) {
             handleException(e);
         }
@@ -331,8 +333,9 @@ public class RawPixelsBean extends AbstractStatefulBean implements RawPixelsStor
         errorIfNotLoaded();
 
         int size = buffer.getStackSize();
-        if (readBuffer == null || readBuffer.length != size)
-        	readBuffer = new byte[size];
+        if (readBuffer == null || readBuffer.length != size) {
+            readBuffer = new byte[size];
+        }
         try {
             readBuffer = buffer.getStackDirect(arg0, arg1, readBuffer);
         } catch (Exception e) {
@@ -365,8 +368,9 @@ public class RawPixelsBean extends AbstractStatefulBean implements RawPixelsStor
         errorIfNotLoaded();
 
         int size = buffer.getTimepointSize();
-        if (readBuffer == null || readBuffer.length != size)
-        	readBuffer = new byte[size];
+        if (readBuffer == null || readBuffer.length != size) {
+            readBuffer = new byte[size];
+        }
         try {
             readBuffer = buffer.getTimepointDirect(arg0, readBuffer);
         } catch (Exception e) {
@@ -400,36 +404,36 @@ public class RawPixelsBean extends AbstractStatefulBean implements RawPixelsStor
 
         return buffer.getTotalSize();
     }
-    
+
     @RolesAllowed("user")
     public int getByteWidth() {
-    	errorIfNotLoaded();
-    	
-    	return buffer.getByteWidth();
+        errorIfNotLoaded();
+
+        return buffer.getByteWidth();
     }
-    
+
     @RolesAllowed("user")
     public boolean isSigned() {
-    	errorIfNotLoaded();
-    	
-    	return buffer.isSigned();
+        errorIfNotLoaded();
+
+        return buffer.isSigned();
     }
-    
+
     @RolesAllowed("user")
     public boolean isFloat() {
-    	errorIfNotLoaded();
-    	
-    	return buffer.isFloat();
+        errorIfNotLoaded();
+
+        return buffer.isFloat();
     }
 
     @RolesAllowed("user")
     public void setPlane(byte[] arg0, Integer arg1, Integer arg2, Integer arg3) {
         errorIfNotLoaded();
 
-    	if (diskSpaceChecking) {
-        	iRepositoryInfo.sanityCheckRepository();
+        if (diskSpaceChecking) {
+            iRepositoryInfo.sanityCheckRepository();
         }
-        
+
         try {
             buffer.setPlane(arg0, arg1, arg2, arg3);
         } catch (Exception e) {
@@ -441,10 +445,10 @@ public class RawPixelsBean extends AbstractStatefulBean implements RawPixelsStor
     public void setRegion(Integer arg0, Long arg1, byte[] arg2) {
         errorIfNotLoaded();
 
-    	if (diskSpaceChecking) {
-        	iRepositoryInfo.sanityCheckRepository();
+        if (diskSpaceChecking) {
+            iRepositoryInfo.sanityCheckRepository();
         }
-        
+
         try {
             buffer.setRegion(arg0, arg1, arg2);
         } catch (Exception e) {
@@ -457,10 +461,10 @@ public class RawPixelsBean extends AbstractStatefulBean implements RawPixelsStor
             Integer arg4) {
         errorIfNotLoaded();
 
-    	if (diskSpaceChecking) {
-        	iRepositoryInfo.sanityCheckRepository();
+        if (diskSpaceChecking) {
+            iRepositoryInfo.sanityCheckRepository();
         }
-        
+
         try {
             ByteBuffer buf = ByteBuffer.wrap(arg0);
             buffer.setRow(buf, arg1, arg2, arg3, arg4);
@@ -473,10 +477,10 @@ public class RawPixelsBean extends AbstractStatefulBean implements RawPixelsStor
     public void setStack(byte[] arg0, Integer arg1, Integer arg2, Integer arg3) {
         errorIfNotLoaded();
 
-    	if (diskSpaceChecking) {
-        	iRepositoryInfo.sanityCheckRepository();
+        if (diskSpaceChecking) {
+            iRepositoryInfo.sanityCheckRepository();
         }
-        
+
         try {
             buffer.setStack(arg0, arg1, arg2, arg3);
         } catch (Exception e) {
@@ -488,10 +492,10 @@ public class RawPixelsBean extends AbstractStatefulBean implements RawPixelsStor
     public void setTimepoint(byte[] arg0, Integer arg1) {
         errorIfNotLoaded();
 
-    	if (diskSpaceChecking) {
-        	iRepositoryInfo.sanityCheckRepository();
+        if (diskSpaceChecking) {
+            iRepositoryInfo.sanityCheckRepository();
         }
-        
+
         try {
             buffer.setTimepoint(arg0, arg1);
         } catch (Exception e) {
@@ -502,7 +506,7 @@ public class RawPixelsBean extends AbstractStatefulBean implements RawPixelsStor
     // ~ Helpers
     // =========================================================================
 
-    private byte[] bufferAsByteArrayWithExceptionIfNull(MappedByteBuffer buffer) {
+    private byte[] bufferAsByteArrayWithExceptionIfNull(ByteBuffer buffer) {
         byte[] b = new byte[buffer.capacity()];
         buffer.get(b, 0, buffer.capacity());
         return b;
@@ -528,11 +532,11 @@ public class RawPixelsBean extends AbstractStatefulBean implements RawPixelsStor
         throw new RuntimeException(e);
     }
 
-	public boolean isDiskSpaceChecking() {
-		return diskSpaceChecking;
-	}
+    public boolean isDiskSpaceChecking() {
+        return diskSpaceChecking;
+    }
 
-	public void setDiskSpaceChecking(boolean diskSpaceChecking) {
-		this.diskSpaceChecking = diskSpaceChecking;
-	}
+    public void setDiskSpaceChecking(boolean diskSpaceChecking) {
+        this.diskSpaceChecking = diskSpaceChecking;
+    }
 }
