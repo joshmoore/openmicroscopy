@@ -42,16 +42,6 @@ public class DeltaVision extends AbstractPixelBuffer {
 
     private FileChannel channel;
 
-    private Integer rowSize;
-
-    private Integer planeSize;
-
-    private Integer stackSize;
-
-    private Integer timepointSize;
-
-    private Integer totalSize;
-
     protected MappedByteBuffer buf;
 
     private OriginalFile originalFile;
@@ -201,6 +191,7 @@ public class DeltaVision extends AbstractPixelBuffer {
      * @see ome.io.nio.PixelBuffer#getPlaneOffset(java.lang.Integer,
      *      java.lang.Integer, java.lang.Integer)
      */
+    @Override
     public Long getPlaneOffset(Integer z, Integer c, Integer t)
             throws DimensionsOutOfBoundsException {
         checkBounds(null, z, c, t);
@@ -277,6 +268,7 @@ public class DeltaVision extends AbstractPixelBuffer {
      * @see ome.io.nio.PixelBuffer#getRowOffset(java.lang.Integer,
      *      java.lang.Integer, java.lang.Integer, java.lang.Integer)
      */
+    @Override
     public Long getRowOffset(Integer y, Integer z, Integer c, Integer t)
             throws DimensionsOutOfBoundsException {
         checkBounds(y, z, c, t);
@@ -360,6 +352,7 @@ public class DeltaVision extends AbstractPixelBuffer {
      * @see ome.io.nio.PixelBuffer#getStackOffset(java.lang.Integer,
      *      java.lang.Integer)
      */
+    @Override
     public Long getStackOffset(Integer c, Integer t)
             throws DimensionsOutOfBoundsException {
         checkBounds(null, null, c, t);
@@ -390,11 +383,20 @@ public class DeltaVision extends AbstractPixelBuffer {
         throw new UnsupportedOperationException("This method is not supported");
     }
 
+    public byte[] getHypercubeDirect(int startX, int sizeX, int startY,
+            int sizeY, int startZ, int sizeZ, int startC, int sizeC,
+            int startT, int sizeT) throws IOException,
+            DimensionsOutOfBoundsException, BufferOverflowException {
+        throw new UnsupportedOperationException(
+                "This method .is not supported.");
+    }
+
     /*
      * (non-Javadoc)
      * 
      * @see ome.io.nio.PixelBuffer#getTimepointOffset(java.lang.Integer)
      */
+    @Override
     public Long getTimepointOffset(Integer t)
             throws DimensionsOutOfBoundsException {
         checkBounds(null, null, null, t);
@@ -507,6 +509,16 @@ public class DeltaVision extends AbstractPixelBuffer {
             DimensionsOutOfBoundsException, BufferOverflowException {
         throw new UnsupportedOperationException("This method is not supported");
     }
+
+    /**
+     * not implemented
+     */
+    public void setHypercube(byte[] buffer, int startX, int sizeX, int startY,
+            int sizeY, int startZ, int sizeZ, int startC, int sizeC,
+            int startT, int sizeT) throws IOException,
+            DimensionsOutOfBoundsException, BufferOverflowException {
+        throw new UnsupportedOperationException("This method is not supported.");
+    };
 
     /*
      * (non-Javadoc)

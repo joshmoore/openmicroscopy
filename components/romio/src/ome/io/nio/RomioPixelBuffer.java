@@ -37,16 +37,6 @@ public class RomioPixelBuffer extends PixelsBasedPixelBuffer {
 
     private FileChannel channel;
 
-    private Integer rowSize;
-
-    private Integer planeSize;
-
-    private Integer stackSize;
-
-    private Integer timepointSize;
-
-    private Integer totalSize;
-
     RomioPixelBuffer(String path, Pixels pixels) {
         super(path, pixels);
     }
@@ -71,50 +61,6 @@ public class RomioPixelBuffer extends PixelsBasedPixelBuffer {
             channel.close();
             channel = null;
         }
-    }
-
-    public Long getRowOffset(Integer y, Integer z, Integer c, Integer t)
-            throws DimensionsOutOfBoundsException {
-        checkBounds(y, z, c, t);
-
-        Integer rowSize = getRowSize();
-        Integer timepointSize = getTimepointSize();
-        Integer stackSize = getStackSize();
-        Integer planeSize = getPlaneSize();
-
-        return (long) rowSize * y + (long) timepointSize * t + (long) stackSize
-                * c + (long) planeSize * z;
-    }
-
-    public Long getPlaneOffset(Integer z, Integer c, Integer t)
-            throws DimensionsOutOfBoundsException {
-        checkBounds(null, z, c, t);
-
-        Integer timepointSize = getTimepointSize();
-        Integer stackSize = getStackSize();
-        Integer planeSize = getPlaneSize();
-
-        return (long) timepointSize * t + (long) stackSize * c
-                + (long) planeSize * z;
-    }
-
-    public Long getStackOffset(Integer c, Integer t)
-            throws DimensionsOutOfBoundsException {
-        checkBounds(null, null, c, t);
-
-        Integer timepointSize = getTimepointSize();
-        Integer stackSize = getStackSize();
-
-        return (long) timepointSize * t + (long) stackSize * c;
-    }
-
-    public Long getTimepointOffset(Integer t)
-            throws DimensionsOutOfBoundsException {
-        checkBounds(null, null, null, t);
-
-        Integer timepointSize = getTimepointSize();
-
-        return (long) timepointSize * t;
     }
 
     public PixelData getRegion(Integer size, Long offset) throws IOException {
@@ -230,6 +176,35 @@ public class RomioPixelBuffer extends PixelsBasedPixelBuffer {
         return buffer;
     }
 
+    public byte[] getHypercubeDirect(int startX, int sizeX, int startY,
+            int sizeY, int startZ, int sizeZ, int startC, int sizeC,
+            int startT, int sizeT) throws IOException,
+            DimensionsOutOfBoundsException, BufferOverflowException {
+
+        checkHypercube(startX, sizeX, startY, sizeY, startZ, sizeZ, startC,
+                sizeC, startT, sizeT);
+
+        int bufSize = getHypercubeSize(sizeX, sizeY, sizeZ, sizeC, sizeT);
+        int scanSize = sizeX * getByteWidth();
+
+        int buf_offset = 0;
+        byte[] buf = new byte[bufSize];
+        byte[] row = new byte[scanSize];
+        for (int t = startT; t < startT + sizeT; t++) {
+            for (int c = startC; c < startC + sizeC; c++) {
+                for (int z = startZ; z < startZ + sizeZ; z++) {
+                    for (int y = startY; y < startY + sizeY; y++) {
+                        long reg_offset = getRowOffset(y, z, c, t) + startX;
+                        row = getRegionDirect(scanSize, reg_offset, row);
+                        System.arraycopy(row, 0, buf, buf_offset, scanSize);
+                        buf_offset += scanSize;
+                    }
+                }
+            }
+        }
+        return buf;
+    }
+
     public void setRegion(Integer size, Long offset, byte[] buffer)
             throws IOException, BufferOverflowException {
         setRegion(size, offset, MappedByteBuffer.wrap(buffer));
@@ -307,4 +282,10 @@ public class RomioPixelBuffer extends PixelsBasedPixelBuffer {
         setTimepoint(MappedByteBuffer.wrap(buffer), t);
     }
 
+    public void setHypercube(byte[] buffer, int startX, int sizeX, int startY,
+            int sizeY, int startZ, int sizeZ, int startC, int sizeC,
+            int startT, int sizeT) throws IOException,
+            DimensionsOutOfBoundsException, BufferOverflowException {
+        throw new UnsupportedOperationException("NYI");
+    }
 }

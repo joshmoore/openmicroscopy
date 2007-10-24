@@ -30,8 +30,9 @@ public class ChunkedHdfPixelBuffer extends HdfPixelBuffer {
 
     @Override
     protected Dataset createOrOpenDataset(Pixels pixels) {
-        chunks = new long[] { 5, 5, 1, 1, 2 };
+        long[] values = { 5L, 5L, 1L, 1L, 1L };
+        chunks = new long[5];
+        mapFromToWithPtr(values, chunks);
         return super.createOrOpenDataset(pixels);
     }
-
 }
