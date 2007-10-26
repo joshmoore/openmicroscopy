@@ -19,12 +19,14 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
 import ome.io.nio.BufferFactory;
+import ome.io.nio.ChunkedHdfPixelBuffer;
 import ome.io.nio.DeltaVision;
 import ome.io.nio.DimensionsOutOfBoundsException;
 import ome.io.nio.HdfPixelBuffer;
@@ -83,6 +85,46 @@ public class HdfPixelBufferTest {
     }
 
     @Test
+    public void testMakeChunks() throws Exception {
+        long[] a1 = ChunkedHdfPixelBuffer.makeChunks(Fixture.pixels(0, 10000,
+                10000, 1, 1, 1, "int8"), 1024 * 1024);
+        assertTrue(Arrays.equals(a1, new long[] { 1024, 1024, 1, 1, 1 }));
+    }
+
+    @Test
+    public void testHugeImage() throws Exception {
+
+        int SIZE = 5000;
+        int STEP = SIZE / 5;
+        int CHUNK = 1023;
+
+        Fixture source = new SyntheticFixture(9999, SIZE, SIZE, 1, 1, 1,
+                "int16");
+
+        List<Fixture> fixtures = Arrays.asList(new HdfFixture(source.buffer,
+                PIXDIR, HdfPixelBuffer.class, source.pixels), new HdfFixture(
+                source.buffer, PIXDIR, ChunkedHdfPixelBuffer.class,
+                source.pixels), new RomioFixture(source.buffer, source.pixels,
+                OUTPUT));
+
+        for (Fixture fixture : fixtures) {
+            fixture.open();
+            fixture.setRow();
+            fixture.getHypercubeWithSizes(CHUNK, CHUNK, 1, 1, 1, STEP, STEP, 1,
+                    1, 1);
+            fixture.flush();
+            fixture.getHypercubeWithSizes(CHUNK, CHUNK, 1, 1, 1, STEP, STEP, 1,
+                    1, 1);
+            fixture.flush();
+            fixture.getHypercubeWithSizes(CHUNK, CHUNK, 1, 1, 1, STEP, STEP, 1,
+                    1, 1);
+            fixture.close();
+        }
+        System.out.println(new Report().ratios());
+
+    }
+
+    @Test
     public void testFixHyperCube() throws Exception {
         Fixture source = new SyntheticFixture(1, 3, 3, 3, 3, 3, "int16");
         Fixture simple = new HdfFixture(source.buffer, PIXDIR,
@@ -101,11 +143,12 @@ public class HdfPixelBufferTest {
     @Test
     public void testCompare() throws Exception {
         List<Fixture> sources = new ArrayList<Fixture>();
-        sources.add(new SyntheticFixture(111, 10, 10, 3, 3, 7, "int16"));
-        sources.add(new SyntheticFixture(222, 100, 100, 3, 3, 7, "int16"));
-        sources.add(new SyntheticFixture(333, 200, 200, 3, 3, 7, "int16"));
-        sources.add(new SyntheticFixture(444, 10, 10, 1, 1, 20, "int16"));
-        sources.add(new SyntheticFixture(555, 10, 10, 1, 1, 200, "int16"));
+        sources.add(new SyntheticFixture(111, 256, 256, 3, 1, 7, "int16"));
+        sources.add(new SyntheticFixture(222, 256, 256, 3, 3, 7, "int16"));
+        sources.add(new SyntheticFixture(333, 512, 512, 3, 3, 7, "int16"));
+        sources.add(new SyntheticFixture(444, 1024, 1024, 1, 1, 5, "int16"));
+        sources.add(new SyntheticFixture(555, 1024, 1024, 1, 1, 15, "int16"));
+        sources.add(new SyntheticFixture(666, 1024, 1024, 1, 1, 30, "int16"));
 
         for (Fixture source : sources) {
 
@@ -130,15 +173,25 @@ public class HdfPixelBufferTest {
                 System.gc();
             }
 
-            System.out.println(new Report() + "\n\n\n");
-            MonitorFactory.reset();
+            System.out.println(new Report().ratios() + "\n\n\n");
 
         }
     }
-
 }
 
 abstract class Fixture {
+
+    protected static Pixels pixels(long id, int x, int y, int z, int c, int t,
+            String type) {
+        Pixels p = new Pixels(id);
+        p.setSizeX(x);
+        p.setSizeY(y);
+        p.setSizeZ(z);
+        p.setSizeC(c);
+        p.setSizeT(t);
+        p.setPixelsType(new PixelsType(type));
+        return p;
+    }
 
     PixelBuffer source;
     Pixels pixels;
@@ -245,9 +298,9 @@ abstract class Fixture {
     }
 
     void getPlane() throws Exception {
-        for (int z = 0; z < buffer.getSizeZ(); z++) {
+        for (int t = 0; t < buffer.getSizeT(); t++) {
             for (int c = 0; c < buffer.getSizeC(); c++) {
-                for (int t = 0; t < buffer.getSizeT(); t++) {
+                for (int z = 0; z < buffer.getSizeZ(); z++) {
                     byte[] DATA = getPlane(z, c, t);
                     byte[] rv = new byte[buffer.getPlaneSize()];
                     startRead();
@@ -264,7 +317,7 @@ abstract class Fixture {
                 + " is not " + printFirstN(DATA));
     }
 
-    private String printFirstN(byte[] rv) {
+    private static String printFirstN(byte[] rv) {
         int sz = Math.min(rv.length, 100);
         byte[] tmp = new byte[sz];
         System.arraycopy(rv, 0, tmp, 0, sz);
@@ -273,7 +326,16 @@ abstract class Fixture {
 
     void setRow() throws Exception {
         startWrite();
-        buffer.setRow(ByteBuffer.wrap(getRow(0, 0, 0, 0)), 0, 0, 0, 0);
+        for (int t = 0; t < buffer.getSizeT(); t++) {
+            for (int c = 0; c < buffer.getSizeC(); c++) {
+                for (int z = 0; z < buffer.getSizeZ(); z++) {
+                    for (int y = 0; y < buffer.getSizeY(); y++) {
+                        buffer.setRow(ByteBuffer.wrap(getRow(y, z, c, t)), y,
+                                z, c, t);
+                    }
+                }
+            }
+        }
         stopWrite();
     }
 
@@ -288,17 +350,29 @@ abstract class Fixture {
 
     void getHypercube(long seed) throws Exception {
         Random r = new Random(seed);
-        int x2 = r.nextInt(Math.min(10, pixels.getSizeX() - 1)) + 1;
-        int y2 = r.nextInt(Math.min(10, pixels.getSizeY() - 1)) + 1;
-        int z2 = r.nextInt(Math.min(10, pixels.getSizeZ() - 1)) + 1;
-        int c2 = r.nextInt(Math.min(10, pixels.getSizeC() - 1)) + 1;
-        int t2 = r.nextInt(Math.min(10, pixels.getSizeT() - 1)) + 1;
 
-        for (int x1 = 0; x1 < pixels.getSizeX() - x2; x1++) {
-            for (int y1 = 0; y1 < buffer.getSizeY() - y2; y1++) {
-                for (int z1 = 0; z1 < buffer.getSizeZ() - z2; z1++) {
-                    for (int c1 = 0; c1 < buffer.getSizeC() - c2; c1++) {
-                        for (int t1 = 0; t1 < buffer.getSizeT() - t2; t1++) {
+        int x2 = randomSizeUpTo(r, pixels.getSizeX(), 10);
+        int y2 = randomSizeUpTo(r, pixels.getSizeY(), 10);
+        int z2 = randomSizeUpTo(r, pixels.getSizeZ(), 10);
+        int c2 = randomSizeUpTo(r, pixels.getSizeC(), 10);
+        int t2 = randomSizeUpTo(r, pixels.getSizeT(), 10);
+
+        int x3 = Math.max(1, pixels.getSizeX() / 10);
+        int y3 = Math.max(1, pixels.getSizeY() / 10);
+        int z3 = Math.max(1, pixels.getSizeZ() / 10);
+        int c3 = Math.max(1, pixels.getSizeC() / 10);
+        int t3 = Math.max(1, pixels.getSizeT() / 10);
+        getHypercubeWithSizes(x2, y2, z2, c2, t2, x3, y3, z3, c3, t3);
+    }
+
+    void getHypercubeWithSizes(int x2, int y2, int z2, int c2, int t2,
+            int stepX, int stepY, int stepZ, int stepC, int stepT)
+            throws Exception {
+        for (int x1 = 0; x1 <= pixels.getSizeX() - x2; x1 += stepX) {
+            for (int y1 = 0; y1 <= buffer.getSizeY() - y2; y1 += stepY) {
+                for (int z1 = 0; z1 <= buffer.getSizeZ() - z2; z1 += stepZ) {
+                    for (int c1 = 0; c1 <= buffer.getSizeC() - c2; c1 += stepC) {
+                        for (int t1 = 0; t1 <= buffer.getSizeT() - t2; t1 += stepT) {
                             byte[] DATA = getHypercube(x1, x2, y1, y2, z1, z2,
                                     c1, c2, t1, t2);
                             byte[] rv = new byte[buffer.getHypercubeSize(x2,
@@ -314,6 +388,7 @@ abstract class Fixture {
             }
         }
     }
+
     // void getStack() throws Exception {
     // for (int c1 = 0; c1 < buffer.getSizeC() - c2; c1++) {
     // for (int t1 = 0; t1 < buffer.getSizeT() - t2; t1++) {
@@ -329,6 +404,23 @@ abstract class Fixture {
     // }
     // }
     // }
+
+    private int randomSizeUpTo(Random r, int size, int max) {
+        if (size == 1) {
+            return 1;
+        }
+        return r.nextInt(Math.min(max, size - 1)) + 1;
+    }
+
+    protected byte[] buffer(int size, byte value) {
+        byte[] buf = new byte[size];
+        Arrays.fill(buf, value);
+        return buf;
+    }
+
+    protected byte fillValue(int z, int c, int t) {
+        return (byte) ((z + 1) * 100 + (c + 1) * 10 + t + 1);
+    }
 
 }
 
@@ -403,7 +495,6 @@ class RomioFixture extends Fixture {
         if (file.exists()) {
             file.delete();
         }
-        file.createNewFile();
         buffer = factory.createPixelBuffer(this.pixels);
     }
 
@@ -447,32 +538,11 @@ class DeltaVisionFixture extends Fixture {
 
 class SyntheticFixture extends Fixture {
 
-    static Pixels pixels(long id, int x, int y, int z, int c, int t, String type) {
-        Pixels p = new Pixels(id);
-        p.setSizeX(x);
-        p.setSizeY(y);
-        p.setSizeZ(z);
-        p.setSizeC(c);
-        p.setSizeT(t);
-        p.setPixelsType(new PixelsType(type));
-        return p;
-    }
-
     /** Calls {@link #open()} */
     public SyntheticFixture(long id, int x, int y, int z, int c, int t,
             String type) throws Exception {
         super(null, pixels(id, x, y, z, c, t, type));
         open();
-    }
-
-    byte[] buffer(int size, byte value) {
-        byte[] buf = new byte[size];
-        Arrays.fill(buf, value);
-        return buf;
-    }
-
-    byte fillValue(int z, int c, int t) {
-        return (byte) ((z + 1) * 100 + (c + 1) * 10 + t + 1);
     }
 
     @Override
@@ -549,9 +619,55 @@ class Report {
     String[] header;
     Object[][] data;
 
+    /**
+     * Saves the current data from {@link MonitorFactory} and then resets all
+     * values.
+     */
     public Report() {
         header = MonitorFactory.getHeader();
         data = MonitorFactory.getData();
+        MonitorFactory.reset();
+    }
+
+    public String ratios() {
+        Map<String, Object[]> read = new HashMap<String, Object[]>();
+        Map<String, Object[]> write = new HashMap<String, Object[]>();
+        for (Object[] datacell : data) {
+            String key = (String) datacell[LABEL];
+            if (key.endsWith("read, ms.")) {
+                read.put(key, datacell);
+            } else if (key.endsWith("write, ms.")) {
+                write.put(key, datacell);
+            }
+        }
+        StringBuilder sb = new StringBuilder();
+        ratiosParse(sb, read);
+        ratiosParse(sb, write);
+        return sb.toString();
+
+    }
+
+    private void ratiosParse(StringBuilder sb, Map<String, Object[]> map) {
+        List<Object[]> list = new ArrayList<Object[]>(map.values());
+        if (list.size() == 0) {
+            return;
+        }
+        Collections.sort(list, new Comparator<Object[]>() {
+            public int compare(Object[] o1, Object[] o2) {
+                return Double.compare((Double) o1[AVG], (Double) o2[AVG]);
+            }
+        });
+        String format = "%3.2e (Ratio: %3.2e) %s";
+        Object[] item;
+
+        for (int i = 0; i < list.size(); i++) {
+            item = list.get(i);
+            double ratio = (i == 0) ? 1.0d
+                    : ((Double) item[AVG] / (Double) list.get(0)[AVG]);
+            sb.append(String.format(format, item[AVG], ratio, item[LABEL]));
+            sb.append("\n");
+        }
+        sb.append("------------------\n");
     }
 
     @Override

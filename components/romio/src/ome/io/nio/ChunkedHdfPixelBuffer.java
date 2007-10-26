@@ -30,9 +30,33 @@ public class ChunkedHdfPixelBuffer extends HdfPixelBuffer {
 
     @Override
     protected Dataset createOrOpenDataset(Pixels pixels) {
-        long[] values = { 5L, 5L, 1L, 1L, 1L };
+        long[] values = makeChunks(pixels, 1024 * 1024);
         chunks = new long[5];
         mapFromToWithPtr(values, chunks);
         return super.createOrOpenDataset(pixels);
+    }
+
+    public static long[] makeChunks(Pixels pixels, long sizePerChunk) {
+
+        int x0 = pixels.getSizeX(); // e.g. 10000
+        int y0 = pixels.getSizeY(); // e.g. 10000
+
+        int b = PixelsService.getBitDepth(pixels.getPixelsType()) / 8;
+        double p = sizePerChunk / b; // pixPerChunk, e.g. for int8 & 1M, 1
+
+        double x = Math.pow((x0 * p / y0), 0.5); // e.g. 361
+        long x1 = Math.round(x);
+        long y1 = Math.round(p / x1); // e.g.361
+
+        if (x1 < 1) {
+            x1 = 1;
+        }
+
+        if (y1 < 1) {
+            y1 = 1;
+        }
+
+        long[] values = { x1, y1, 1L, 1L, 1L };
+        return values;
     }
 }

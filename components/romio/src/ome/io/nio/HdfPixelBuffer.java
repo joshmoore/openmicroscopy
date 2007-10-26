@@ -435,8 +435,10 @@ public class HdfPixelBuffer extends PixelsBasedPixelBuffer {
 
         Dataset d = null;
         try {
-            d = self.createImage(IMAGE0, root, dtype, dims, maxdims, chunks,
-                    gzip, ncomp, interlace, null);
+            // d = self.createImage(IMAGE0, root, dtype, dims, maxdims, chunks,
+            // gzip, ncomp, interlace, null);
+            d = self.createScalarDS(IMAGE0, root, dtype, dims, maxdims, chunks,
+                    gzip, null);
             if (d == null) {
                 throw new IOException("Null dataset returned.");
             }
@@ -466,9 +468,9 @@ public class HdfPixelBuffer extends PixelsBasedPixelBuffer {
         int torder = Datatype.ORDER_BE;
         try {
             Datatype dtype = self.createDatatype(tclass, tsize, torder, tsign /*
-             * ,
-             * "/Type0"
-             */);
+                                                                                 * ,
+                                                                                 * "/Type0"
+                                                                                 */);
             dtype.open();
             return dtype;
         } catch (Exception e) {
