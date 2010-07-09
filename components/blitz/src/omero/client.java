@@ -904,7 +904,8 @@ public class client {
         }
 
         if (fileObject.getPath() == null) {
-            String path = file.getAbsoluteFile().getPath();
+            String path = file.getParent() == null ?
+                    File.separator : (file.getParent() + File.separator);
             fileObject.setPath(rstring(path));
         }
 
