@@ -38,7 +38,11 @@ used for making figures.
 """
 
 
-import Image, ImageDraw, ImageFont
+try:
+    from PIL import Image, ImageDraw, ImageFont # see ticket:2597
+except ImportError:
+    import Image, ImageDraw, ImageFont # see ticket:2597
+
 import os.path
 import omero.gateway
 import StringIO
