@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project name="ticket4821" default="install" basedir="." xmlns:ivy="antlib:org.apache.ivy.ant">
+<!--
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#
+# $Id$
+#
+# Copyright 2011 Glencoe Software, Inc. All rights reserved.
+# Use is subject to license terms supplied in LICENSE.txt
+#
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Written by:  Josh Moore, josh at glencoesoftware.com
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+-->
+    <description>
+        Add-on to the OMERO code base which allows custom code to be
+        distributed as an extension.
+    </description>
+
+    <property name="main.class" value="yourmainclass"/>
+    <dirname property="up-two" file="${basedir}"/>
+    <dirname property="up-one" file="${up-two}"/>
+    <property name="import.dir"       value="${up-one}/antlib/resources"/>
+    <import file="${import.dir}/global.xml"/>
+    <import file="${import.dir}/lifecycle.xml"/>
+    <import file="../common.xml"/>
+    <import file="../python.xml"/>
+
+    <target name="tools-init">
+        <mkdir dir="${basedir}/generated/omero"/>
+        <scons_py>
+            <arg value="slice"/>
+        </scons_py>
+    </target>
+
+    <target name="tools-build" depends="tools-init,install,python-build,cpp-build" description="Creates all artifacts for tools/target"/>
+
+    <target name="cpp-build" unless="env.NOMAKE">
+        <scons_py>
+            <arg value="lib"/>
+        </scons_py>
+    </target>
+
+    <target name="cpp-install" unless="env.NOMAKE">
+        <scons_py>
+            <arg value="install"/>
+        </scons_py>
+    </target>
+
+    <!-- Additional functionality for the lifecycle.package target.
+    Unjars the final contents of the extensions jar to a tools/target
+    directory so that they can be bundled together for the final products.
+    This is necessary since otherwise the jar listed here would have to
+    be manually added to app/resources/application.xml -->
+    <target name="tools-dist" depends="tools-build,python-install,cpp-install" description="Copied artifacts to tools/target">
+        <mkdir dir="${extension.classes}"/>
+        <unjar src="${target.dir}/${ivy.module}.jar" dest="${extension.classes}"/>
+        <copy todir="../target/include">
+            <fileset dir="${resrc.dir}" includes="**/*.ice,**/*.h"/>
+            <fileset dir="generated" includes="**/*.h"/>
+            <fileset dir="src" includes="**/*.h"/>
+        </copy>
+        <!-- Using ant to copy since scons tends to flatten the Globs() for copy -->
+        <copy todir="../target/include">
+            <fileset dir="src"       includes="**/*.h"/>
+            <fileset dir="target"    includes="**/*.h"/>
+            <fileset dir="generated" includes="**/*.h"/>
+        </copy>
+    </target>
+
+    <target name="tools-clean" depends="clean,python-clean">
+        <scons_py>
+            <arg value="-c"/>
+        </scons_py>
+        <delete dir="${basedir}/target"/>
+        <delete dir="${basedir}/generated"/>
+    </target>
+
+</project>
