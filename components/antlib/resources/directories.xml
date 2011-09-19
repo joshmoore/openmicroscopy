@@ -108,6 +108,7 @@
 	<property name="tools.dest"    value="${components.dir}/tools/target"/>
 	<property name="tools.jars"    value="${components.dir}/tools/target/jars"/>
 	<property name="tools.classes" value="${components.dir}/tools/target/service-classes"/>
+	<property name="extension.classes" value="${components.dir}/tools/target/extension-classes"/>
 
 	<!-- Relative paths -->
 	<property name="target.rel"    value="target"/>

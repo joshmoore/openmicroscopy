@@ -34,8 +34,15 @@
 			and contains non-core classes, including both server and client
 			side code for use with OMERO.
 		</echo>
+		<mkdir dir="${extension.classes}/META-INF"/>
+		<echo file="${extension.classes}/META-INF/README.txt">
+			This jar was created by the tools/build.xml script's dist target
+			and contains non-core classes, including both server and client
+			side code for use with OMERO.
+		</echo>
 		<mkdir dir="target/lib/server"/>
 		<jar update="true" destfile="target/lib/server/services.jar" basedir="${tools.classes}" includes="**/*"/>
+		<jar update="true" destfile="target/lib/server/extensions.jar" basedir="${extension.classes}" includes="**/*"/>
 		<mkdir dir="${dist.dir}/bin/"/>
 		<copy todir="${dist.dir}">
 			<fileset dir="target" includes="*.war,var/**/*,bin/**/*,etc/**/*,lib/**/*,include/**/*" followsymlinks="false">
