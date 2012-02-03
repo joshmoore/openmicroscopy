@@ -47,6 +47,8 @@ function installvm ()
 	$SCP setup_omero.sh omero@localhost:~/
 	$SCP setup_omero_daemon.sh omero@localhost:~/
 	$SCP omero-init.d omero@localhost:~/
+	$SCP omero_dhcp_daemon.sh omero@localhost:~/
+	$SCP renewdhcp-init.d omero@localhost:~/
 	echo "ssh : exec driver.sh"
 	$SSH omero@localhost 'bash /home/omero/driver.sh'
 	sleep 10
