@@ -1189,7 +1189,7 @@ class NoProxies (object):
     def __getitem__ (self, k):
         raise Ice.ConnectionLostException
 
-class _BlitzGateway (object):
+class _BlitzGateway (omero.clients.Counter):
     """
     Connection wrapper. Handles connecting and keeping the session alive, creation of various services,
     context switching, security privilidges etc.  

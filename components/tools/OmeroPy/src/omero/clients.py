@@ -26,7 +26,28 @@ import omero_ext.uuid as uuid # see ticket:3774
 IceImport.load("Glacier2_Router_ice")
 import Glacier2
 
-class BaseClient(object):
+class Counter(object):
+
+    COUNTS = dict()
+
+    def __init__(self):
+        key = self.__class__.__name__
+        try:
+            Counter.COUNTS[key] += 1
+        except:
+            Counter.COUNTS[key] = 1
+
+            def onexit():
+                logging.basicConfig(level=logging.ERROR)
+                log = logging.getLogger(key)
+                count = Counter.COUNTS.get(key, 0)
+                log.error("Created %s objects", count)
+
+            import atexit
+            atexit.register(onexit)
+
+
+class BaseClient(Counter):
     """
     Central client-side blitz entry point, and should be in sync with OmeroJava's omero.client
     and OmeroCpp's omero::client.
@@ -78,6 +99,7 @@ class BaseClient(object):
 
         Equivalent to all OmeroJava and OmeroCpp constructors
         """
+        super(BaseClient, self).__init__()
 
         # Setting all protected values to prevent AttributeError
         self.__agent = "OMERO.py" #: See setAgent
