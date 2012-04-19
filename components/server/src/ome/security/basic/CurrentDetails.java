@@ -374,7 +374,19 @@ public class CurrentDetails implements PrincipalHolder {
         if (changePerms) {
             // Make the permissions match (#8277)
             final Permissions groupPerms = c.getCurrentGroupPermissions();
-            Permissions copy = new Permissions(groupPerms);
+            Permissions copy;
+            if (groupPerms != Permissions.DUMMY) {
+                copy = new Permissions(groupPerms);
+            } else {
+                // In the case of the dummy, we will be required to have
+                // the group id already set in the context.
+                Long gid = details.getGroup().getId();
+                copy = c.getPermissionsForGroup(gid);
+                if (copy == null) {
+                    throw new InternalException(
+                            "Failed to load permissions for group: " + gid);
+                }
+            }
             details.setPermissions(copy);
         }
 

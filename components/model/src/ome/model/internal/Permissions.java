@@ -674,6 +674,12 @@ public class Permissions implements Serializable {
             new Permissions().revoke(USER, READ, ANNOTATE, WRITE).revoke(GROUP, READ,
                     ANNOTATE, WRITE).revoke(WORLD, READ, ANNOTATE, WRITE));
 
+    /**
+     * Marker object which can be set on objects to show that the Permissions
+     * instance given contains no value.
+     */
+    public final static Permissions DUMMY = new ImmutablePermissions(EMPTY);
+
     // ~ Systematic
     // =========================================================================
     /*
