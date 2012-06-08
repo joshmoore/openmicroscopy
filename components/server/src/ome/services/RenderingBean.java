@@ -41,6 +41,8 @@ import ome.model.display.RenderingDef;
 import ome.model.enums.Family;
 import ome.model.enums.RenderingModel;
 import ome.model.internal.Permissions;
+import ome.model.meta.Experimenter;
+import ome.model.meta.ExperimenterGroup;
 import ome.security.SecuritySystem;
 import ome.services.util.Executor;
 import ome.system.EventContext;
@@ -762,18 +764,28 @@ public class RenderingBean implements RenderingEngine, Serializable {
             // updated. FIXME: This should be implemented using IUpdate.touch()
             // or similar once that functionality exists.
             RenderingDef old = rendDefObj;
+
+            // ticket:8818. If the rdef had an owner, then we will preserve it.
+            // We'll also assue that the channel bindings have the same oid/gid
+            final Long oid = old.getDetails().getOwner() == null ? null :
+                old.getDetails().getOwner().getId();
+            final Long gid = old.getDetails().getGroup() == null ? null :
+                old.getDetails().getGroup().getId();
+
             rendDefObj = createNewRenderingDef(pixelsObj);
             rendDefObj.setId(old.getId());
             rendDefObj.setDefaultZ(old.getDefaultZ());
             rendDefObj.setDefaultT(old.getDefaultT());
             rendDefObj.setCompression(old.getCompression());
             rendDefObj.setName(old.getName());
+            setNonNullIds(rendDefObj, oid, gid);
             QuantumDef qDefNew = rendDefObj.getQuantization();
             QuantumDef qDefOld = old.getQuantization();
             qDefNew.setId(qDefOld.getId());
             qDefNew.setBitResolution(qDefOld.getBitResolution());
             qDefNew.setCdStart(qDefOld.getCdStart());
             qDefNew.setCdEnd(qDefOld.getCdEnd());
+            setNonNullIds(qDefNew, oid, gid);
             
             rendDefObj.setVersion(old.getVersion() + 1);
 
@@ -811,6 +823,7 @@ public class RenderingBean implements RenderingEngine, Serializable {
                 cb.setInputEnd(binding.getInputEnd());
                 cb.setCoefficient(binding.getCoefficient());
                 cb.setNoiseReduction(binding.getNoiseReduction());
+                setNonNullIds(cb, oid, gid);
                 //binding.setFamily(unloadedFamily);
                 index++;
             }
@@ -1900,5 +1913,14 @@ public class RenderingBean implements RenderingEngine, Serializable {
                 return pixDataSrv.getPixelBuffer(pixelsObj, false);
             }
         });
+    }
+
+    private static void setNonNullIds(IObject obj, Long oid, Long gid) {
+        if (oid != null) {
+            obj.getDetails().setOwner(new Experimenter(oid, false));
+        }
+        if (gid != null) {
+            obj.getDetails().setGroup(new ExperimenterGroup(gid, false));
+        }
     }
 }
