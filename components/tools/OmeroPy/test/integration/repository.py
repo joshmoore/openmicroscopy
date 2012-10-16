@@ -7,10 +7,16 @@
    Use is subject to license terms supplied in LICENSE.txt
 
 """
-import unittest, time, os
+
+import unittest, time, os, sys
 import integration.library as lib
+
 import omero
+import omero.cli
+import omero.java
+
 from omero.rtypes import *
+from omero.util.temp_files import create_path
 
 class TestRepository(lib.ITest):
 
@@ -152,6 +158,72 @@ class TestRepository(lib.ITest):
                 break
         self.assert_(found)
         return prx
+
+    #
+    # CLI-based import tests
+    # ===============================================================
+    # The following tests use import_image to invoke the cli importer
+    # and then verify various expectations about import. Once a
+    # py-based import is also possible using the MRepo API, each test
+    # could simultaneously test the import via that method. This will
+    # verify that all functionality is available in the API and that
+    # not too much has been encoded in the client-side ImportLibrary.
+    #
+
+    def bfconvert(self, source, target):
+
+        dist_dir = self.get_dist_dir()
+        client_dir = dist_dir / "lib" / "client"
+        classpath = [file.abspath() for file in client_dir.files("*.jar")]
+        xargs = ["-cp", os.pathsep.join(classpath)]
+        prog = "loci.formats.tools.ImageConverter"
+
+        p = omero.java.popen([prog, source, target], \
+                xargs=xargs, stdout=sys.stdout, stderr=sys.stderr)
+
+        ret_val = p.wait()
+        self.assertEquals(0, ret_val)
+
+    def makeFake(self):
+        dir = create_path("fake_test_", folder=True)
+        fake = dir / "test.fake"
+        fake.touch()
+        return fake
+
+    def makeMultiFake(self):
+        """
+        Creates a .fake file and then uses Bio-Formats
+        to convert it to a multi-file format (ICS)
+        """
+        fake = self.makeFake()
+        ids = fake.__class__(str(fake)[:-4]+"ids")
+        ics = fake.__class__(str(fake)[:-4]+"ics")
+
+        self.bfconvert(fake, ids)
+        self.assertTrue(ids.exists())
+        self.assertTrue(ics.exists())
+
+        return ics
+
+    def doImport(self, path):
+        return self.import_image(path)
+
+    def testCliImport(self):
+        # Simply verify the methods above.
+        fake = self.makeFake()
+        self.doImport(fake)
+
+    def testOriginalFilesCreated(self):
+        # The import should link an
+        # image to all the uploaded
+        # files.
+        multi_fake = self.makeMultiFake()
+        pix_ids = self.doImport(multi_fake)
+        images = self.images_from_pix_ids(pix_ids)
+        self.assertEquals(1, len(images))
+        image = images[0]
+        pixels = image.getPrimaryPixels()
+        self.assertEquals(2, pixels.sizeOfPixelsFileMaps())
 
 if __name__ == '__main__':
     unittest.main()

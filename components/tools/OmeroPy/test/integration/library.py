@@ -158,6 +158,12 @@ class ITest(unittest.TestCase):
         img.acquisitionDate = rtime(0)
         return img
 
+    def get_dist_dir(self):
+        """
+        Search up until we find "dist" above "OmeroPy"
+        """
+        return self.OmeroPy / ".." / ".." / ".." / "dist"
+
     def import_image(self, filename = None, client = None, extra_args=None):
         if filename is None:
             filename = self.OmeroPy / ".." / ".." / ".." / "components" / "common" / "test" / "tinyTest.d3d.dv"
@@ -168,9 +174,6 @@ class ITest(unittest.TestCase):
         port = client.getProperty("omero.port")
         key = client.getSessionId()
 
-        # Search up until we find "OmeroPy"
-        dist_dir = self.OmeroPy / ".." / ".." / ".." / "dist"
-
         args = [sys.executable]
         args.append(str(path(".") / "bin" / "omero"))
         args.extend(["-s", server, "-k", key, "-p", port, "import", "--"])
@@ -178,6 +181,7 @@ class ITest(unittest.TestCase):
             args.extend(extra_args)
         args.append(filename)
 
+        dist_dir = self.get_dist_dir()
         popen = subprocess.Popen(args, cwd=str(dist_dir), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, err = popen.communicate()
         rc = popen.wait()
@@ -191,6 +195,22 @@ class ITest(unittest.TestCase):
                     pix_ids.append(imageId)
                 except: pass
         return pix_ids
+
+    def images_from_pix_ids(self, pix_ids, client=None):
+
+        if not pix_ids:
+            return []
+
+        if client is None:
+            client = self.client
+
+        return client.sf.getQueryService().findAllByQuery(\
+            """select i from Image i
+            join fetch i.pixels p
+            left outer join fetch p.pixelsFileMaps m
+            left outer join fetch m.parent
+            where p.id in (:ids)""",
+            omero.sys.ParametersI().addIds(pix_ids))
 
     def createTestImage(self, sizeX = 16, sizeY = 16, sizeZ = 1, sizeC = 1, sizeT = 1, session=None):
         """
