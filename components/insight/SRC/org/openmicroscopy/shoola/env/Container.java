@@ -392,14 +392,6 @@ public final class Container
 				//Exception thrown if network is down.
 				up = false;
 			}
-			if (!up) { //no network 
-				//halt will bail out without calling further shutdown hooks
-				Runtime.getRuntime().addShutdownHook(new Thread() {
-					public void run() {
-						Runtime.getRuntime().halt(1);
-					}
-				});
-			}
 			System.exit(0);
 		} else {
 			getRegistry().getEventBus().post(new ConnectedEvent(false));
