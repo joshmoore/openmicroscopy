@@ -144,5 +144,145 @@ class TestRPS(lib.ITest):
         finally:
             rps.close()
 
+    ## Some combination of calls on RawPixelsStore
+    ## is leaving the pixels object in a bad state.
+    ## It looks as if some code path is accessing
+    ## the file without obtaining the lock.
+
+    def rnd_pixel(self, client, pix):
+        re = client.sf.createRenderingEngine()
+        try:
+            re.lookupPixels(pix.id.val)
+            re.resetDefaults()
+            re.lookupPixels(pix.id.val)
+            re.lookupRenderingDef(pix.id.val)
+            re.getPixels()
+        finally:
+            re.close()
+
+    def test9904WithClose(self):
+
+        # Create a session that lives for a limited time
+        event = get_event("test9904")
+        client = self.client
+
+        pix1 = self.pix(x=4000, y=4000, z=1, t=1, c=1, client=client)
+        pix2 = self.pix(x=4000, y=4000, z=1, t=1, c=1, client=client)
+        rps = client.sf.createRawPixelsStore()
+        try:
+            rps.setPixelsId(pix1.id.val, True)
+            w, h = rps.getTileSize()
+        finally:
+            # rps.save() # Leads to LockTimeout on rnd_pixels
+            rps.close() # Leads to ResourceError on rnd_pixels
+
+        try:
+            self.rnd_pixel(client, pix1)
+        except (omero.ResourceError, omero.LockTimeout):
+            pass # i.e. this pyramid is corrupt
+
+    def test9904WithTimeout(self):
+        # This method leaves garbage on the server side
+        # -rw-r--r-- 1 hudson hudson          0 2012-11-16 08:17 .4434_pyramid.pyr_lock
+        # -rw-r--r-- 1 hudson hudson       4772 2012-11-16 08:17 .4434_pyramid971798142620109656.tmp
+
+        # Create a session that lives for a limited time
+        event = get_event("test9904")
+        def new_short_client():
+            ec = self.client.sf.getAdminService().getEventContext()
+            principal = omero.sys.Principal(ec.userName, ec.groupName, "Test")
+            root_svc = self.root.sf.getSessionService()
+            session = root_svc.createSessionWithTimeout(principal, 5*1000)
+            return self.new_client(session = session.uuid.val)
+
+        # Create a pyramid during one session which times out.
+        client = new_short_client()
+        try:
+            pix1 = self.pix(x=4000, y=4000, z=1, t=1, c=1, client=client)
+            #2 pix2 = self.pix(x=4000, y=4000, z=1, t=1, c=1, client=client)
+            rps = client.sf.createRawPixelsStore()
+            try:
+                rps.setPixelsId(pix1.id.val, True)
+                w, h = rps.getTileSize()
+                size = w * h
+                buf = [0] * size
+                rps.setTile(buf, 0, 0, 0, 0, 0, w, h)
+
+                event.wait(5)
+
+                #2 rps.setPixelsId(pix2.id.val, True)
+            finally:
+                try:
+                    rps.close()
+                except omero.ResourceError:
+                    print "Got ResourceError"
+                    pass # Excepted since not enough tiles
+        finally:
+            client.__del__()
+
+        # Now try to access from a second client
+        client = new_short_client()
+        try:
+
+            tb = client.sf.createThumbnailStore()
+            try:
+                tb.getThumbnailByLongestSideSet(rint(64), [pix1.id.val])
+            finally:
+                tb.close()
+        finally:
+            client.__del__()
+
+    def test9904WithConcurrency(self):
+
+        # Create a session that lives for a limited time
+        event = get_event("test9904-2")
+        client = self.client
+        import threading
+
+        pix1 = self.pix(x=4000, y=4000, z=1, t=1, c=1, client=client)
+        class T1(threading.Thread):
+
+            def run(this):
+                try:
+                    rps = client.sf.createRawPixelsStore()
+                    try:
+                        rps.setPixelsId(pix1.id.val, True)
+                        w, h = rps.getTileSize()
+                        size = w * h
+                        buf = [0] * size
+                        for x in range(10): # Roughly a whole row
+                            if event.is_set():
+                                break
+                            rps.setTile(buf, 0, 0, 0, x, 0, w, h)
+                            event.wait(1)
+                    finally:
+                        rps.close()
+                except:
+                    import traceback
+                    traceback.print_exc()
+
+        class T2(threading.Thread):
+
+            def run(this):
+                try:
+                    while not event.is_set():
+                        try:
+                            self.rnd_pixel(client, pix1)
+                        except omero.LockTimeout:
+                            pass # This is the exception we'd expect
+                except:
+                    import traceback
+                    traceback.print_exc()
+
+        t1 = T1()
+        t2 = T2()
+        t1.start()
+        t2.start()
+        event.wait(4)
+        event.set()
+        t2.join()
+        t1.join()
+
+
 if __name__ == '__main__':
     unittest.main()
