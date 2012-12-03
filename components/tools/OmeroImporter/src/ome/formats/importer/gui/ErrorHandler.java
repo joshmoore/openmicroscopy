@@ -211,7 +211,7 @@ public class ErrorHandler extends JPanel implements IObserver, IObservable {
          * @see ome.formats.importer.util.ErrorHandler#onException(java.lang.Exception)
          */
         @Override
-        protected void onException(Exception e) {
+        protected void onException(Throwable e) {
             super.onException(e);
             /*
             // Get the full debug text

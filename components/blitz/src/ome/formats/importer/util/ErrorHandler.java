@@ -44,14 +44,39 @@ public abstract class ErrorHandler implements IObserver, IObservable {
      * @author Josh Moore
      */
     public abstract static class EXCEPTION_EVENT extends ImportEvent {
-        public final Exception exception;
+
+        public final Throwable exception;
 
         /**
          * @param exception - set exception
          */
-        public EXCEPTION_EVENT(Exception exception) {
-            this.exception = exception;
+        public EXCEPTION_EVENT(Throwable throwable) {
+            this.exception= throwable;
         }
+
+        /**
+         * Throws the {@link #exception} as an {@link Exception}
+         * if it is one, or wraps it in a new {@link Exception}
+         * if it's not. The return value is ignored but is
+         * useful for invoking as "throw evt.asException()".
+         */
+        public Exception asException() throws Exception {
+            if (exception instanceof Exception) {
+                throw (Exception) exception;
+            } else {
+                throw new Exception(exception);
+            }
+        }
+
+        /**
+         * Simply throws the {@link Throwable} related to
+         * this event. The return value is ignored but is
+         * useful for invoking as "throw evt.asThrowable()".
+         */
+        public Throwable asThrowable() throws Throwable {
+            throw this.exception;
+        }
+
     }
 
     /**
@@ -62,7 +87,7 @@ public abstract class ErrorHandler implements IObserver, IObservable {
         public final String filename;
         public final String[] usedFiles;
         public final String reader;
-        public INTERNAL_EXCEPTION(String filename, Exception exception, String[] usedFiles, String reader) {
+        public INTERNAL_EXCEPTION(String filename, Throwable exception, String[] usedFiles, String reader) {
             super(exception);
             this.filename = filename;
             this.usedFiles = usedFiles;
@@ -130,7 +155,7 @@ public abstract class ErrorHandler implements IObserver, IObservable {
          * @param exception
          * @param source
          */
-        public UNREADABLE_FILE(String filename, Exception exception, Object source) {
+        public UNREADABLE_FILE(String filename, Throwable exception, Object source) {
             super(exception);
             this.filename = filename;
             this.source = source;
@@ -159,7 +184,7 @@ public abstract class ErrorHandler implements IObserver, IObservable {
         public final String filename;
         public final String[] usedFiles;
         public final String reader;
-        public FILE_EXCEPTION(String filename, Exception exception, String[] usedFiles, String reader) {
+        public FILE_EXCEPTION(String filename, Throwable exception, String[] usedFiles, String reader) {
             super(exception);
             this.filename = filename;
             this.usedFiles = usedFiles;
@@ -369,7 +394,7 @@ public abstract class ErrorHandler implements IObserver, IObservable {
                 } else {
                     onNotSending(i, serverReply);
                 }
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 log.error("Error while sending error information.", e);
                 onException(e);
             }
@@ -561,7 +586,7 @@ public abstract class ErrorHandler implements IObserver, IObservable {
      * Action to take on exception
      * @param exception
      */
-    protected void onException(Exception exception)
+    protected void onException(Throwable exception)
     {
         notifyObservers(new ImportEvent.ERRORS_FAILED());
     }

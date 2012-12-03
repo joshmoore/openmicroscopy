@@ -299,7 +299,7 @@ public class ImportLibrary implements IObservable
                     numDone++;
                 } catch (Throwable t) {
                     notifyObservers(new ErrorHandler.INTERNAL_EXCEPTION(
-                        ic.getFile().toString(), new RuntimeException(t),
+                        ic.getFile().toString(), t,
                         ic.getUsedFiles(), ic.getReader()));
                     if (!config.contOnError.get()) {
                         log.info("Exiting on error");
@@ -756,13 +756,9 @@ public class ImportLibrary implements IObservable
             notifyObservers(new ErrorHandler.FILE_EXCEPTION(
                     fileName, fe, usedFiles, format));
             throw fe;
-        } catch (Exception e) {
-            notifyObservers(new ErrorHandler.INTERNAL_EXCEPTION(
-                    fileName, e, usedFiles, format));
-            throw e;
         } catch (Throwable t) {
             notifyObservers(new ErrorHandler.INTERNAL_EXCEPTION(
-                    fileName, new RuntimeException(t), usedFiles, format));
+                    fileName, t, usedFiles, format));
             throw t;
         } finally {
             store.setGroup(null);

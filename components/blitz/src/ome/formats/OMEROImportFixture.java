@@ -168,7 +168,7 @@ public class OMEROImportFixture {
      */
     public List<Pixels> getPixels() throws Exception {
         if (exception != null) {
-            throw exception.exception;
+            throw exception.asException();
         }
         return this.pixels;
     }
