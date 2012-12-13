@@ -19,7 +19,7 @@
  /*global parseQuery:true rgbToHex:true toRGB:true */
 
 /* Public constructors */
-
+var viewportLoadingMsg;
 jQuery.fn.WeblitzViewport = function (server, options) {
   return this.each
   (
@@ -364,7 +364,10 @@ jQuery._WeblitzViewport = function (container, server, options) {
       loadingQ = 0;
     }
     if (msg === undefined) {
-      msg = 'Loading...';
+        if (viewportLoadingMsg === undefined) {
+            viewportLoadingMsg = 'Loading...';
+        }
+        msg = viewportLoadingMsg;
     }
     _this.viewportmsg.html(msg);
     loadingQ++;
