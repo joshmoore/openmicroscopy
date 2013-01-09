@@ -35,10 +35,10 @@ namespace omero {
          * Helper subclass of omero::sys::Parameters for simplifying method
 	 * parameter creation.
          */
-        class ParametersI : virtual public Parameters {
+        class OMERO_API ParametersI : virtual public Parameters {
 
 	protected:
-	    ~ParametersI(); // protected as outlined in Ice docs.
+	    virtual ~ParametersI(); // protected as outlined in Ice docs.
 	public:
 	    /*
 	     * If no argument is provided, creates an empty ParamMap for use
