@@ -37,6 +37,10 @@ namespace omero {
          */
         class OMERO_API ParametersI : virtual public Parameters {
 
+	// Preventing copy-construction and assigning by value.
+	private:
+		ParametersI& operator=(const ParametersI& rv);
+		ParametersI(ParametersI&);
 	protected:
 	    virtual ~ParametersI(); // protected as outlined in Ice docs.
 	public:
