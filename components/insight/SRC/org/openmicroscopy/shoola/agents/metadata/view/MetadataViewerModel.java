@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.Map.Entry;
+import java.util.concurrent.atomic.AtomicInteger;
 
 //Third-party libraries
 
@@ -165,29 +166,49 @@ class MetadataViewerModel
 	private SecurityContext ctx;
 	
 	/** The number of loader used.*/
-	private int loaderID;
+	private AtomicInteger loaderID = new AtomicInteger();
 	
 	/** The active loaders.*/
-	private Map<Integer, MetadataLoader> loaders;
+	private class Loaders {
+		
+		HashMap<Integer, MetadataLoader> byId = new HashMap<Integer, MetadataLoader>();
 
-	/**
-	 * Returns the loader's ID if any corresponding to the class.
-	 * 
-	 * @param refClass The class of reference.
-	 * @return See above.
-	 */
-	private Integer getLoaderID(Class refClass)
-	{
-		Entry<Integer, MetadataLoader> e;
-		Iterator<Entry<Integer, MetadataLoader>>
-			i = loaders.entrySet().iterator();
-		while (i.hasNext()) {
-			e = i.next();
-			if (e.getValue().getClass().equals(refClass))
-				return e.getKey();
+		HashMap<Class, Integer> byClass = new HashMap<Class, Integer>();
+
+		public synchronized MetadataLoader put(int loaderID, MetadataLoader loader) {
+			MetadataLoader old= byId.put(loaderID, loader);
+			byClass.put(loader.getClass(), loaderID);
+			return old;
 		}
-		return null;
+		
+		public synchronized Integer getID(Class refClass) {
+			return byClass.get(refClass);
+		}
+
+		public synchronized void clear() {
+			byId.clear();
+			byClass.clear();
+		}
+
+		public synchronized Iterator<MetadataLoader> iterate() {
+			return byId.values().iterator();
+		}
+
+		public synchronized MetadataLoader remove(int loaderID) {
+			MetadataLoader loader = byId.remove(loaderID);
+			if (loader != null) {
+				byClass.remove(loader.getClass());
+			}
+			return loader;
+		}
+
+		public synchronized void remove(DataObject node) {
+			throw new UnsupportedOperationException();
+		}
+
 	}
+	
+	private Loaders loaders = new Loaders();
 	
 	/**
 	 * Returns the collection of the attachments linked to the 
@@ -234,8 +255,8 @@ class MetadataViewerModel
 				this.index = MetadataViewer.RND_GENERAL;
 		}
 		this.refObject = refObject;
-		loaderID = 0;
-		loaders = new HashMap<Integer, MetadataLoader>();
+		loaderID.set(0);
+		loaders = new Loaders();
 		data = null;
 		dataType = null;
 		singleMode = true;
@@ -284,12 +305,10 @@ class MetadataViewerModel
 	void discard()
 	{
 		state = MetadataViewer.DISCARDED;
-		loaders.entrySet().iterator();
-		Iterator<Entry<Integer, MetadataLoader>>
-		i = loaders.entrySet().iterator();
-		MetadataLoader loader;
-		while (i.hasNext()) {
-			loader = i.next().getValue();
+
+		Iterator<MetadataLoader> it = loaders.iterate();
+		while (it.hasNext()) {
+			MetadataLoader loader = it.next();
 			if (loader != null) loader.cancel();
 		}
 		loaders.clear();
@@ -373,10 +392,9 @@ class MetadataViewerModel
 	 */
 	void cancel(int loaderID)
 	{
-		MetadataLoader loader = loaders.get(loaderID);
+		MetadataLoader loader = loaders.remove(loaderID);
 		if (loader != null) {
 			loader.cancel();
-			loaders.remove(loaderID);
 		}
 	}
 
@@ -390,15 +408,15 @@ class MetadataViewerModel
 	 */
 	void fireParentLoading(TreeBrowserSet refNode)
 	{
-		Integer id = getLoaderID(ContainersLoader.class);
+		Integer id = loaders.getID(ContainersLoader.class);
 		if (id != null) cancel(id);
 		Object ho = refNode.getUserObject();
 		if (ho instanceof DataObject) {
-			loaderID++;
+			id = loaderID.incrementAndGet();
 			ContainersLoader loader = new ContainersLoader(
 					component, ctx, refNode, ho.getClass(),
-					((DataObject) ho).getId(), loaderID);
-			loaders.put(loaderID, loader);
+					((DataObject) ho).getId(), id);
+			loaders.put(id, loader);
 			loader.load();
 		}
 	}
@@ -415,12 +433,12 @@ class MetadataViewerModel
 		if (!(node instanceof DataObject)) return;
 		if (node instanceof ExperimenterData) return;
 		if (node instanceof DataObject) {
-			Integer id = getLoaderID(StructuredDataLoader.class);
+			Integer id = loaders.getID(StructuredDataLoader.class);
 			if (id != null) cancel(id);
-			loaderID++;
+			id = loaderID.incrementAndGet();
 			StructuredDataLoader loader = new StructuredDataLoader(component,
-					ctx, Arrays.asList((DataObject) node), loaderID);
-			loaders.put(loaderID, loader);
+					ctx, Arrays.asList((DataObject) node), id);
+			loaders.put(id, loader);
 			loader.load();
 			state = MetadataViewer.LOADING_METADATA;
 		}
@@ -561,10 +579,10 @@ class MetadataViewerModel
 			toRemove = object.getToRemove();
 		}
 		if (asynch) {
-			loaderID++;
+			Integer id = loaderID.incrementAndGet();
 			DataSaver loader = new DataSaver(component, ctx, data, toAdd,
-					toRemove, metadata, loaderID);
-			loaders.put(loaderID, loader);
+					toRemove, metadata, id);
+			loaders.put(id, loader);
 			loader.load();
 			state = MetadataViewer.SAVING;
 		} else {
@@ -606,10 +624,10 @@ class MetadataViewerModel
 	void fireExperimenterSaving(ExperimenterData data, boolean async)
 	{
 		if (async) {
-			loaderID++;
+			Integer id = loaderID.incrementAndGet();
 			ExperimenterEditor loader = new ExperimenterEditor(component, ctx,
-					data, loaderID);
-			loaders.put(loaderID, loader);
+					data, id);
+			loaders.put(id, loader);
 			loader.load();
 			state = MetadataViewer.SAVING;
 		} else {
@@ -640,19 +658,18 @@ class MetadataViewerModel
 			SecurityContext c = ctx;
 			if (MetadataViewerAgent.isAdministrator())
 				c = getAdminContext();
+			final Integer id = loaderID.incrementAndGet();
 			switch (data.getIndex()) {
 				case AdminObject.UPDATE_GROUP:
 					GroupData group = data.getGroup();
-					loaderID++;
 					loader = new GroupEditor(component, c, group, 
-							data.getPermissions(), loaderID);
-					loaders.put(loaderID, loader);
+							data.getPermissions(), id);
+					loaders.put(id, loader);
 					break;
 				case AdminObject.UPDATE_EXPERIMENTER:
-					loaderID++;
 					loader = new AdminEditor(component, c, data.getGroup(),
-							data.getExperimenters(), loaderID);
-					loaders.put(loaderID, loader);
+							data.getExperimenters(), id);
+					loaders.put(id, loader);
 			}	
 			if (loader != null) {
 				loader.load();
@@ -783,10 +800,10 @@ class MetadataViewerModel
 	void fireBatchSaving(List<AnnotationData> toAdd, List<Object> 
 						toRemove, Collection<DataObject> toSave)
 	{
+		Integer id = loaderID.incrementAndGet();
 		DataBatchSaver loader = new DataBatchSaver(component, ctx,
-				toSave, toAdd, toRemove, loaderID);
+				toSave, toAdd, toRemove, id);
 		loader.load();
-		loaderID++;
 		state = MetadataViewer.BATCH_SAVING;
 	}
 	
@@ -819,10 +836,10 @@ class MetadataViewerModel
 	{ 
 		this.relatedNodes = relatedNodes;
 		//fire load
-		loaderID++;
+		Integer id = loaderID.incrementAndGet();
 		StructuredDataLoader loader = new StructuredDataLoader(component,
-				ctx, relatedNodes, loaderID);
-		loaders.put(loaderID, loader);
+				ctx, relatedNodes, id);
+		loaders.put(id, loader);
 		loader.load();
 		state = MetadataViewer.LOADING_METADATA;
 	}
@@ -850,10 +867,10 @@ class MetadataViewerModel
 	 */
 	void loadParents(Class type, long id)
 	{
-		loaderID++;
+		Integer lid = loaderID.incrementAndGet();
 		ContainersLoader loader 
-		= new ContainersLoader(component, ctx, type, id, loaderID);
-		loaders.put(loaderID, loader);
+		= new ContainersLoader(component, ctx, type, id, lid);
+		loaders.put(lid, loader);
 		loader.load();
 		
 		
@@ -971,10 +988,10 @@ class MetadataViewerModel
 			img = ((WellSampleData) refObject).getImage();
 		if (img == null) return;
 		getEditor().getRenderer().loadRndSettings(false, null);
-		loaderID++;
+		Integer id = loaderID.incrementAndGet();
 		RenderingSettingsLoader loader = new RenderingSettingsLoader(component, 
-				ctx, img.getDefaultPixels().getId(), loaderID);
-		loaders.put(loaderID, loader);
+				ctx, img.getDefaultPixels().getId(), id);
+		loaders.put(id, loader);
 		loader.load();
 	}
 	
@@ -992,10 +1009,10 @@ class MetadataViewerModel
 			ids.add(((ExperimenterData) i.next()).getId());
 		}
 		if (ids.size() == 0) return;
-		loaderID++;
+		Integer id = loaderID.incrementAndGet();
 		ThumbnailLoader loader = new ThumbnailLoader(component, ctx, image,
-				ids, loaderID);
-		loaders.put(loaderID, loader);
+				ids, id);
+		loaders.put(id, loader);
 		loader.load();
 	}
 	

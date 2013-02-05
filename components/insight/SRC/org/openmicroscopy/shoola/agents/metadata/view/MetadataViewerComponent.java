@@ -343,7 +343,7 @@ class MetadataViewerComponent
 	 * Implemented as specified by the {@link MetadataViewer} interface.
 	 * @see MetadataViewer#setRootObject(Object, long, ctx)
 	 */
-	public void setRootObject(Object root, long userID, SecurityContext ctx)
+	public synchronized void setRootObject(Object root, long userID, SecurityContext ctx)
 	{
 		if (root instanceof WellSampleData) {
 			WellSampleData ws = (WellSampleData) root;
