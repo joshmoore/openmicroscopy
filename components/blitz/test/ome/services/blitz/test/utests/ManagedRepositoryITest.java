@@ -138,7 +138,7 @@ public class ManagedRepositoryITest extends MockObjectTestCase {
         ec.sessionId = -1L;
         ec.eventId = -1L;
         ec.groupPermissions = new PermissionsI();
-        this.daoMock.expects(once()).method("getEventContext")
+        this.daoMock.expects(atLeastOnce()).method("getEventContext")
             .with(ANYTHING).will(returnValue(ec));
         return ec;
     }
@@ -183,6 +183,7 @@ public class ManagedRepositoryITest extends MockObjectTestCase {
     }
 
     public void testSuggestOnConflictPassesWithNonconflictingPaths() throws Exception {
+        newEventContext();
         assertReturnFile(0L); // template
         assertReturnFile(1L); // my
         assertReturnFile(2L); // path
@@ -195,6 +196,7 @@ public class ManagedRepositoryITest extends MockObjectTestCase {
 
     @Test
     public void testSuggestOnConflictReturnsNewPathOnConflict() throws Exception {
+        newEventContext();
         assertReturnFile(0L); // template
         assertReturnFile(1L); // upload-1
         File upload = new File(this.templateDir, "/upload");
@@ -207,6 +209,7 @@ public class ManagedRepositoryITest extends MockObjectTestCase {
 
     @Test
     public void testSuggestOnConflictReturnsBasePathWithEmptyPathsList() throws Exception {
+        newEventContext();
         assertReturnFile(0L); // template
         assertReturnFile(1L); // upload
         String expectedBasePath = "upload";
@@ -361,6 +364,7 @@ public class ManagedRepositoryITest extends MockObjectTestCase {
 
     @Test
     public void testTemplateDirSimple() throws Exception {
+        newEventContext();
         assertReturnFile(1L);
         final FsFile testFile = new FsFile("test");
         assertEquals(testFile, this.tmri.createTemplateDir(testFile, curr));
@@ -368,6 +372,7 @@ public class ManagedRepositoryITest extends MockObjectTestCase {
 
     @Test
     public void testTemplateDir() throws Exception {
+        newEventContext();
         assertRegisterFails("test");
         assertReturnFile("test__1", 1L);
         final FsFile testFile = new FsFile("test");
