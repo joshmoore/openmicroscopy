@@ -1033,7 +1033,7 @@ class OMEROGateway
 		else if (ProjectI.class.equals(klass)) table = "ProjectDatasetLink";
 		else if (Screen.class.equals(klass)) table = "ScreenPlateLink";
 		else if (ScreenI.class.equals(klass)) table = "ScreenPlateLink";
-		else if (PlateAcquisitionData.class.equals(klass))
+		else if (PlateAcquisition.class.equals(klass))
 			table = "PlateAcquisitionWellSampleLink";
 		else if (PlateAcquisitionI.class.equals(klass))
 			table = "PlateAcquisitionWellSampleLink";
@@ -1066,7 +1066,10 @@ class OMEROGateway
 			table = "ScreenAnnotationLink";
 		else if (Plate.class.equals(klass) ||
 				PlateData.class.equals(klass)) 
-			table = "ScreenAnnotationLink";
+			table = "PlateAnnotationLink";
+		else if (PlateAcquisition.class.equals(klass) ||
+				PlateAcquisitionData.class.equals(klass)) 
+			table = "PlateAcquisitionAnnotationLink";
 		else if (WellSample.class.equals(klass) ||
 				WellSampleData.class.equals(klass)) 
 			table = "ScreenAnnotationLink";
@@ -1132,6 +1135,8 @@ class OMEROGateway
 			table = "PlateAcquisitionAnnotationLink";
 		else if (klass.equals(PlateAcquisitionI.class.getName())) 
 			table = "PlateAcquisitionAnnotationLink";
+		else if (klass.equals(PlateAcquisition.class.getName())) 
+			table = "PlateAcquisitionAnnotationLink";
 		return table;
 	}
 	
@@ -1148,6 +1153,8 @@ class OMEROGateway
 		else if (ImageData.class.equals(klass)) return "Image";
 		else if (ScreenData.class.equals(klass)) return "Screen";
 		else if (PlateData.class.equals(klass)) return "Plate";
+		else if (PlateAcquisitionData.class.equals(klass))
+			return "PlateAcquisition";
 		return null;
 	}
 	
@@ -6294,39 +6301,45 @@ class OMEROGateway
 		Map<String, RType>  map = new HashMap<String, RType>();
 		RString dataType;
 		dataType = omero.rtypes.rstring("Image");
+		if (DatasetData.class.equals(type)) {
+			dataType = omero.rtypes.rstring("Dataset");
+		}
 		map.put("Data_Type", dataType);
-		if (scriptIndex == FigureParam.THUMBNAILS) {
-			DataObject d = (DataObject) param.getAnchor();
-			long parentID = -1;
-			if (d instanceof DatasetData ||
-					d instanceof ProjectData) parentID = d.getId();
-			if (DatasetData.class.equals(type)) {
-				dataType = omero.rtypes.rstring("Dataset");
-			} 
-			map.put("Data_Type", dataType);
-			map.put("IDs", omero.rtypes.rlist(ids));
-			List<Long> tags = param.getTags();
-			if (tags != null && tags.size() > 0) {
-				ids = new ArrayList<RType>(tags.size());
-				i = tags.iterator();
-				while (i.hasNext()) 
-					ids.add(omero.rtypes.rlong(i.next()));
-				map.put("Tag_IDs", omero.rtypes.rlist(ids));
-			}
+		switch (scriptIndex) {
+			case FigureParam.THUMBNAILS:
+				DataObject d = (DataObject) param.getAnchor();
+				long parentID = -1;
+				if (d instanceof DatasetData ||
+						d instanceof ProjectData) parentID = d.getId();
+				 
+				//map.put("Data_Type", dataType);
+				map.put("IDs", omero.rtypes.rlist(ids));
+				List<Long> tags = param.getTags();
+				if (tags != null && tags.size() > 0) {
+					ids = new ArrayList<RType>(tags.size());
+					i = tags.iterator();
+					while (i.hasNext()) 
+						ids.add(omero.rtypes.rlong(i.next()));
+					map.put("Tag_IDs", omero.rtypes.rlist(ids));
+				}
 
-			if (parentID > 0)
-				map.put("Parent_ID", omero.rtypes.rlong(parentID));
-			map.put("Show_Untagged_Images", 
-					omero.rtypes.rbool(param.isIncludeUntagged()));
+				if (parentID > 0)
+					map.put("Parent_ID", omero.rtypes.rlong(parentID));
+				map.put("Show_Untagged_Images", 
+						omero.rtypes.rbool(param.isIncludeUntagged()));
 
-			map.put("Thumbnail_Size", omero.rtypes.rint(param.getWidth()));
-			map.put("Max_Columns", omero.rtypes.rint(param.getHeight()));
-			map.put("Format", 
-					omero.rtypes.rstring(param.getFormatAsString()));
-			map.put("Figure_Name", 
-					omero.rtypes.rstring(param.getName()));
-			return runScript(ctx, id, map);	
-		} 
+				map.put("Thumbnail_Size", omero.rtypes.rint(param.getWidth()));
+				map.put("Max_Columns", omero.rtypes.rint(
+						param.getMaxPerColumn()));
+				map.put("Format", 
+						omero.rtypes.rstring(param.getFormatAsString()));
+				map.put("Figure_Name", 
+						omero.rtypes.rstring(param.getName()));
+				return runScript(ctx, id, map);
+			case FigureParam.MOVIE:
+				map.put("Max_Columns",
+						omero.rtypes.rint(param.getMaxPerColumn()));
+		}
 		//merge channels
 		Iterator j;
 		Map<String, RType> merge = new LinkedHashMap<String, RType>();
