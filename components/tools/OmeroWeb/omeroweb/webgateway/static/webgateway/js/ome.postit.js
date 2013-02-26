@@ -36,6 +36,7 @@ $.fn.postit = function(cfg) {
   return this.each(function(){
     /* The basic setup */
     var self = jQuery(this);
+    this.bounding_elm = cfg.bounding ? $(cfg.bounding) : $('body');
     this.postit_open_handler = function () {
       self.trigger('opening');
         return this;
@@ -96,7 +97,7 @@ $.fn.postit = function(cfg) {
 
     /* We're done, make it draggable */
     var dropEvent = function (e) {
-      var viewport = {width: $('body').width(), height: $('body').height()};
+      var viewport = {width: self.get(0).bounding_elm.width(), height: self.get(0).bounding_elm.height()};
       var boundaries = self.position();
       boundaries.right = boundaries.left + self.width();
       boundaries.bottom = boundaries.top + self.height();

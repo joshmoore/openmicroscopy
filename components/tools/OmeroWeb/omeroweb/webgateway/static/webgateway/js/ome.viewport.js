@@ -19,7 +19,7 @@
  /*global parseQuery:true rgbToHex:true toRGB:true */
 
 /* Public constructors */
-
+var viewportLoadingMsg;
 jQuery.fn.WeblitzViewport = function (server, options) {
   return this.each
   (
@@ -272,12 +272,12 @@ jQuery._WeblitzViewport = function (container, server, options) {
       _this.setQuery(_this.loadedImg.current.query);
     }
     _this.refresh();
+    if (!_this.loadedImg.current.query.zm && !_this.loadedImg.tiles) {
+      var size = getSizeDict();
+      _this.viewportimg.get(0).setZoomToFit(true, size.width, size.height);
+    }
     _load(function () {
-      //_this.refresh();
-      if (!_this.loadedImg.current.query.zm && !_this.loadedImg.tiles) {
-        var size = getSizeDict();
-        _this.viewportimg.get(0).setZoomToFit(true, size.width, size.height);
-      }
+      _this.refresh();
       if (_this.loadedImg.current.query.lp) {
         _this.refreshPlot();
       }
@@ -364,7 +364,10 @@ jQuery._WeblitzViewport = function (container, server, options) {
       loadingQ = 0;
     }
     if (msg === undefined) {
-      msg = 'Loading...';
+        if (viewportLoadingMsg === undefined) {
+            viewportLoadingMsg = 'Loading...';
+        }
+        msg = viewportLoadingMsg;
     }
     _this.viewportmsg.html(msg);
     loadingQ++;

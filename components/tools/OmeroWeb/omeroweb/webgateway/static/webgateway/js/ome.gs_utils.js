@@ -170,11 +170,11 @@ function gs_choiceModalJson (message, choices, callback, blockui_opts, cancel_ca
  * Calls a jsonp url, just like $.getJson, but also looks out for errors.
  * The call is made in a make-believe synchronous fashion, by adding a semi-transparent overlay and disabling controls.
  */
-function gs_modalJson (url, data, callback) {
-  if (!gs_loadBlockUI (function () {gs_modalJson(url,data,callback);})) {
+function gs_modalJson (url, data, callback, blockui_opts) {
+  if (!gs_loadBlockUI (function () {gs_modalJson(url,data,callback, blockui_opts);})) {
     return;
   }
-  jQuery.blockUI();
+  jQuery.blockUI(blockui_opts);
   var cb = function (result, rv) {
     jQuery.unblockUI();
     if (callback) {
@@ -289,7 +289,7 @@ function gs_showResultLine (container, data, baseurl, renderurl) {
  * Open the full viewer for a specific image.
  * Passing the dataset is needed to allow showing 'Figure List' on the viewer toolbar.
  */
-function gs_popViewer (did, iid, baseurl) {
+function gs_popViewer (did, iid, baseurl, width, height) {
   if (iid == null) {
     return true;
   }
@@ -298,8 +298,14 @@ function gs_popViewer (did, iid, baseurl) {
     did = parseInt(iid[1]);
     iid = parseInt(iid[0]);
   }
+  if (width === undefined) {
+    width = 800;
+  }
+  if (height === undefined) {
+    height = 800;
+  }
   var w = window.open(baseurl+'img_detail/' + iid + '/' + did, '_blank',
-              "toolbar=yes,location=yes,directories=yes,status=yes,menubar=yes, scrollbars=yes,resizable=yes,width=800,height=800");
+              "toolbar=yes,location=yes,directories=yes,status=yes,menubar=yes, scrollbars=yes,resizable=yes,width="+width+",height="+height);
   return false;
 }
 
@@ -334,29 +340,5 @@ shown = 0;
       }
     });
   }
-}
-
-function downloadLandingDialog (anchor, msg, cb) {
-    if (!msg) {
-	msg = "<h2>Your download will start in a few moments</h2>";
-    }
-    var ccb = function (e) {
-	cb && cb(e);
-    }
-    gs_choiceModalDialog(msg,
-                         [{label: 'close', data: 1}],
-			 ccb,
-			 {css: {width: '50%', left: '25%'}}
-			); 
-    if (anchor) {
-	var dliframe = $('iframe[name=dliframe]');
-	if (!dliframe.length) {
-	    dliframe = $('<iframe name="dliframe" width="0" height="0"></iframe>').appendTo('body');
-	}
-	dliframe.attr('src', $(anchor).attr('href'));
-	//var w = window.open($(anchor).attr('href'));
-	//location.href = $(anchor).attr('href');
-    }
-    return false;
 }
 
