@@ -2,18 +2,19 @@
 #include <iostream>
 #include <omero/client.h>
 #include <omero/callbacks.h>
+#include <omero/cmd/Graphs.h>
 
 using namespace std;
 
 namespace OA = omero::api;
-namespace OAD = omero::api::_cpp_delete;
-namespace OC = omero::callbacks;
+namespace OCB = omero::callbacks;
+namespace OCMD = omero::cmd;
 
 
 /*
  * Subclasses DeleteCallbackI
  */
-class Subclass : virtual public OC::DeleteCallbackI {
+class Subclass : virtual public OCB::CmdCallbackI {
 
 private:
     Subclass& operator=(const Subclass& rv);
@@ -21,23 +22,23 @@ private:
 
 public:
     Subclass(
-        const Ice::ObjectAdapterPtr& oa,
-        const OAD::DeleteHandlePrx& handle) :
-        OC::DeleteCallbackI(oa, handle) {
+        const omero::client_ptr& client,
+        const OCMD::HandlePrx& handle) :
+        OCB::CmdCallbackI(client, handle, true) {
     };
 
-    void finished(int errors) {
-        OC::DeleteCallbackI::finished(errors);
-        cout << "Finished. Error count=" << errors << endl;
+    void finished(const OCMD::ResponsePtr& _rsp, const OCMD::StatusPtr& status) {
+        OCB::CmdCallbackI::finished(_rsp, status);
+
+        OCMD::DeleteRspPtr rsp = OCMD::DeleteRspPtr::dynamicCast(_rsp);
+
         try {
-            OAD::DeleteReports reports = handle->report();
-            OAD::DeleteReports::iterator beg = reports.begin();
-            OAD::DeleteReports::iterator end = reports.end();
-            while (beg != end) {
-                OAD::DeleteReportPtr r = *beg;
-                cout << "Report:error=" << r->error << ",warning=";
-                cout << r->warning << ",deleted=" << r->actualDeletes << endl;
-                beg++;
+            if (rsp) {
+                // Not an error state then.
+                cout << "Report:  deleted=" << rsp->actualDeletes;
+                if (!rsp->warning.empty()) {
+                    cout << ", warning=" << rsp->warning;
+                }
             }
         } catch (const omero::ServerError& se) {
             cout << "Something happened to the handle?!?" << endl;
@@ -48,7 +49,7 @@ public:
 };
 
 /**
- * Uses the default {@link DeleteCallbackI} instance.
+ * Uses the default {@link CmdCallbackI} instance.
  */
 int main(int argc, char* argv[]) {
 
@@ -56,15 +57,12 @@ int main(int argc, char* argv[]) {
     OA::ServiceFactoryPrx s = c->createSession();
 
     {
-        OA::IDeletePrx deleteServicePrx = s->getDeleteService();
-        OAD::DeleteCommand dc;
-        dc.type = "/Image";
-        dc.id = 1;
-        OAD::DeleteCommands dcs;
-        dcs.push_back(dc);
+        OCMD::DeletePtr dc = new OCMD::Delete();
+        dc->type = "/Image";
+        dc->id = 1;
 
-        OAD::DeleteHandlePrx deleteHandlePrx = deleteServicePrx->queueDelete(dcs);
-        OC::DeleteCallbackIPtr cb = new Subclass(c->getObjectAdapter(), deleteHandlePrx); // Closed by destructor
+        OCMD::HandlePrx deleteHandlePrx = s->submit(dc);
+        OCB::CmdCallbackIPtr cb = new Subclass(c, deleteHandlePrx); // Closed by destructor
 
         try {
 

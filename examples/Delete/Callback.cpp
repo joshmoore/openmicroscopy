@@ -2,13 +2,13 @@
 #include <iostream>
 #include <omero/client.h>
 #include <omero/callbacks.h>
-#include <omero/api/IDelete.h>
+#include <omero/cmd/Graphs.h>
 
 using namespace std;
 
 namespace OA = omero::api;
-namespace OAD = omero::api::_cpp_delete;
-namespace OC = omero::callbacks;
+namespace OCB = omero::callbacks;
+namespace OCMD = omero::cmd;
 
 
 /**
@@ -20,23 +20,26 @@ int main(int argc, char* argv[]) {
     OA::ServiceFactoryPrx s = c->createSession();
 
     {
-        OA::IDeletePrx deleteServicePrx = s->getDeleteService();
-        OAD::DeleteCommand dc;
-        dc.type = "/Image";
-        dc.id = 1;
-        OAD::DeleteCommands dcs;
-        dcs.push_back(dc);
+        OCMD::DeletePtr dc = new OCMD::Delete();
+        dc->type = "/Image";
+        dc->id = 1;
 
-        OAD::DeleteHandlePrx deleteHandlePrx = deleteServicePrx->queueDelete(dcs);
-        OC::DeleteCallbackIPtr cb = new OC::DeleteCallbackI(c->getObjectAdapter(), deleteHandlePrx); // Closed by destructor
+        OCMD::HandlePrx deleteHandlePrx = s->submit(dc);
+        OCB::CmdCallbackIPtr cb = new OCB::CmdCallbackI(c, deleteHandlePrx, true);  // Closed by destructor
 
         try {
             cb->loop(10, 500);
 
-            OAD::DeleteReports reports = deleteHandlePrx->report();
-            OAD::DeleteReportPtr r = reports[0]; // We only send one command
-            cout << "Report:error=" << r->error << ",warning=" << r->warning;
-            cout << ",deleted=" << r->actualDeletes << endl;
+            OCMD::DeleteRspPtr rsp = OCMD::DeleteRspPtr::dynamicCast(
+                    cb->getResponse());
+
+            if (rsp) {
+                // Not an error state then.
+                cout << "Report:  deleted=" << rsp->actualDeletes;
+                if (!rsp->warning.empty()) {
+                    cout << ", warning=" << rsp->warning;
+                }
+            }
         } catch (const omero::LockTimeout& lt) {
             cout << "Not finished in 5 seconds. Cancelling..." << endl;
             if (!deleteHandlePrx->cancel()) {
