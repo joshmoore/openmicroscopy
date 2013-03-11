@@ -463,8 +463,9 @@ ${checkdup.found}
    * EXTERNAL DEPENDENCIES: jarbundler
   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~--> 
   <taskdef name="jarbundler"
-      classname="net.sourceforge.jarbundler.JarBundler" >
-      <classpath refid="insight.tools.path" />
+      classname="net.sourceforge.jarbundler.JarBundler"
+      onerror="ignore"> <!-- ignoring since this could be on 'clean' -->
+    <classpath refid="insight.tools.path" />
   </taskdef>
 
 </antlib>

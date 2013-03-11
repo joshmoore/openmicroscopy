@@ -38,7 +38,8 @@
 
     <taskdef name="jarbundler"
              classpathref="jarbundler.classpath"
-             classname="net.sourceforge.jarbundler.JarBundler"/>
+             classname="net.sourceforge.jarbundler.JarBundler"
+             onerror="ignore"/> <!-- likely during clean -->
 
     <target name="exe4j-check-exists">
         <condition property="exe4j.exists">
