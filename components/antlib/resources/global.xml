@@ -25,646 +25,646 @@
 
 -->
 
-        <tstamp>
-          <format property="now" pattern="yyyyMMddHHmmss"/>
-        </tstamp>
+    <tstamp>
+        <format property="now" pattern="yyyyMMddHHmmss"/>
+    </tstamp>
 
-	<!-- Patterns -->
-        <property name="dsl.pat" value="**/*.ome.xml"/>
-        <property name="hbm.pat" value="**/*.hbm.xml"/>
-        <property name="api.pat" value="**/*.java"/>
-        <property name="ice.pat" value="**/*.ice"/>
+    <!-- Patterns -->
+    <property name="dsl.pat" value="**/*.ome.xml"/>
+    <property name="hbm.pat" value="**/*.hbm.xml"/>
+    <property name="api.pat" value="**/*.java"/>
+    <property name="ice.pat" value="**/*.ice"/>
 
-	<!-- Setup: needed calculations for other paths -->
-	<!-- import.dir is set in global.xml -->
-	<dirname property="antlib.dir"     file="${import.dir}"/>
-	<dirname property="components.dir" file="${antlib.dir}"/>
-	<dirname property="root.dir"       file="${components.dir}"/>
+    <!-- Setup: needed calculations for other paths -->
+    <!-- import.dir is set in global.xml -->
+    <dirname property="antlib.dir"     file="${import.dir}"/>
+    <dirname property="components.dir" file="${antlib.dir}"/>
+    <dirname property="root.dir"       file="${components.dir}"/>
 
-        <!-- Reading local.properties here to allow overwriting
-        dist.dir since this is no longer possible with insight.
-        See other property files below. -->
-        <property file="${root.dir}/etc/local.properties" />
+    <!-- Reading local.properties here to allow overwriting
+    dist.dir since this is no longer possible with insight.
+    See other property files below. -->
+    <property file="${root.dir}/etc/local.properties" />
 
-	<!-- Absolute paths: same for all components -->
-	<property name="omero.home"    value="${root.dir}"/>
-	<property name="etc.dir"       value="${root.dir}/etc" />
-	<property name="lib.dir"       value="${root.dir}/lib" />
-	<property name="tools.dir"     value="${root.dir}/lib/tools" />
-	<property name="dist.dir"      value="${root.dir}/dist" />
-	<property name="sphinx.dir"    value="${root.dir}/docs/sphinx" />
+    <!-- Absolute paths: same for all components -->
+    <property name="omero.home"    value="${root.dir}"/>
+    <property name="etc.dir"       value="${root.dir}/etc" />
+    <property name="lib.dir"       value="${root.dir}/lib" />
+    <property name="tools.dir"     value="${root.dir}/lib/tools" />
+    <property name="dist.dir"      value="${root.dir}/dist" />
+    <property name="sphinx.dir"    value="${root.dir}/docs/sphinx" />
 
-	<!-- Components -->
-	<property name="dsl.comp"       value="${components.dir}/dsl"/>
-	<property name="model.comp"     value="${components.dir}/model"/>
-	<property name="common.comp"    value="${components.dir}/common"/>
-	<property name="server.comp"    value="${components.dir}/server"/>
-	<property name="nio.comp"       value="${components.dir}/romio"/>
-	<property name="romio.comp"     value="${components.dir}/romio"/>
-	<property name="render.comp"    value="${components.dir}/rendering"/>
-	<property name="import.comp"    value="${components.dir}/importer"/>
-	<property name="blitz.comp"     value="${components.dir}/blitz"/>
-	<property name="tools.comp"     value="${components.dir}/tools"/>
-	<property name="insight.comp"   value="${components.dir}/insight"/>
-	<property name="OmeroCpp.comp"     value="${tools.comp}/OmeroCpp"/>
-	<property name="OmeroJava.comp"     value="${tools.comp}/OmeroJava"/>
-	<property name="OmeroImporter.comp"     value="${tools.comp}/OmeroImporter"/>
-	<property name="OmeroWeb.comp"     value="${tools.comp}/OmeroWeb"/>
-	<property name="OmeroPy.comp"     value="${tools.comp}/OmeroPy"/>
-	<property name="OmeroFs.comp"     value="${tools.comp}/OmeroFS"/>
-	<property name="OmeroMatlab.comp"     value="${tools.comp}/OmeroM"/>
+    <!-- Components -->
+    <property name="dsl.comp"       value="${components.dir}/dsl"/>
+    <property name="model.comp"     value="${components.dir}/model"/>
+    <property name="common.comp"    value="${components.dir}/common"/>
+    <property name="server.comp"    value="${components.dir}/server"/>
+    <property name="nio.comp"       value="${components.dir}/romio"/>
+    <property name="romio.comp"     value="${components.dir}/romio"/>
+    <property name="render.comp"    value="${components.dir}/rendering"/>
+    <property name="import.comp"    value="${components.dir}/importer"/>
+    <property name="blitz.comp"     value="${components.dir}/blitz"/>
+    <property name="tools.comp"     value="${components.dir}/tools"/>
+    <property name="insight.comp"   value="${components.dir}/insight"/>
+    <property name="OmeroCpp.comp"     value="${tools.comp}/OmeroCpp"/>
+    <property name="OmeroJava.comp"     value="${tools.comp}/OmeroJava"/>
+    <property name="OmeroImporter.comp"     value="${tools.comp}/OmeroImporter"/>
+    <property name="OmeroWeb.comp"     value="${tools.comp}/OmeroWeb"/>
+    <property name="OmeroPy.comp"     value="${tools.comp}/OmeroPy"/>
+    <property name="OmeroFs.comp"     value="${tools.comp}/OmeroFS"/>
+    <property name="OmeroMatlab.comp"     value="${tools.comp}/OmeroM"/>
 
-	<!-- Build Path References -->
-	<path id="blitz.buildpath">
-	  <pathelement location="${blitz.comp}/build.xml"/>
-	</path>
-	<path id="dsl.buildpath">
-	  <pathelement location="${dsl.comp}/build.xml"/>
-	</path>
-	<path id="common.buildpath">
-	  <pathelement location="${common.comp}/build.xml"/>
-	</path>
-	<path id="model.buildpath">
-	  <pathelement location="${model.comp}/build.xml"/>
-	</path>
-	<path id="server.buildpath">
-	  <pathelement location="${server.comp}/build.xml"/>
-	</path>
-	<path id="OmeroImporter.buildpath">
-	  <pathelement location="${OmeroImporter.comp}/build.xml"/>
-	</path>
-	<path id="insight.buildpath">
-	  <pathelement location="${insight.comp}/build.xml"/>
-	</path>
-	<path id="OmeroWeb.buildpath">
-	  <pathelement location="${OmeroWeb.comp}/build.xml"/>
-	</path>
-	<path id="OmeroCpp.buildpath">
-	  <pathelement location="${OmeroCpp.comp}/build.xml"/>
-	</path>
-	<path id="OmeroJava.buildpath">
-	  <pathelement location="${OmeroJava.comp}/build.xml"/>
-	</path>
-	<path id="OmeroMatlab.buildpath">
-	  <pathelement location="${OmeroMatlab.comp}/build.xml"/>
-	</path>
-	<path id="OmeroPy.buildpath">
-	  <pathelement location="${OmeroPy.comp}/build.xml"/>
-	</path>
-	<path id="OmeroFs.buildpath">
-	  <pathelement location="${OmeroFs.comp}/build.xml"/>
-	</path>
-	<path id="tools.buildpath">
-	  <pathelement location="${tools.comp}/build.xml"/>
-	</path>
+    <!-- Build Path References -->
+    <path id="blitz.buildpath">
+      <pathelement location="${blitz.comp}/build.xml"/>
+    </path>
+    <path id="dsl.buildpath">
+      <pathelement location="${dsl.comp}/build.xml"/>
+    </path>
+    <path id="common.buildpath">
+      <pathelement location="${common.comp}/build.xml"/>
+    </path>
+    <path id="model.buildpath">
+      <pathelement location="${model.comp}/build.xml"/>
+    </path>
+    <path id="server.buildpath">
+      <pathelement location="${server.comp}/build.xml"/>
+    </path>
+    <path id="OmeroImporter.buildpath">
+      <pathelement location="${OmeroImporter.comp}/build.xml"/>
+    </path>
+    <path id="insight.buildpath">
+      <pathelement location="${insight.comp}/build.xml"/>
+    </path>
+    <path id="OmeroWeb.buildpath">
+      <pathelement location="${OmeroWeb.comp}/build.xml"/>
+    </path>
+    <path id="OmeroCpp.buildpath">
+      <pathelement location="${OmeroCpp.comp}/build.xml"/>
+    </path>
+    <path id="OmeroJava.buildpath">
+      <pathelement location="${OmeroJava.comp}/build.xml"/>
+    </path>
+    <path id="OmeroMatlab.buildpath">
+      <pathelement location="${OmeroMatlab.comp}/build.xml"/>
+    </path>
+    <path id="OmeroPy.buildpath">
+      <pathelement location="${OmeroPy.comp}/build.xml"/>
+    </path>
+    <path id="OmeroFs.buildpath">
+      <pathelement location="${OmeroFs.comp}/build.xml"/>
+    </path>
+    <path id="tools.buildpath">
+      <pathelement location="${tools.comp}/build.xml"/>
+    </path>
 
-	<!-- Tools -->
-	<property name="tools.comp"    value="${components.dir}/tools"/>
-	<property name="tools.dest"    value="${components.dir}/tools/target"/>
-	<property name="tools.jars"    value="${components.dir}/tools/target/jars"/>
-	<property name="tools.classes" value="${components.dir}/tools/target/service-classes"/>
+    <!-- Tools -->
+    <property name="tools.comp"    value="${components.dir}/tools"/>
+    <property name="tools.dest"    value="${components.dir}/tools/target"/>
+    <property name="tools.jars"    value="${components.dir}/tools/target/jars"/>
+    <property name="tools.classes" value="${components.dir}/tools/target/service-classes"/>
 
-	<!-- Relative paths -->
-	<property name="target.rel"    value="target"/>
-	<property name="classes.rel"   value="${target.rel}/classes"/>
-	<property name="generated.rel" value="${target.rel}/generated"/>
-	<property name="emmaclasses.rel" value="${target.rel}/emma-classes"/>
-	<property name="testclasses.rel" value="${target.rel}/test-classes"/>
-	<property name="testreports.rel" value="${target.rel}/reports"/>
+    <!-- Relative paths -->
+    <property name="target.rel"    value="target"/>
+    <property name="classes.rel"   value="${target.rel}/classes"/>
+    <property name="generated.rel" value="${target.rel}/generated"/>
+    <property name="emmaclasses.rel" value="${target.rel}/emma-classes"/>
+    <property name="testclasses.rel" value="${target.rel}/test-classes"/>
+    <property name="testreports.rel" value="${target.rel}/reports"/>
 
-	<!-- Directories relative to basedir: different for each component -->
-	<property name="src.dir"         value="${basedir}/src" />
-	<property name="resrc.dir"       value="${basedir}/resources"/>
-	<property name="test.dir"        value="${basedir}/test"/>
+    <!-- Directories relative to basedir: different for each component -->
+    <property name="src.dir"         value="${basedir}/src" />
+    <property name="resrc.dir"       value="${basedir}/resources"/>
+    <property name="test.dir"        value="${basedir}/test"/>
 
-	<!-- Target destinations for generated code-->
-	<property name="target.dir"      value="${basedir}/${target.rel}" />
-	<property name="generated.dir"   value="${basedir}/${generated.rel}"/>
-	<property name="classes.dir"     value="${basedir}/${classes.rel}"/>
-	<property name="emmaclasses.dir" value="${basedir}/${emmaclasses.rel}"/>
-	<property name="testclasses.dir" value="${basedir}/${testclasses.rel}"/>
-	<property name="testreports.dir" value="${basedir}/${testreports.rel}"/>
-	<property name="src.dest"        value="${generated.dir}/src" />
-	<property name="resrc.dest"      value="${generated.dir}/resources"/>
-	<property name="done.dir"        value="${generated.dir}/.done"/>
+    <!-- Target destinations for generated code-->
+    <property name="target.dir"      value="${basedir}/${target.rel}" />
+    <property name="generated.dir"   value="${basedir}/${generated.rel}"/>
+    <property name="classes.dir"     value="${basedir}/${classes.rel}"/>
+    <property name="emmaclasses.dir" value="${basedir}/${emmaclasses.rel}"/>
+    <property name="testclasses.dir" value="${basedir}/${testclasses.rel}"/>
+    <property name="testreports.dir" value="${basedir}/${testreports.rel}"/>
+    <property name="src.dest"        value="${generated.dir}/src" />
+    <property name="resrc.dest"      value="${generated.dir}/resources"/>
+    <property name="done.dir"        value="${generated.dir}/.done"/>
 
-	<path id="source.path">
-		<fileset dir="${src.dir}">
-			<include name="**/*.java"/>
-			<exclude name="**/.svn"/>
-		</fileset>
-		<fileset dir="${src.dest}">
-			<include name="**/*.java"/>
-		</fileset>
-	</path>
+    <path id="source.path">
+        <fileset dir="${src.dir}">
+            <include name="**/*.java"/>
+            <exclude name="**/.svn"/>
+        </fileset>
+        <fileset dir="${src.dest}">
+            <include name="**/*.java"/>
+        </fileset>
+    </path>
 
-	<macrodef name="copyResourceDir">
-		<attribute name="todir"/>
-		<attribute name="fromdir"/>
-		<sequential>
-		<copy todir="@{todir}">
-		<fileset dir="@{fromdir}">
-			<include name="**/*.properties"/>
-			<include name="**/*.vm"/>
-			<include name="**/*.dv"/>
-			<include name="**/*.bmp"/>
-			<include name="**/*.jpg"/>
-			<include name="**/*.xml"/>
-			<include name="**/*.ldif"/>
-			<exclude name="**/.svn"/>
-		</fileset>
-		</copy>
-		</sequential>
-	</macrodef>
+    <macrodef name="copyResourceDir">
+        <attribute name="todir"/>
+        <attribute name="fromdir"/>
+        <sequential>
+        <copy todir="@{todir}">
+        <fileset dir="@{fromdir}">
+            <include name="**/*.properties"/>
+            <include name="**/*.vm"/>
+            <include name="**/*.dv"/>
+            <include name="**/*.bmp"/>
+            <include name="**/*.jpg"/>
+            <include name="**/*.xml"/>
+            <include name="**/*.ldif"/>
+            <exclude name="**/.svn"/>
+        </fileset>
+        </copy>
+        </sequential>
+    </macrodef>
 
-	<macrodef name="copyResources">
-		<sequential>
-		<!-- Ignoring missining resources directories -->
-		<if><available file="${resrc.dir}"></available><then>
-			<copyResourceDir todir="${classes.dir}" fromdir="${resrc.dir}"/>
-		</then></if>
-		<if><available file="${resrc.dest}"></available><then>
-			<copyResourceDir todir="${classes.dir}" fromdir="${resrc.dest}"/>
-		</then></if>
-		</sequential>
-	</macrodef>
+    <macrodef name="copyResources">
+        <sequential>
+        <!-- Ignoring missining resources directories -->
+        <if><available file="${resrc.dir}"></available><then>
+            <copyResourceDir todir="${classes.dir}" fromdir="${resrc.dir}"/>
+        </then></if>
+        <if><available file="${resrc.dest}"></available><then>
+            <copyResourceDir todir="${classes.dir}" fromdir="${resrc.dest}"/>
+        </then></if>
+        </sequential>
+    </macrodef>
 
-	<macrodef name="copyTestResources">
-		<sequential>
-		<copyResourceDir todir="${testclasses.dir}" fromdir="${test.dir}"/>
-		</sequential>
-	</macrodef>
+    <macrodef name="copyTestResources">
+        <sequential>
+        <copyResourceDir todir="${testclasses.dir}" fromdir="${test.dir}"/>
+        </sequential>
+    </macrodef>
 
-	<macrodef name="makeDirectories">
-		<sequential>
-		<mkdir dir="${target.dir}" />
-		<mkdir dir="${done.dir}" />
-		<mkdir dir="${src.dest}" />
-		<mkdir dir="${resrc.dest}" />
-		<mkdir dir="${classes.dir}" />
-		<mkdir dir="${testclasses.dir}" />
-		<mkdir dir="${testreports.dir}" />
-		</sequential>
-	</macrodef>
+    <macrodef name="makeDirectories">
+        <sequential>
+        <mkdir dir="${target.dir}" />
+        <mkdir dir="${done.dir}" />
+        <mkdir dir="${src.dest}" />
+        <mkdir dir="${resrc.dest}" />
+        <mkdir dir="${classes.dir}" />
+        <mkdir dir="${testclasses.dir}" />
+        <mkdir dir="${testreports.dir}" />
+        </sequential>
+    </macrodef>
 
-        <taskdef resource="net/sf/antcontrib/antcontrib.properties"
-                 classpath="${lib.dir}/repository/ant-contrib-1.0b3.jar"/>
-        <taskdef resource="net/sf/antcontrib/antlib.xml"
-                 classpath="${lib.dir}/repository/ant-contrib-1.0b3.jar"/>
+    <taskdef resource="net/sf/antcontrib/antcontrib.properties"
+             classpath="${lib.dir}/repository/ant-contrib-1.0b3.jar"/>
+    <taskdef resource="net/sf/antcontrib/antlib.xml"
+             classpath="${lib.dir}/repository/ant-contrib-1.0b3.jar"/>
 
-        <!-- prevent direct use of ant -->
-        <if><not><isset property="build.py"/></not>
-            <then>
-                <fail> ERROR!
+    <!-- prevent direct use of ant -->
+    <if><not><isset property="build.py"/></not>
+        <then>
+            <fail> ERROR!
 
 ========================================================
 Please use ./build.py which uses the ant version bundled
 with OMERO.
 ========================================================
-                </fail>
-            </then>
-        </if>
+            </fail>
+        </then>
+    </if>
 
-        <!-- Now, if the memory settings have not been changed
-        check the defaults passed in on the command line -->
-        <if><and><not><isset property="javac.maxmem"/></not>
-            <isset property="javac.maxmem.default"/></and>
-            <then><property name="javac.maxmem" value="${javac.maxmem.default}"/></then>
-        </if>
-        <if><and><not><isset property="javadoc.maxmem"/></not>
-            <isset property="javadoc.maxmem.default"/></and>
-            <then><property name="javadoc.maxmem" value="${javadoc.maxmem.default}"/></then>
-        </if>
+    <!-- Now, if the memory settings have not been changed
+    check the defaults passed in on the command line -->
+    <if><and><not><isset property="javac.maxmem"/></not>
+        <isset property="javac.maxmem.default"/></and>
+        <then><property name="javac.maxmem" value="${javac.maxmem.default}"/></then>
+    </if>
+    <if><and><not><isset property="javadoc.maxmem"/></not>
+        <isset property="javadoc.maxmem.default"/></and>
+        <then><property name="javadoc.maxmem" value="${javadoc.maxmem.default}"/></then>
+    </if>
 
 
-        <!-- Define properties :
-                The user's environment (env) overrides all other
-                variables, then comes the user defined
-                local.properties, then the controlled *.properties
-                files.
-        -->
+    <!-- Define properties :
+            The user's environment (env) overrides all other
+            variables, then comes the user defined
+            local.properties, then the controlled *.properties
+            files.
+    -->
 
-        <property environment="env" />
-        <property name="env.J" value="1"/>
+    <property environment="env" />
+    <property name="env.J" value="1"/>
 
-        <!-- Taking properties from the environment before imports-->
-        <condition property="ice.home" value="${env.ICE_HOME}">
-            <isset property="env.ICE_HOME"/>
-        </condition>
+    <!-- Taking properties from the environment before imports-->
+    <condition property="ice.home" value="${env.ICE_HOME}">
+        <isset property="env.ICE_HOME"/>
+    </condition>
 
-        <!-- See reading of etc/local.properties above -->
-        <property file="${root.dir}/etc/local.properties.example" />
-        <property file="${root.dir}/etc/profiles/${omero.db.profile}" />
-        <property file="${root.dir}/etc/omero.properties" />
-        <property file="${root.dir}/etc/hibernate.properties" />
-        <property name="test.with.fail" value="true"/>
-        <property name="classpath.file" value="classpath.xml"/>
-        <property name="omero.resolver" value="omero-resolver"/>
+    <!-- See reading of etc/local.properties above -->
+    <property file="${root.dir}/etc/local.properties.example" />
+    <property file="${root.dir}/etc/profiles/${omero.db.profile}" />
+    <property file="${root.dir}/etc/omero.properties" />
+    <property file="${root.dir}/etc/hibernate.properties" />
+    <property name="test.with.fail" value="true"/>
+    <property name="classpath.file" value="classpath.xml"/>
+    <property name="omero.resolver" value="omero-resolver"/>
 
-        <!-- For these definitions to work properly, directories.xml must be imported-->
-        <property name="deps.lib.dir" value="${target.dir}/libs"/>
-        <property name="ivy.local.default.root" value="${omero.home}/lib/repository"/>
-        <!-- These are default values. If you'd like to override, due so before import-->
-        <property name="ivy.buildlist.ivyfilepath" value="ivy.xml"/>
-        <property name="ivy.dep.file"              value="ivy.xml"/>
+    <!-- For these definitions to work properly, directories.xml must be imported-->
+    <property name="deps.lib.dir" value="${target.dir}/libs"/>
+    <property name="ivy.local.default.root" value="${omero.home}/lib/repository"/>
+    <!-- These are default values. If you'd like to override, due so before import-->
+    <property name="ivy.buildlist.ivyfilepath" value="ivy.xml"/>
+    <property name="ivy.dep.file"              value="ivy.xml"/>
 
-        <!-- Post-import properties -->
-        <property name="sql.dir"  value="${omero.home}/sql/${omero.db.profile}/${omero.db.version}__${omero.db.patch}"/>
+    <!-- Post-import properties -->
+    <property name="sql.dir"  value="${omero.home}/sql/${omero.db.profile}/${omero.db.version}__${omero.db.patch}"/>
 
-        <!-- Now we've taken from the environment, and from the files
-             try to find ICE_HOME ourselves -->
-        <condition property="ice.home" value="C:\Ice-3.3.1">
-            <available file="C:\Ice-3.3.1"/>
-        </condition>
-        <condition property="ice.home" value="C:\Ice-3.3.1-VC90">
-            <available file="C:\Ice-3.3.1-VC90"/>
-        </condition>
-        <condition property="ice.home" value="C:\Ice-3.3.0">
-            <available file="C:\Ice-3.3.0"/>
-        </condition>
-        <condition property="ice.home" value="C:\Ice-3.3.0-VC90">
-            <available file="C:\Ice-3.3.0-VC90"/>
-        </condition>
-        <condition property="ice.home" value="/opt/Ice-3.3">
-            <available file="/opt/Ice-3.3"/>
-        </condition>
-        <condition property="ice.home" value="/opt/Ice-3.3.1">
-            <available file="/opt/Ice-3.3.1"/>
-        </condition>
-        <condition property="ice.home" value="/opt/Ice-3.3.0">
-            <available file="/opt/Ice-3.3.0"/>
-        </condition>
-        <property name="ice.home" value="/usr/share/Ice"/>
+    <!-- Now we've taken from the environment, and from the files
+            try to find ICE_HOME ourselves -->
+    <condition property="ice.home" value="C:\Ice-3.3.1">
+        <available file="C:\Ice-3.3.1"/>
+    </condition>
+    <condition property="ice.home" value="C:\Ice-3.3.1-VC90">
+        <available file="C:\Ice-3.3.1-VC90"/>
+    </condition>
+    <condition property="ice.home" value="C:\Ice-3.3.0">
+        <available file="C:\Ice-3.3.0"/>
+    </condition>
+    <condition property="ice.home" value="C:\Ice-3.3.0-VC90">
+        <available file="C:\Ice-3.3.0-VC90"/>
+    </condition>
+    <condition property="ice.home" value="/opt/Ice-3.3">
+        <available file="/opt/Ice-3.3"/>
+    </condition>
+    <condition property="ice.home" value="/opt/Ice-3.3.1">
+        <available file="/opt/Ice-3.3.1"/>
+    </condition>
+    <condition property="ice.home" value="/opt/Ice-3.3.0">
+        <available file="/opt/Ice-3.3.0"/>
+    </condition>
+    <property name="ice.home" value="/usr/share/Ice"/>
 
-        <!-- Checking the slice2* version before continuing. See #1185 -->
-        <exec outputproperty="executable.ice.version" executable="slice2java"
-            failifexecutionfails="false" failonerror="false" resultproperty="slice2java.result">
-            <arg value="--version"/>
-        </exec>
+    <!-- Checking the slice2* version before continuing. See #1185 -->
+    <exec outputproperty="executable.ice.version" executable="slice2java"
+        failifexecutionfails="false" failonerror="false" resultproperty="slice2java.result">
+        <arg value="--version"/>
+    </exec>
 
-        <!-- Checking ice compatibility and choose the proper version -->
-        <if><not><equals arg1="${slice2java.result}" arg2="0"/></not>
-            <then>
-                <fail> Cannot find slice2java!
+    <!-- Checking ice compatibility and choose the proper version -->
+    <if><not><equals arg1="${slice2java.result}" arg2="0"/></not>
+        <then>
+            <fail> Cannot find slice2java!
 
-                    *******************************************************
-                    Ice is not properly installed. Cannot find slice2java
-                    *******************************************************
-                </fail>
-            </then>
-        </if>
-        <if><equals arg1="auto" arg2="${ice.compatibility}"/>
-            <then>
-                <if><matches string="${executable.ice.version}" pattern="^3[.]3"/>
-                    <then>
-                        <property name="versions.ice" value="${versions.ice33}"/>
-                        <property name="versions.ice_lib" value="${versions.ice33_lib}"/>
-                    </then>
-                </if>
-                <if><matches string="${executable.ice.version}" pattern="^3[.]4"/>
-                    <then>
-                        <property name="versions.ice" value="${versions.ice34}"/>
-                        <property name="versions.ice_lib" value="${versions.ice34_lib}"/>
-                    </then>
-                </if>
-            </then>
-            <elseif>
-                <equals arg1="3.3" arg2="${ice.compatibility}"/>
+                *******************************************************
+                Ice is not properly installed. Cannot find slice2java
+                *******************************************************
+            </fail>
+        </then>
+    </if>
+    <if><equals arg1="auto" arg2="${ice.compatibility}"/>
+        <then>
+            <if><matches string="${executable.ice.version}" pattern="^3[.]3"/>
                 <then>
                     <property name="versions.ice" value="${versions.ice33}"/>
                     <property name="versions.ice_lib" value="${versions.ice33_lib}"/>
                 </then>
-            </elseif>
-            <elseif>
-                <equals arg1="3.4" arg2="${ice.compatibility}"/>
+            </if>
+            <if><matches string="${executable.ice.version}" pattern="^3[.]4"/>
                 <then>
                     <property name="versions.ice" value="${versions.ice34}"/>
                     <property name="versions.ice_lib" value="${versions.ice34_lib}"/>
                 </then>
-            </elseif>
-            <else>
-                <fail> Bad configuration!
+            </if>
+        </then>
+        <elseif>
+            <equals arg1="3.3" arg2="${ice.compatibility}"/>
+            <then>
+                <property name="versions.ice" value="${versions.ice33}"/>
+                <property name="versions.ice_lib" value="${versions.ice33_lib}"/>
+            </then>
+        </elseif>
+        <elseif>
+            <equals arg1="3.4" arg2="${ice.compatibility}"/>
+            <then>
+                <property name="versions.ice" value="${versions.ice34}"/>
+                <property name="versions.ice_lib" value="${versions.ice34_lib}"/>
+            </then>
+        </elseif>
+        <else>
+            <fail> Bad configuration!
 
-                    *******************************************************
-                    Unknown Ice compatibility setting: ${ice.compatibility}
-                    *******************************************************
-                </fail>
-            </else>
-        </if>
+                *******************************************************
+                Unknown Ice compatibility setting: ${ice.compatibility}
+                *******************************************************
+            </fail>
+        </else>
+    </if>
 
-        <!--
-          The idea for this macro is taken from maven2. Use deps-buildlist
-          to create deps.build.path if you do not have one specified.
-        -->
-        <macrodef name="iterate">
-                <attribute name="inheritAll" default="false"/>
-                <attribute name="inheritRefs" default="false"/>
-                <attribute name="buildpathref" default="deps.build.path"/>
-                <attribute name="target"/>
-                <sequential>
-                <subant verbose="on" buildpathref="@{buildpathref}" inheritAll="@{inheritAll}" inheritRefs="@{inheritRefs}" failonerror="true" target="@{target}">
-                        <property name="omero.version" value="${omero.version}"/>
-                        <property name="multi.test.with.fail" value="${test.with.fail}"/>
-                        <property name="multi.test.skip" value="${test.skip}"/>
-                        <property name="multi.generate.skip" value="${generate.skip}"/>
-                        <property name="multi.checks.skip" value="${checks.skip}"/>
-                        <property name="multi.emma.enabled" value="${emma.enabled}"/>
-                        <!-- Defaults set in dependencies.xml -->
-                        <property name="ivy.buildlist.ivyfilepath" value="${ivy.buildlist.ivyfilepath}"/>
-                        <property name="ivy.dep.file" value="${ivy.dep.file}"/>
-                        <propertyset>
-                            <propertyref prefix="env"/>
-                        </propertyset>
-                </subant>
-                </sequential>
-        </macrodef>
-
-        <macrodef name="installIvy">
+    <!--
+        The idea for this macro is taken from maven2. Use deps-buildlist
+        to create deps.build.path if you do not have one specified.
+    -->
+    <macrodef name="iterate">
+            <attribute name="inheritAll" default="false"/>
+            <attribute name="inheritRefs" default="false"/>
+            <attribute name="buildpathref" default="deps.build.path"/>
+            <attribute name="target"/>
             <sequential>
-            <!-- Necessary to store version in a file for etc/ivysettings.xml to
-            read in, since there's no clean way to pass properties -->
-            <mkdir dir="${omero.home}/target"/>
-            <echo file="${omero.home}/target/omero.version">omero.version=${omero.version}</echo>
-            <classloader name="ivy.loader">
-                <classpath id="ivy.classpath">
-                    <fileset dir="${omero.home}/lib/repository" includes="ivy*.jar"/>
-                    <fileset dir="${omero.home}/lib/repository" includes="jakarta-oro*.jar"/>
-                    <pathelement location="${omero.home}/lib/"/><!-- IVY1016/* -->
-                </classpath>
-            </classloader>
-            <taskdef resource="org/apache/ivy/ant/antlib.xml" uri="antlib:org.apache.ivy.ant" loaderref="ivy.loader"/>
-            <ivy:settings id="ivy.${ant.project.name}" file="${etc.dir}/ivysettings.xml"/>
+            <subant verbose="on" buildpathref="@{buildpathref}" inheritAll="@{inheritAll}" inheritRefs="@{inheritRefs}" failonerror="true" target="@{target}">
+                    <property name="omero.version" value="${omero.version}"/>
+                    <property name="multi.test.with.fail" value="${test.with.fail}"/>
+                    <property name="multi.test.skip" value="${test.skip}"/>
+                    <property name="multi.generate.skip" value="${generate.skip}"/>
+                    <property name="multi.checks.skip" value="${checks.skip}"/>
+                    <property name="multi.emma.enabled" value="${emma.enabled}"/>
+                    <!-- Defaults set in dependencies.xml -->
+                    <property name="ivy.buildlist.ivyfilepath" value="${ivy.buildlist.ivyfilepath}"/>
+                    <property name="ivy.dep.file" value="${ivy.dep.file}"/>
+                    <propertyset>
+                        <propertyref prefix="env"/>
+                    </propertyset>
+            </subant>
             </sequential>
-        </macrodef>
+    </macrodef>
 
-	<macrodef name="publishArtifact">
-		<attribute name="pattern" default="${target.dir}/[artifact].[ext]"/>
+    <macrodef name="installIvy">
+        <sequential>
+        <!-- Necessary to store version in a file for etc/ivysettings.xml to
+        read in, since there's no clean way to pass properties -->
+        <mkdir dir="${omero.home}/target"/>
+        <echo file="${omero.home}/target/omero.version">omero.version=${omero.version}</echo>
+        <classloader name="ivy.loader">
+            <classpath id="ivy.classpath">
+                <fileset dir="${omero.home}/lib/repository" includes="ivy*.jar"/>
+                <fileset dir="${omero.home}/lib/repository" includes="jakarta-oro*.jar"/>
+                <pathelement location="${omero.home}/lib/"/><!-- IVY1016/* -->
+            </classpath>
+        </classloader>
+        <taskdef resource="org/apache/ivy/ant/antlib.xml" uri="antlib:org.apache.ivy.ant" loaderref="ivy.loader"/>
+        <ivy:settings id="ivy.${ant.project.name}" file="${etc.dir}/ivysettings.xml"/>
+        </sequential>
+    </macrodef>
+
+    <macrodef name="publishArtifact">
+        <attribute name="pattern" default="${target.dir}/[artifact].[ext]"/>
                 <attribute name="haltonmissing" default="true"/>
-		<sequential>
-		<delete file="${target.dir}/${ivy.module}.xml"/> <!-- delete last produced ivy file to be sure a new one will be generated -->
-		<ivy:publish settingsRef="ivy.${ant.project.name}" artifactspattern="@{pattern}" resolver="${omero.resolver}"
+        <sequential>
+        <delete file="${target.dir}/${ivy.module}.xml"/> <!-- delete last produced ivy file to be sure a new one will be generated -->
+        <ivy:publish settingsRef="ivy.${ant.project.name}" artifactspattern="@{pattern}" resolver="${omero.resolver}"
                     pubrevision="${omero.version}" pubdate="${now}" status="integration" overwrite="true" forcedeliver="true"
                     haltonmissing="@{haltonmissing}" warnonmissing="@{haltonmissing}"/>
-		</sequential>
-	</macrodef>
+        </sequential>
+    </macrodef>
 
-        <macrodef name="tryEclipse">
-            <attribute name="settingsRef"/>
-            <attribute name="filter" default="false"/>
-            <sequential>
-                <trycatch>
-                    <try>
-                        <ivy:resolve file="test.xml" type="jar" conf="test" settingsRef="@{settingsRef}" log="quiet"/>
-                        <taskdef name="ivyeclipse" classname="IVY1016.EclipseClasspath" loaderref="ivy.loader"/>
-                        <ivyeclipse conf="test" filter="@{filter}"/>
-                    </try>
-                    <catch>
-                        <echo>
+    <macrodef name="tryEclipse">
+        <attribute name="settingsRef"/>
+        <attribute name="filter" default="false"/>
+        <sequential>
+            <trycatch>
+                <try>
+                    <ivy:resolve file="test.xml" type="jar" conf="test" settingsRef="@{settingsRef}" log="quiet"/>
+                    <taskdef name="ivyeclipse" classname="IVY1016.EclipseClasspath" loaderref="ivy.loader"/>
+                    <ivyeclipse conf="test" filter="@{filter}"/>
+                </try>
+                <catch>
+                    <echo>
 
-                        ***************************************************************************
-                        Tests are not compiled. Run "test-compile". Falling back to regular eclipse
-                        ***************************************************************************
+                    ***************************************************************************
+                    Tests are not compiled. Run "test-compile". Falling back to regular eclipse
+                    ***************************************************************************
 
-                        </echo>
-                        <ivy:resolve file="ivy.xml" type="jar" conf="build" settingsRef="@{settingsRef}" log="quiet"/>
-                        <taskdef name="ivyeclipse" classname="IVY1016.EclipseClasspath" loaderref="ivy.loader"/>
-                        <ivyeclipse conf="build" filter="@{filter}"/>
-                    </catch>
-                </trycatch>
-            </sequential>
-        </macrodef>
+                    </echo>
+                    <ivy:resolve file="ivy.xml" type="jar" conf="build" settingsRef="@{settingsRef}" log="quiet"/>
+                    <taskdef name="ivyeclipse" classname="IVY1016.EclipseClasspath" loaderref="ivy.loader"/>
+                    <ivyeclipse conf="build" filter="@{filter}"/>
+                </catch>
+            </trycatch>
+        </sequential>
+    </macrodef>
 
-        <!--
-           These classpaths are used by all components, and amount to only the deps.lib.dir
-           directory within each component. That directory is configured using deps-retrieve,
-           which "retrieves" the directories from the local directory. After that initial
-           configuration, the build should be ivy-agnostic as far as possible.
-        -->
-        <macrodef name="defineClasspath">
-           <sequential>
-            <path id="omero.compile.classpath">
-              <fileset dir="${deps.lib.dir}" />
-            </path>
-            <path id="omero.classpath">
-              <path location="${target.dir}/generated-classes" />
-              <path location="${classes.dir}" />
-              <path location="${resrc.dir}" />
-              <path location="${resrc.dest}" />
-              <path refid="omero.compile.classpath" />
-            </path>
-            <path id="omero.test.classpath">
-              <path refid="omero.classpath" />
-              <fileset dir="${deps.lib.dir}/test" />
-            </path>
-            </sequential>
-        </macrodef>
-
-        <macrodef name="defineVariables">
-            <sequential>
-                <condition property="test.with.fail">
-                        <equals arg1="${multi.test.with.fail}" arg2="true"/>
-                </condition>
-                <condition property="test.skip">
-                        <equals arg1="${multi.test.skip}" arg2="true"/>
-                </condition>
-                <condition property="emma.enabled">
-                        <equals arg1="${multi.emma.enabled}" arg2="true"/>
-                </condition>
-                <condition property="generate.skip">
-                        <equals arg1="${multi.generate.skip}" arg2="true"/>
-                </condition>
-                <condition property="checks.skip">
-                        <equals arg1="${multi.checks.skip}" arg2="true"/>
-                </condition>
-            </sequential>
-        </macrodef>
-
-        <path id="scons.python.path">
-            <pathelement path="${env.PYTHONPATH}"/>
-            <pathelement location="${OmeroPy.comp}/src"/><!-- For which.py on cleanup -->
+    <!--
+        These classpaths are used by all components, and amount to only the deps.lib.dir
+        directory within each component. That directory is configured using deps-retrieve,
+        which "retrieves" the directories from the local directory. After that initial
+        configuration, the build should be ivy-agnostic as far as possible.
+    -->
+    <macrodef name="defineClasspath">
+        <sequential>
+        <path id="omero.compile.classpath">
+            <fileset dir="${deps.lib.dir}" />
         </path>
+        <path id="omero.classpath">
+            <path location="${target.dir}/generated-classes" />
+            <path location="${classes.dir}" />
+            <path location="${resrc.dir}" />
+            <path location="${resrc.dest}" />
+            <path refid="omero.compile.classpath" />
+        </path>
+        <path id="omero.test.classpath">
+            <path refid="omero.classpath" />
+            <fileset dir="${deps.lib.dir}/test" />
+        </path>
+        </sequential>
+    </macrodef>
 
-        <pathconvert property="scons.PYTHONPATH" refid="scons.python.path"/>
+    <macrodef name="defineVariables">
+        <sequential>
+            <condition property="test.with.fail">
+                    <equals arg1="${multi.test.with.fail}" arg2="true"/>
+            </condition>
+            <condition property="test.skip">
+                    <equals arg1="${multi.test.skip}" arg2="true"/>
+            </condition>
+            <condition property="emma.enabled">
+                    <equals arg1="${multi.emma.enabled}" arg2="true"/>
+            </condition>
+            <condition property="generate.skip">
+                    <equals arg1="${multi.generate.skip}" arg2="true"/>
+            </condition>
+            <condition property="checks.skip">
+                    <equals arg1="${multi.checks.skip}" arg2="true"/>
+            </condition>
+        </sequential>
+    </macrodef>
 
-        <macrodef name="scons_py" description="Scons build tool installed under omero.home/target">
-            <attribute name="dir" default="${basedir}"/>
-            <attribute name="failonerror" default="true"/>
-            <attribute name="pythonpath" default="${scons.PYTHONPATH}"/>
-            <element name="args" implicit="yes"/>
-            <sequential>
-                <property name="env.ARCH" value="detect"/>
-                <property name="env.RELEASE" value="debug"/>
-                <echo>Building with ICE_HOME=${ice.home}</echo>
-                <exec executable="python" dir="@{dir}" failonerror="@{failonerror}">
-                    <env key="PYTHONPATH" value="@{pythonpath}"/>
-                    <env key="ICE_HOME" value="${ice.home}"/>
-                    <arg value="${omero.home}/target/scons/scons.py"/>
-                    <arg value="-Q"/>
-                    <arg value="-j"/>
-                    <arg value="${env.J}"/>
-                    <arg value="--arch=${env.ARCH}"/>
-                    <arg value="--release=${env.RELEASE}"/>
-                    <args/>
-                </exec>
-            </sequential>
-        </macrodef>
+    <path id="scons.python.path">
+        <pathelement path="${env.PYTHONPATH}"/>
+        <pathelement location="${OmeroPy.comp}/src"/><!-- For which.py on cleanup -->
+    </path>
 
-        <macrodef name="setup_py">
-            <attribute name="failonerror" default="true"/>
-            <element name="args" implicit="true"/>
-            <sequential>
-                <copy todir="${basedir}">
-                   <fileset dir="${omero.home}/lib/repository" includes="setuptools*"/>
-                </copy>
-                <exec executable="python" failonerror="@{failonerror}">
-                    <env key="ICE_CONFIG" value="${env.ICE_CONFIG}"/>
-                    <env key="PYTHONPATH" path="test:build/lib:${basedir}/../target/lib/python:${env.PYTHONPATH}"/>
-                    <arg value="${basedir}/setup.py"/>
-                    <args/>
-                </exec>
-            </sequential>
-        </macrodef>
+    <pathconvert property="scons.PYTHONPATH" refid="scons.python.path"/>
 
-        <macrodef name="makeManifest">
-            <attribute name="property"/>
-            <sequential>
-                <pathconvert property="mf.classpath" refid="omero.classpath" pathsep=" " dirsep="/">
-                    <flattenmapper/>
-                </pathconvert>
-            </sequential>
-        </macrodef>
+    <macrodef name="scons_py" description="Scons build tool installed under omero.home/target">
+        <attribute name="dir" default="${basedir}"/>
+        <attribute name="failonerror" default="true"/>
+        <attribute name="pythonpath" default="${scons.PYTHONPATH}"/>
+        <element name="args" implicit="yes"/>
+        <sequential>
+            <property name="env.ARCH" value="detect"/>
+            <property name="env.RELEASE" value="debug"/>
+            <echo>Building with ICE_HOME=${ice.home}</echo>
+            <exec executable="python" dir="@{dir}" failonerror="@{failonerror}">
+                <env key="PYTHONPATH" value="@{pythonpath}"/>
+                <env key="ICE_HOME" value="${ice.home}"/>
+                <arg value="${omero.home}/target/scons/scons.py"/>
+                <arg value="-Q"/>
+                <arg value="-j"/>
+                <arg value="${env.J}"/>
+                <arg value="--arch=${env.ARCH}"/>
+                <arg value="--release=${env.RELEASE}"/>
+                <args/>
+            </exec>
+        </sequential>
+    </macrodef>
 
-        <!--
-          The hard-wiring macro is used to allow certain method interceptors to
-          be hard-wired around method exception *before* any of the "soft"
-          spring-wired interceptors (see resources/ome/services/services.xml)
+    <macrodef name="setup_py">
+        <attribute name="failonerror" default="true"/>
+        <element name="args" implicit="true"/>
+        <sequential>
+            <copy todir="${basedir}">
+                <fileset dir="${omero.home}/lib/repository" includes="setuptools*"/>
+            </copy>
+            <exec executable="python" failonerror="@{failonerror}">
+                <env key="ICE_CONFIG" value="${env.ICE_CONFIG}"/>
+                <env key="PYTHONPATH" path="test:build/lib:${basedir}/../target/lib/python:${env.PYTHONPATH}"/>
+                <arg value="${basedir}/setup.py"/>
+                <args/>
+            </exec>
+        </sequential>
+    </macrodef>
 
-          The values hard-wired in are the class names of subclasses of
-          ome.logic.HardWireInterceptor with a no-arg constructor. This allows
-          classes unknown to the server at compile time (like those under tools/)
-          to become a part of a distribution.
-        -->
-        <macrodef name="hard-wire">
-            <attribute name="fromdir" default="${src.dir}"/>
-            <attribute name="todir" default="${src.dest}"/>
-            <attribute name="file"/>
-            <attribute name="token" default="@REPLACE@"/>
-            <attribute name="value" default="${omero.hard-wired.interceptors}"/>
-            <sequential>
-		<mkdir dir="${target.dir}/hard-wiring"/>
-                <copy todir="${target.dir}">
-                    <fileset dir="@{fromdir}">
-                        <include name="@{file}"/>
-                    </fileset>
-                </copy>
-                <replace file="${target.dir}/@{file}">
-                    <replacefilter token="@{token}" value="@{value}"/>
-                </replace>
-		<move todir="@{todir}">
-		    <fileset dir="${target.dir}" includes="@{file}">
-		        <different targetdir="@{todir}"/>
-		    </fileset>
-		</move>
-            </sequential>
-        </macrodef>
+    <macrodef name="makeManifest">
+        <attribute name="property"/>
+        <sequential>
+            <pathconvert property="mf.classpath" refid="omero.classpath" pathsep=" " dirsep="/">
+                <flattenmapper/>
+            </pathconvert>
+        </sequential>
+    </macrodef>
 
-        <macrodef name = "git">
-            <attribute name = "command" />
-            <attribute name = "dir" default = "${user.dir}" />
-            <attribute name = "output" />
-            <attribute name = "failonerror" default = "false" />
-            <element name = "args" optional = "true" />
-            <sequential>
-                <exec executable = "git" dir = "@{dir}"
-                    outputproperty = "@{output}"
-                    errorproperty = "@{output}.err"
-                    resultproperty = "@{output}.rc"
-                    failonerror = "@{failonerror}">
-                    <arg value = "@{command}" />
-                    <args/>
-                </exec>
-            </sequential>
-        </macrodef>
+    <!--
+        The hard-wiring macro is used to allow certain method interceptors to
+        be hard-wired around method exception *before* any of the "soft"
+        spring-wired interceptors (see resources/ome/services/services.xml)
 
-        <macrodef name = "svn">
-            <attribute name = "command" />
-            <attribute name = "dir" default = "${user.dir}" />
-            <attribute name = "output" />
-            <element name = "args" optional = "true" />
-            <sequential>
-                <exec executable = "svn" dir = "@{dir}" outputproperty = "@{output}">
-                    <arg value = "@{command}" />
-                    <args/>
-                </exec>
-            </sequential>
-        </macrodef>
+        The values hard-wired in are the class names of subclasses of
+        ome.logic.HardWireInterceptor with a no-arg constructor. This allows
+        classes unknown to the server at compile time (like those under tools/)
+        to become a part of a distribution.
+    -->
+    <macrodef name="hard-wire">
+        <attribute name="fromdir" default="${src.dir}"/>
+        <attribute name="todir" default="${src.dest}"/>
+        <attribute name="file"/>
+        <attribute name="token" default="@REPLACE@"/>
+        <attribute name="value" default="${omero.hard-wired.interceptors}"/>
+        <sequential>
+        <mkdir dir="${target.dir}/hard-wiring"/>
+        <copy todir="${target.dir}">
+            <fileset dir="@{fromdir}">
+                <include name="@{file}"/>
+            </fileset>
+        </copy>
+        <replace file="${target.dir}/@{file}">
+            <replacefilter token="@{token}" value="@{value}"/>
+        </replace>
+        <move todir="@{todir}">
+            <fileset dir="${target.dir}" includes="@{file}">
+                <different targetdir="@{todir}"/>
+            </fileset>
+        </move>
+        </sequential>
+    </macrodef>
 
-        <macrodef name = "git-rev-parse">
-            <sequential>
-                <git command = "rev-parse" output = "git.sha1">
-                    <args>
-                        <arg value = "--short"/>
-                        <arg value = "head"/>
-                    </args>
-                </git>
-            </sequential>
-        </macrodef>
+    <macrodef name = "git">
+        <attribute name = "command" />
+        <attribute name = "dir" default = "${user.dir}" />
+        <attribute name = "output" />
+        <attribute name = "failonerror" default = "false" />
+        <element name = "args" optional = "true" />
+        <sequential>
+            <exec executable = "git" dir = "@{dir}"
+                outputproperty = "@{output}"
+                errorproperty = "@{output}.err"
+                resultproperty = "@{output}.rc"
+                failonerror = "@{failonerror}">
+                <arg value = "@{command}" />
+                <args/>
+            </exec>
+        </sequential>
+    </macrodef>
 
-        <macrodef name = "git-branch-parse">
-            <sequential>
-                <git command = "symbolic-ref" output = "git.branch.file">
-                    <args>
-                        <arg value = "HEAD"/>
-                    </args>
-                </git>
-                <basename file="${git.branch.file}" property="git.branch"/>
-            </sequential>
-        </macrodef>
+    <macrodef name = "svn">
+        <attribute name = "command" />
+        <attribute name = "dir" default = "${user.dir}" />
+        <attribute name = "output" />
+        <element name = "args" optional = "true" />
+        <sequential>
+            <exec executable = "svn" dir = "@{dir}" outputproperty = "@{output}">
+                <arg value = "@{command}" />
+                <args/>
+            </exec>
+        </sequential>
+    </macrodef>
 
-        <macrodef name = "svn-info">
-            <sequential>
-                <svn command="info" output="svn.info"/>
-                <!--
-                Example:
-                ==========================================================
-                Path: .
-                URL: svn+ssh://cvs/home/svn/shoola-omero/branches/Beta4.1
-                Repository Root: svn+ssh://cvs/home/svn/shoola-omero
-                Repository UUID: 6f2cb1de-eb0d-0410-b157-e593188b5901
-                Revision: 6815
-                Node Kind: directory
-                Schedule: normal
-                Last Changed Author: jburel
-                Last Changed Rev: 6813
-                Last Changed Date: 2009-11-03 11:37:49 +0100 (Tue, 03 Nov 2009)
-                -->
-                <propertyregex property="svn.root" input="${svn.info}" select="\1">
-                    <regexp pattern="Repository Root: (.*)"/>
-                </propertyregex>
-                <propertyregex property="svn.rev" input="${svn.info}" select="\1">
-                    <regexp pattern="Revision: (.*)"/>
-                </propertyregex>
-                <propertyregex property="svn.url" input="${svn.info}" select="\1">
-                    <regexp pattern="URL: (.*)"/>
-                </propertyregex>
-                <basename file="${svn.url}" property="svn.branch"/>
-            </sequential>
-        </macrodef>
+    <macrodef name = "git-rev-parse">
+        <sequential>
+            <git command = "rev-parse" output = "git.sha1">
+                <args>
+                    <arg value = "--short"/>
+                    <arg value = "head"/>
+                </args>
+            </git>
+        </sequential>
+    </macrodef>
 
-        <target name="scm-init">
-            <git-rev-parse/>
-            <git-branch-parse/>
-            <svn-info/>
-            <echo>Git branch: ${git.branch}</echo>
-            <echo>Git sha1: ${git.sha1}</echo>
-            <echo>SVN branch: ${svn.branch}</echo>
-            <echo>SVN rev: ${svn.rev}</echo>
-        </target>
+    <macrodef name = "git-branch-parse">
+        <sequential>
+            <git command = "symbolic-ref" output = "git.branch.file">
+                <args>
+                    <arg value = "HEAD"/>
+                </args>
+            </git>
+            <basename file="${git.branch.file}" property="git.branch"/>
+        </sequential>
+    </macrodef>
 
-        <target name="help">
-                <echo>
-                        This build file is intended for import only.
-                </echo>
-        </target>
+    <macrodef name = "svn-info">
+        <sequential>
+            <svn command="info" output="svn.info"/>
+            <!--
+            Example:
+            ==========================================================
+            Path: .
+            URL: svn+ssh://cvs/home/svn/shoola-omero/branches/Beta4.1
+            Repository Root: svn+ssh://cvs/home/svn/shoola-omero
+            Repository UUID: 6f2cb1de-eb0d-0410-b157-e593188b5901
+            Revision: 6815
+            Node Kind: directory
+            Schedule: normal
+            Last Changed Author: jburel
+            Last Changed Rev: 6813
+            Last Changed Date: 2009-11-03 11:37:49 +0100 (Tue, 03 Nov 2009)
+            -->
+            <propertyregex property="svn.root" input="${svn.info}" select="\1">
+                <regexp pattern="Repository Root: (.*)"/>
+            </propertyregex>
+            <propertyregex property="svn.rev" input="${svn.info}" select="\1">
+                <regexp pattern="Revision: (.*)"/>
+            </propertyregex>
+            <propertyregex property="svn.url" input="${svn.info}" select="\1">
+                <regexp pattern="URL: (.*)"/>
+            </propertyregex>
+            <basename file="${svn.url}" property="svn.branch"/>
+        </sequential>
+    </macrodef>
+
+    <target name="scm-init">
+        <git-rev-parse/>
+        <git-branch-parse/>
+        <svn-info/>
+        <echo>Git branch: ${git.branch}</echo>
+        <echo>Git sha1: ${git.sha1}</echo>
+        <echo>SVN branch: ${svn.branch}</echo>
+        <echo>SVN rev: ${svn.rev}</echo>
+    </target>
+
+    <target name="help">
+        <echo>
+                This build file is intended for import only.
+        </echo>
+    </target>
 
 </project>
