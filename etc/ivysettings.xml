@@ -27,30 +27,14 @@
         <artifact pattern="${ivy.settings.dir}/../target/repository/[artifact]-[revision].[type]" />
         <ivy pattern="${ivy.settings.dir}/../target/repository/[module]-[revision].ivy"/>
       </filesystem>
-      <filesystem name="repo">
-        <artifact pattern="${ivy.settings.dir}/../lib/repository/[artifact]-[revision].[type]" />
-        <ivy pattern="${ivy.settings.dir}/../lib/repository/[module]-[revision].ivy"/>
-      </filesystem>
       <filesystem name="test" checkmodified="true" changingMatcher="regexp" changingPattern=".*DEV.*">
         <artifact pattern="${ivy.settings.dir}/../target/test-repository/[artifact]-[revision].[type]" />
         <ivy pattern="${ivy.settings.dir}/../target/test-repository/[module]-[revision].ivy"/>
       </filesystem>
-      <url name="com.springsource.repository.bundles.release">
-        <ivy pattern="http://repository.springsource.com/ivy/bundles/release/[organisation]/[module]/[revision]/[artifact]-[revision].[ext]" />
-        <artifact pattern="http://repository.springsource.com/ivy/bundles/release/[organisation]/[module]/[revision]/[artifact]-[revision].[ext]" />
-      </url>
-      <url name="com.springsource.repository.bundles.external">
-        <ivy pattern="http://repository.springsource.com/ivy/bundles/external/[organisation]/[module]/[revision]/[artifact]-[revision].[ext]" />
-        <artifact pattern="http://repository.springsource.com/ivy/bundles/external/[organisation]/[module]/[revision]/[artifact]-[revision].[ext]" />
+      <url name="github">
+        <artifact pattern="https://github.com/openmicroscopy/openmicroscopy/raw/dev_4_4/lib/repository/[artifact]-[revision].[type]"/>
       </url>
    </chain>
-
-   <!-- Optional resolver which can be modified for using non-SCM jars -->
-   <chain name="loci-resolver">
-      <filesystem name="private">
-        <artifact pattern="${user.home}/target/libs/[organization]/[module]/[revision]/[artifact]-[revision].[type]" />
-      </filesystem>
-    </chain>
 
    <!-- Resolver for all the test jars which should not be shipped -->
     <chain name="test-resolver" returnFirst="true">
@@ -61,21 +45,7 @@
       <resolver ref="omero-resolver"/>
     </chain>
 
-    <!-- Hudson resolver. Used by hudson to build a central repository -->
-    <filesystem name="hudson-repository">
-        <ivy pattern="${user.home}/.hudson/repository/[organisation]/[module]/ivys/ivy-[revision].xml"/>
-        <artifact pattern="${user.home}/.hudson/repository/[organisation]/[module]/[type]s/[artifact]-[revision].[ext]"/>
-    </filesystem>
-
   </resolvers>
-
-  <!-- The loci modules can be fetched from another path by changing the "loci.resolver"
-  configuration in local.properties to point to "loci-resolver" as configured above. -->
-
-  <modules>
-    <module organisation="omero" name="omejava" resolver="${loci.resolver}" />
-    <module organisation="omero" name="*-test" resolver="test-resolver" matcher="glob"/>
-  </modules>
 
   <triggers/>
 
