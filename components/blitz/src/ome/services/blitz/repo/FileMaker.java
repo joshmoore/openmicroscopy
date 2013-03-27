@@ -43,6 +43,9 @@ public class FileMaker {
     private FileLock lock;
 
     public FileMaker(String repoDir) {
+        if (repoDir == null) {
+            throw new IllegalArgumentException("repoDir cannot be null!");
+        }
         this.repoDir = repoDir;
     }
 
@@ -65,6 +68,10 @@ public class FileMaker {
 
             if (this.dbUuid != null) {
                 throw new InternalException("Already initialized");
+            }
+
+            if (dbUuid == null) {
+                throw new IllegalArgumentException("dbUuid cannot be null!");
             }
 
             this.dbUuid = dbUuid;
