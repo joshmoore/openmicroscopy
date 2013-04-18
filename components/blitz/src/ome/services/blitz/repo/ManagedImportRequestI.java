@@ -17,10 +17,18 @@
 
 package ome.services.blitz.repo;
 
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.sift.SiftingAppender;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.Appender;
+import ch.qos.logback.core.FileAppender;
+import ch.qos.logback.core.sift.AppenderTracker;
+
 import java.io.IOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -36,6 +44,7 @@ import loci.formats.in.MIASReader;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import ome.formats.OMEROMetadataStoreClient;
 import ome.formats.OverlayMetadataStore;
@@ -65,6 +74,7 @@ import omero.model.Image;
 import omero.model.IndexingJob;
 import omero.model.Job;
 import omero.model.MetadataImportJob;
+import omero.model.OriginalFile;
 import omero.model.PixelDataJob;
 import omero.model.Pixels;
 import omero.model.Plate;
@@ -97,6 +107,10 @@ public class ManagedImportRequestI extends ImportRequest implements IRequest {
     private final Registry reg;
 
     private final TileSizes sizes;
+
+    private final RepositoryDao dao;
+
+    private OriginalFile logFile;
 
     //
     // Import items. Initialized in init(Helper)
@@ -140,11 +154,12 @@ public class ManagedImportRequestI extends ImportRequest implements IRequest {
 
     private List<Plate> plateList;
 
-    public ManagedImportRequestI(Registry reg, TileSizes sizes, OMEROWrapper wrapper) {
+    public ManagedImportRequestI(Registry reg, TileSizes sizes, RepositoryDao dao,
+        OMEROWrapper wrapper) {
         this.reg = reg;
         this.sizes = sizes;
+        this.dao = dao;
         this.reader = wrapper;
-
     }
 
     //
@@ -166,6 +181,10 @@ public class ManagedImportRequestI extends ImportRequest implements IRequest {
             throw helper.cancel(new ERR(), null, "bad-location",
                     "location-type", location.getClass().getName());
         }
+
+        MDC.put("fileset", location.sharedPath);
+        log.debug("init starting... ");
+        logFile = registerLogFile();
 
         file = ((ManagedImportLocationI) location).getTarget();
 
@@ -217,6 +236,9 @@ public class ManagedImportRequestI extends ImportRequest implements IRequest {
             throw c;
         } catch (Throwable t) {
             throw helper.cancel(new ERR(), t, "error-on-init");
+        } finally {
+            log.debug("init stopped");
+            MDC.clear();
         }
 
 
@@ -226,6 +248,10 @@ public class ManagedImportRequestI extends ImportRequest implements IRequest {
      * Called during {@link #getResponse()}.
      */
     private void cleanup() {
+
+        MDC.put("fileset", location.sharedPath);
+        log.debug("cleanup starting... ");
+
         try {
             if (reader != null) {
                 reader.close();
@@ -247,11 +273,17 @@ public class ManagedImportRequestI extends ImportRequest implements IRequest {
         } catch (Throwable e) {
             log.error(e.toString()); // slf4j migration: toString()
         }
+
+        log.debug("... cleanup stopped");
+        attachLogFile();
+        MDC.clear();
     }
 
     public Object step(int step) {
         helper.assertStep(step);
         try {
+            MDC.put("fileset", location.sharedPath);
+            log.debug("Step "+step+" starting...");
             Job j = activity.getChild();
             if (j == null) {
                 throw helper.cancel(new ERR(), null, "null-job");
@@ -308,12 +340,17 @@ public class ManagedImportRequestI extends ImportRequest implements IRequest {
             notifyObservers(new ErrorHandler.INTERNAL_EXCEPTION(
                     fileName, new RuntimeException(t), usedFiles, format));
             throw helper.cancel(new ERR(), t, "import-request-failure");
+        } finally {
+            log.debug("Step "+step+" stopped");
+            MDC.clear();
         }
     }
 
     @SuppressWarnings({ "unchecked", "rawtypes" })
     public void buildResponse(int step, Object object) {
         helper.assertResponse(step);
+        MDC.put("fileset", location.sharedPath);
+        log.debug("buildResponse starting.. ");
         if (step == 4) {
             ImportResponse rsp = new ImportResponse();
             Map<String, List<IObject>> rv = (Map<String, List<IObject>>) object;
@@ -323,6 +360,8 @@ public class ManagedImportRequestI extends ImportRequest implements IRequest {
             addObjects(rsp.objects, rv, Image.class.getSimpleName());
             helper.setResponseIfNull(rsp);
         }
+        log.debug("buildResponse stopped");
+        MDC.clear();
     }
 
     private void addObjects(List<IObject> objects,
@@ -666,6 +705,46 @@ public class ManagedImportRequestI extends ImportRequest implements IRequest {
 
     private void notifyObservers(Object...args) {
         // TEMPORARY REPLACEMENT. FIXME
+    }
+
+    private OriginalFile registerLogFile() {
+
+        String thisLogFilename = null;
+        OriginalFile logFile = null;
+
+        /*
+         * This gets the name of the current log file from the logger. It may be more than
+         * is necessary if we know that we are using the ManagedRepo for the location. We
+         * may just as easily construct the file name from the repo path and the shared path.
+         */
+        ch.qos.logback.classic.Logger logger = (ch.qos.logback.classic.Logger) log;
+        for (Iterator<Appender<ILoggingEvent>> index = logger.iteratorForAppenders(); index.hasNext();) {
+            Appender<ILoggingEvent> appender = index.next();
+            if (appender.getName().equals("SIFT")) {
+                AppenderTracker<ILoggingEvent> appenderTracker = ((SiftingAppender) appender).getAppenderTracker();
+                for(Appender<ILoggingEvent> app : appenderTracker.valueList()) {
+                    if (app instanceof FileAppender) {
+                        String logFilename = ((FileAppender<ILoggingEvent>) app).getFile();
+                        if (logFilename.contains(location.sharedPath)) {
+                            thisLogFilename = logFilename;
+                            log.debug("File="+logFilename+" **");
+                        } else {
+                            log.debug("File="+logFilename);
+                        }
+                    }
+                }
+            }
+        }
+
+        //logFile = dao.register(...);
+        return logFile;
+
+    }
+
+    private void attachLogFile() {
+
+        // use sf to get the services to link Fileset and the OriginalFile
+
     }
 
 }

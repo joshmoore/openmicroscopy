@@ -40,11 +40,14 @@ public class RequestObjectFactoryRegistry extends
 
     private final TileSizes sizes;
 
+    private final RepositoryDao dao;
+
     private/* final */OmeroContext ctx;
 
-    public RequestObjectFactoryRegistry(Registry reg, TileSizes sizes) {
+    public RequestObjectFactoryRegistry(Registry reg, TileSizes sizes, RepositoryDao repositoryDao) {
         this.reg = reg;
         this.sizes = sizes;
+        this.dao = repositoryDao;
     }
 
     public void setApplicationContext(ApplicationContext ctx)
@@ -58,7 +61,7 @@ public class RequestObjectFactoryRegistry extends
                 ManagedImportRequestI.ice_staticId()) {
             @Override
             public Ice.Object create(String name) {
-                return new ManagedImportRequestI(reg, sizes,
+                return new ManagedImportRequestI(reg, sizes, dao,
                         new OMEROWrapper(new ImportConfig(), 100, new java.io.File("/tmp/memo")));
             }
 
