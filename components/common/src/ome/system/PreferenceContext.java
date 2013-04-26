@@ -70,6 +70,14 @@ public class PreferenceContext extends PropertyPlaceholderConfigurer {
     @Override
     public void postProcessBeanFactory(ConfigurableListableBeanFactory bf) {
         super.postProcessBeanFactory(bf);
+        Map<String, Preference> beans = bf.getBeansOfType(Preference.class);
+        for (Map.Entry<String, Preference> entry : beans.entrySet()) {
+            String key = entry.getKey();
+            if (!preferences.containsKey(key)) {
+                log.debug("Registering Preference: {}", key);
+                preferences.put(key, entry.getValue());
+            }
+        }
         // Publish all properties in System.properties
         try {
             log.info("Publishing system properties...");

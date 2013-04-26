@@ -54,8 +54,9 @@
                      takes place via the "prefs" class. -->
             </list>
         </property>
-        <property name="preferences">
-            <list>
+        <!-- properties loaded from context by type-->
+    </bean>
+
    <!-- Begin preference list -->
     <bean class="ome.system.Preference" id="omero.version">
        <property name="db" value="false"/>
@@ -159,7 +160,5 @@
     </bean>
 
     <!-- End preference list -->
-            </list>
-        </property>
-    </bean>
+
 </beans>
