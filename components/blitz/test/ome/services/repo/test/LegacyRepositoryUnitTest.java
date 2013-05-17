@@ -18,6 +18,7 @@ import ome.services.blitz.repo.LegacyRepositoryI;
 import ome.services.blitz.repo.PublicRepositoryI;
 import ome.services.blitz.repo.RepositoryDaoImpl;
 import ome.services.blitz.repo.path.FilePathRestrictionInstance;
+import ome.services.blitz.repo.path.MakePathComponentSafe;
 import ome.services.util.Executor;
 import ome.system.Principal;
 import ome.system.ServiceFactory;
@@ -74,7 +75,9 @@ public class LegacyRepositoryUnitTest extends AbstractRepoUnitTest {
         Principal p = new Principal("sessionUuid", "system", "Internal");
         return new LegacyRepositoryI(oa, reg, ex, p, tmpRepo.getAbsolutePath(),
                 new PublicRepositoryI(new RepositoryDaoImpl(p, ex), cpf, null,
-                        FilePathRestrictionInstance.UNIX_REQUIRED.name));
+                        new MakePathComponentSafe(
+                                FilePathRestrictionInstance
+                                    .getUnixFilePathRestrictions())));
     }
 
     private OriginalFile file() {

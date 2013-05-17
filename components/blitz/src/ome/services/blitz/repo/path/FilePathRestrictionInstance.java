@@ -22,6 +22,8 @@ package ome.services.blitz.repo.path;
 import java.util.HashSet;
 import java.util.Set;
 
+import org.apache.commons.lang.StringUtils;
+
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -123,6 +125,33 @@ public enum FilePathRestrictionInstance {
 
     public final String name;
     private FilePathRestrictions rules;
+
+    /**
+     * Return a basic {@link FilePathRestrictions} configured from
+     * {@link #UNIX_REQUIRED}. Primarily for use with testing.
+     */
+    public static FilePathRestrictions getUnixFilePathRestrictions() {
+        return FilePathRestrictionInstance.getFilePathRestrictionsFromPathRules(
+                FilePathRestrictionInstance.UNIX_REQUIRED.name);
+    }
+
+    /**
+     * Parse a comma-separated list of path rules into a {@link FilePathRestrictions}
+     * object.
+     *
+     * @param pathRules
+     * @return
+     */
+    public static FilePathRestrictions getFilePathRestrictionsFromPathRules(String pathRules) {
+        final Set<String> terms = new HashSet<String>();
+        for (final String term : pathRules.split(",")) {
+            if (StringUtils.isNotBlank(term)) {
+                terms.add(term.trim());
+            }
+        }
+        final String[] termArray = terms.toArray(new String[terms.size()]);
+        return FilePathRestrictionInstance.getFilePathRestrictions(termArray);
+    }
 
     /**
      * Get a set of rules by which local files may not be named on the file-system,

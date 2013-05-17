@@ -19,38 +19,33 @@
 package ome.services.blitz.test;
 
 import java.io.File;
+import java.util.Arrays;
 import java.util.HashMap;
 
 import loci.formats.FormatTools;
-
-import org.apache.commons.io.FileUtils;
-import org.jmock.Mock;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.Test;
-
-import ome.formats.importer.ImportConfig;
 import ome.formats.importer.ImportContainer;
 import ome.services.blitz.fire.Registry;
 import ome.services.blitz.repo.LegacyRepositoryI;
 import ome.services.blitz.repo.ManagedRepositoryI;
+import ome.services.blitz.repo.ProcessCreator;
+import ome.services.blitz.repo.RepositoryDao;
 import ome.services.blitz.repo.RepositoryDaoImpl;
-import ome.services.blitz.repo.path.ClientFilePathTransformer;
+import ome.services.blitz.repo.path.FilePathNamingValidator;
 import ome.services.blitz.repo.path.FilePathRestrictionInstance;
 import ome.services.blitz.repo.path.FilePathRestrictions;
-import ome.services.blitz.repo.path.MakePathComponentSafe;
 import ome.system.Principal;
-
 import omero.api.AMD_RawFileStore_write;
 import omero.api.AMD_StatefulServiceInterface_close;
 import omero.api.RawFileStorePrx;
 import omero.api.ServiceFactoryPrx;
 import omero.api._RawFileStoreTie;
 import omero.grid.ImportProcessPrx;
-import omero.grid.ImportSettings;
-import omero.model.Fileset;
-import omero.model.FilesetI;
-import omero.util.TempFileManager;
+
+import org.apache.commons.io.FileUtils;
+import org.jmock.Mock;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.Test;
 
 @Test(groups = { "integration", "repo", "fs" })
 public class ManagedRepositoryITest extends AbstractServantTest {
@@ -83,8 +78,11 @@ public class ManagedRepositoryITest extends AbstractServantTest {
         final File targetDir = new File(omeroDataDir, "ManagedRepo-"+userPrincipal.getName());
         targetDir.mkdirs();
 
-        repo = new ManagedRepositoryI("template",
-                new RepositoryDaoImpl(rootPrincipal, user.ex));
+        RepositoryDao dao = new RepositoryDaoImpl(rootPrincipal, user.ex);
+
+        repo = new ManagedRepositoryI(dao,
+                new ProcessCreator("template", dao,
+                        new FilePathNamingValidator()));
         repo.setApplicationContext(user.ctx);
 
         internal = new LegacyRepositoryI(user.adapter, reg, user.ex, rootPrincipal,

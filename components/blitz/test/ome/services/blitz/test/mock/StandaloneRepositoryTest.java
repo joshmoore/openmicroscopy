@@ -13,6 +13,7 @@ import ome.services.blitz.repo.InternalRepositoryI;
 import ome.services.blitz.repo.PublicRepositoryI;
 import ome.services.blitz.repo.RepositoryDaoImpl;
 import ome.services.blitz.repo.path.FilePathRestrictionInstance;
+import ome.services.blitz.repo.path.MakePathComponentSafe;
 import ome.services.util.Executor;
 import ome.system.OmeroContext;
 import ome.system.Principal;
@@ -56,7 +57,8 @@ public class StandaloneRepositoryTest extends MockObjectTestCase {
         InternalRepositoryI repo = new InternalRepositoryI(oa, reg, ex,
                 p, dir.getAbsolutePath(),
                 new PublicRepositoryI(new RepositoryDaoImpl(p, ex), cpf, null,
-                        FilePathRestrictionInstance.UNIX_REQUIRED.name));
+                        new MakePathComponentSafe(
+                                FilePathRestrictionInstance.getUnixFilePathRestrictions())));
     }
 
 }

@@ -25,6 +25,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import ome.services.blitz.repo.path.FilePathNamingValidator;
 import ome.services.blitz.repo.path.FsFile;
 import omero.ServerError;
 import omero.sys.EventContext;
@@ -71,14 +72,18 @@ public class ProcessCreator {
 
     private final RepositoryDao repositoryDao;
 
+    private final FilePathNamingValidator namingValidator;
+
     /**
      * Creates a {@link Process} instance which can be stored in the
      * {@link ProcessCreator}.
      */
     public ProcessCreator(String template,
-            RepositoryDao repositoryDao) {
+            RepositoryDao repositoryDao,
+            FilePathNamingValidator namingValidator) {
         this.template = template;
         this.repositoryDao = repositoryDao;
+        this.namingValidator = namingValidator;
         log.info("Repository template: " + this.template);
     }
 
@@ -109,7 +114,7 @@ public class ProcessCreator {
 
     protected ProcessContainer.Process newProcess(FsFile relPath, FsFile basePath,
             List<FsFile> fsFiles, Ice.Current __current) throws ServerError {
-        return new ManagedImportProcessI(null, relPath, basePath, fsFiles, __current);
+        return new ManagedImportProcessI(null, namingValidator, relPath, basePath, fsFiles, __current);
     }
 
     /**

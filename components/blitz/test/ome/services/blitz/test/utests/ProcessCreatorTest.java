@@ -6,19 +6,14 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 import junit.framework.Assert;
-import loci.formats.FormatReader;
-import ome.services.blitz.fire.Registry;
-import ome.services.blitz.repo.FileMaker;
-import ome.services.blitz.repo.ManagedRepositoryI;
 import ome.services.blitz.repo.ProcessCreator;
 import ome.services.blitz.repo.RepositoryDao;
+import ome.services.blitz.repo.path.FilePathNamingValidator;
+import ome.services.blitz.repo.path.FilePathRestrictionInstance;
 import ome.services.blitz.repo.path.FsFile;
-import omero.grid.ImportLocation;
-import omero.model.ChecksumAlgorithm;
 import omero.model.PermissionsI;
 import omero.sys.EventContext;
 import omero.util.TempFileManager;
@@ -29,8 +24,6 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import Ice.Current;
-
-import com.google.common.collect.Sets;
 
 @Test(groups = {"fs"})
 public class ProcessCreatorTest extends MockObjectTestCase {
@@ -61,7 +54,8 @@ public class ProcessCreatorTest extends MockObjectTestCase {
     public class TestProcessCreator extends ProcessCreator {
 
         public TestProcessCreator(String template, RepositoryDao repositoryDao) {
-            super(template, repositoryDao);
+            super(template, repositoryDao, new FilePathNamingValidator(
+                    FilePathRestrictionInstance.getUnixFilePathRestrictions()));
         }
 
         @Override

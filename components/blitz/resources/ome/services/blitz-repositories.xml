@@ -19,8 +19,32 @@
 
 <beans>
 
+  <!-- === Path parsing === -->
+
+  <bean id="filePathRestrictions" class="ome.services.blitz.repo.path.FilePathRestrictionsFactoryBean">
+    <constructor-arg value="${omero.fslite.path_rules}"/>
+  </bean>
+
+  <bean id="makePathComponentSafe" class="ome.services.blitz.repo.path.MakePathComponentSafe">
+    <constructor-arg ref="filePathRestrictions"/>
+  </bean>
+
+  <bean id="filePathNamingValidator" class="ome.services.blitz.repo.path.FilePathNamingValidator">
+    <constructor-arg ref="filePathRestrictions"/>
+  </bean>
+
+  <!-- === Processes === -->
+
   <bean id="processContainer" class="ome.services.blitz.repo.ProcessContainer">
   </bean>
+
+  <bean id="processCreator" class="ome.services.blitz.repo.ProcessCreator">
+    <constructor-arg value="${omero.fslite.path}"/>
+    <constructor-arg ref="repositoryDao"/>
+    <constructor-arg ref="filePathNamingValidator"/>
+  </bean>
+
+  <!-- === Servants === -->
 
   <bean id="legacyRepository" class="ome.services.blitz.repo.LegacyRepositoryI" destroy-method="close">
       <constructor-arg index="0" ref="BlitzAdapter"/>
@@ -33,7 +57,7 @@
               <constructor-arg ref="repositoryDao"/>
               <constructor-arg ref="checksumProviderFactory"/>
               <constructor-arg ref="checksumAlgorithm"/>
-              <constructor-arg value="${omero.fslite.path_rules}"/>
+              <constructor-arg ref="makePathComponentSafe"/>
           </bean>
       </constructor-arg>
   </bean>
@@ -61,12 +85,12 @@
       <constructor-arg index="4" value="${omero.managed.dir}"/>
       <constructor-arg index="5">
           <bean class="ome.services.blitz.repo.ManagedRepositoryI">
-              <constructor-arg value="${omero.fslite.path}"/>
               <constructor-arg ref="repositoryDao"/>
+              <constructor-arg ref="processCreator"/>
               <constructor-arg ref="processContainer"/>
               <constructor-arg ref="checksumProviderFactory"/>
               <constructor-arg ref="checksumAlgorithm"/>
-              <constructor-arg value="${omero.fslite.path_rules}"/>
+              <constructor-arg ref="makePathComponentSafe"/>
           </bean>
       </constructor-arg>
   </bean>
@@ -101,7 +125,7 @@
               <constructor-arg ref="repositoryDao"/>
               <constructor-arg ref="checksumProviderFactory"/>
               <constructor-arg ref="checksumAlgorithm"/>
-              <constructor-arg value="${omero.fslite.path_rules}"/>
+              <constructor-arg ref="makePathComponentSafe"/>
           </bean>
       </constructor-arg>
   </bean>

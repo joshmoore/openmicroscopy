@@ -15,6 +15,7 @@ import ome.services.blitz.repo.PublicRepositoryI;
 import ome.services.blitz.repo.RepositoryDaoImpl;
 import ome.services.blitz.repo.TemporaryRepositoryI;
 import ome.services.blitz.repo.path.FilePathRestrictionInstance;
+import ome.services.blitz.repo.path.MakePathComponentSafe;
 import ome.services.util.Executor;
 import ome.system.Principal;
 import ome.testing.MockServiceFactory;
@@ -75,7 +76,8 @@ public class TemporaryRepositoryTest extends MockObjectTestCase {
         Principal p = new Principal("session");
         TemporaryRepositoryI tr = new TemporaryRepositoryI(oa, reg, fixture.ex,
                 p, new PublicRepositoryI(new RepositoryDaoImpl(p, fixture.ex),
-                        cpf, null, FilePathRestrictionInstance.UNIX_REQUIRED.name));
+                        cpf, null, new MakePathComponentSafe(
+                                FilePathRestrictionInstance.getUnixFilePathRestrictions())));
         fixture.mock("executorMock").expects(atLeastOnce()).method("execute")
                 .will(new Stub() {
 

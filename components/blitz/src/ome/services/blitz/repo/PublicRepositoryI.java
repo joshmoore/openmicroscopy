@@ -141,7 +141,7 @@ public class PublicRepositoryI implements _RepositoryOperations, ApplicationCont
 
     protected final omero.model.ChecksumAlgorithm checksumAlgorithm;
 
-    protected /*final*/ FilePathRestrictions filePathRestrictions;
+    protected final MakePathComponentSafe makePathComponentSafe;
 
     protected OmeroContext context;
 
@@ -150,24 +150,13 @@ public class PublicRepositoryI implements _RepositoryOperations, ApplicationCont
     public PublicRepositoryI(RepositoryDao repositoryDao,
             ChecksumProviderFactory checksumProviderFactory,
             omero.model.ChecksumAlgorithm checksumAlgorithm,
-            String pathRules) throws Exception {
+            MakePathComponentSafe makePathComponentSafe) throws Exception {
         this.repositoryDao = repositoryDao;
         this.checksumProviderFactory = checksumProviderFactory;
         this.checksumAlgorithm = checksumAlgorithm;
         this.repoUuid = null;
+        this.makePathComponentSafe = makePathComponentSafe;
 
-        final Set<String> terms = new HashSet<String>();
-        for (final String term : pathRules.split(",")) {
-            if (StringUtils.isNotBlank(term)) {
-                terms.add(term.trim());
-            }
-        }
-        final String[] termArray = terms.toArray(new String[terms.size()]);
-        try {
-            this.filePathRestrictions = FilePathRestrictionInstance.getFilePathRestrictions(termArray);
-        } catch (NullPointerException e) {
-            throw new ServerError(null, null, "unknown rule set named in: " + pathRules);
-        }
     }
 
     /**
@@ -185,7 +174,7 @@ public class PublicRepositoryI implements _RepositoryOperations, ApplicationCont
         this.repoUuid = repoUuid;
         this.serverPaths = new ServerFilePathTransformer();
         this.serverPaths.setBaseDirFile(root);
-        this.serverPaths.setPathSanitizer(new MakePathComponentSafe(this.filePathRestrictions));
+        this.serverPaths.setPathSanitizer(makePathComponentSafe);
     }
 
     /**
