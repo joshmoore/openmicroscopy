@@ -43,6 +43,7 @@ import omero.grid.ImportSettings;
 import omero.grid._ImportProcessOperations;
 import omero.grid._ImportProcessTie;
 import omero.model.ChecksumAlgorithm;
+import omero.model.ChecksumAlgorithmI;
 import omero.model.Fileset;
 import omero.model.FilesetEntry;
 import omero.model.FilesetEntryI;
@@ -53,6 +54,7 @@ import omero.model.IndexingJobI;
 import omero.model.Job;
 import omero.model.MetadataImportJob;
 import omero.model.MetadataImportJobI;
+import omero.model.OriginalFile;
 import omero.model.PixelDataJobI;
 import omero.model.ThumbnailGenerationJob;
 import omero.model.ThumbnailGenerationJobI;
@@ -109,6 +111,8 @@ public class ManagedImportProcessI extends AbstractAmdServant
         final int[] indexes;
 
         final Class<? extends FormatReader> readerClass;
+
+        Fileset fs;
 
         FilesetState(int[] indexes, Class<? extends FormatReader> readerClass) {
             this.indexes = indexes;
@@ -366,21 +370,41 @@ public class ManagedImportProcessI extends AbstractAmdServant
 
         // Initialization version info
         final FilesetState filesetState = targets.get(index);
-        final ImportConfig config = new ImportConfig();
+        final ImportConfig config = new ImportConfig(); // Inject? Include in log?
         final String readerClass = filesetState.readerClass.getName();
         final FilesetVersionInfo serverVersionInfo = config.createVersionInfo(readerClass);
 
-        final List<String> clientPaths = null;
-        if (settings != null) {
+        if (settings == null) {
+            settings = new ImportSettings();
+            settings.checksumAlgorithm = new ChecksumAlgorithmI();
+            settings.checksumAlgorithm.setValue(omero.rtypes.rstring("SHA1-160"));
+            // FIXME: this is being set as the default so that just because
+            // a client doesn't pass a settings, the checksum for the uploaded
+            // files will still be calculated. Perhaps unnecessary since if
+            // a client doesn't pass the checksum, there's no way to verify
+            // the upload.
+        }
+
+        List<String> clientPaths = null;
+        if (settings.clientPaths != null) {
             clientPaths = settings.clientPaths;
         } else {
             clientPaths = Collections.<String>emptyList();
         }
 
-        Fileset fs = new FilesetI();
+        // CheckedPath objects for use by saveFileset later
+        final List<CheckedPath> checkedPaths = new ArrayList<CheckedPath>();
+
+        final Fileset fs = new FilesetI();
         for (int i : filesetState.indexes) {
+            final FsFile fsFile = fsFiles.get(i);
             final FilesetEntry entry = new FilesetEntryI();
-            entry.setOriginalFile(this.
+            final CheckedPath checked = repo.checkPath(fsFile.toString(),
+                    settings.checksumAlgorithm, __current);
+            checkedPaths.add(checked);
+
+            final OriginalFile ofile = repo.findInDb(checked, "r", __current);
+            entry.setOriginalFile(ofile);
             fs.addFilesetEntry(entry);
 
             if (clientPaths.size() > i) {
@@ -388,8 +412,6 @@ public class ManagedImportProcessI extends AbstractAmdServant
             }
 
         }
-
-
 
         // Create and validate jobs
         if (fs.sizeOfJobLinks() != 1) {
@@ -422,22 +444,22 @@ public class ManagedImportProcessI extends AbstractAmdServant
 
         fs.linkJob(new IndexingJobI());
 
-        // Create CheckedPath objects for use by saveFileset
-        final int size = fs.sizeOfUsedFiles();
-        final List<CheckedPath> checked = new ArrayList<CheckedPath>();
-        for (int i = 0; i < size; i++) {
-            final String path = location.sharedPath + FsFile.separatorChar + location.usedFiles.get(i);
-            checked.add(checkPath(path, __current));
-        }
 
-        final Fileset managedFs = repositoryDao.saveFileset(getRepoUuid(), fs, checked, __current);
-        // Since the fileset saved validly, we create a session for the user
-        // and return the process.
+        filesetState.fs = repo.repositoryDao.saveFileset(
+                repo.getRepoUuid(), fs, settings.checksumAlgorithm,
+                checkedPaths, __current);
+        return filesetState.fs;
 
     }
 
     public HandlePrx startImport(Current __current) throws ServerError {
 
+        if (targets.size() != 0) {
+            throw new omero.ValidationException(null, null,
+                    "Server currently only supports single filesets");
+        }
+
+        Fileset fs = targets.get(0).fs;
         // i==0 is the upload job which is implicit.
         FilesetJobLink link = fs.getFilesetJobLink(0);
         repo.repositoryDao.updateJob(link.getChild(),
@@ -539,19 +561,19 @@ public class ManagedImportProcessI extends AbstractAmdServant
 
         // Static elements which will be re-used throughout
         final ManagedImportLocationI data = new ManagedImportLocationI(); // Return value
-        data.logFile = checkPath(relPath.toString()+".log", checksumAlgorithm, __current);
+        data.logFile = repo.checkPath(relPath.toString()+".log", checksumAlgorithm, __current);
 
         // try actually making directories
         final FsFile newBase = FsFile.concatenate(relPath, basePath);
         data.sharedPath = newBase.toString();
-        data.usedFiles = new ArrayList<String>(paths.size());
         data.checkedPaths = new ArrayList<CheckedPath>(paths.size());
         for (final FsFile path : paths) {
             final String relativeToEnd = path.getPathFrom(basePath).toString();
-            data.usedFiles.add(relativeToEnd);
             final String fullRepoPath = data.sharedPath + FsFile.separatorChar + relativeToEnd;
-            data.checkedPaths.add(new CheckedPath(this.serverPaths, fullRepoPath,
-                    this.checksumProviderFactory, checksumAlgorithm));
+            // FIXME: Why is CheckedPath created with "new" here? That should
+            // be avoided since each servant could specifiy it's own implementation.
+            data.checkedPaths.add(new CheckedPath(repo.serverPaths, fullRepoPath,
+                    repo.checksumProviderFactory, checksumAlgorithm));
         }
 
         repo.makeDir(data.sharedPath, true, __current);
@@ -582,7 +604,7 @@ public class ManagedImportProcessI extends AbstractAmdServant
         final String[] localStylePaths = new String[fullPaths.size()];
         int index = 0;
         for (final FsFile fsFile : fullPaths)
-            localStylePaths[index++] = serverPaths.getServerFileFromFsFile(fsFile).getAbsolutePath();
+            localStylePaths[index++] = repo.serverPaths.getServerFileFromFsFile(fsFile).getAbsolutePath();
         try {
             commonParentDirsToRetain = readerClass.newInstance().getRequiredDirectories(localStylePaths);
         } catch (Exception e) { }

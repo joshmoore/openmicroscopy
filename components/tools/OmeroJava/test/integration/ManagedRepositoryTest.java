@@ -178,10 +178,11 @@ public class ManagedRepositoryTest
         for (int i = 0; i < numberToUpload; i++) {
             checksums.add(lib.uploadFile(proc, srcFiles, i, cpf, buf));
         }
+        proc.verifyUpload(checksums); // Throws if invalid
+        assertEquals(1, proc.getFilesetCount());
 
-        // At this point the import is running, check handle for number of
-        // steps.
-        final HandlePrx handle = proc.verifyUpload(checksums);
+        // Launch import and check handle for number of steps.
+        final HandlePrx handle = proc.startImport();
         final ImportRequest req = (ImportRequest) handle.getRequest();
         final Fileset fs = req.activity.getParent();
         final CmdCallbackI cb = lib.createCallback(proc, handle, container);

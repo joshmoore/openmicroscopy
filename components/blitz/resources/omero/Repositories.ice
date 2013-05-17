@@ -318,13 +318,13 @@ module omero {
              * been completed, [verifyUpload] should be called to initiate
              * background processing
              **/
-             omero::api::RawFileStore* getUploader(int i) throws ServerError;
+             omero::api::RawFileStore* getUploader(int fileIndex) throws ServerError;
 
             /**
              * Step 1b: In case an upload must be resumed, this provides the
              * location of the last successful upload.
              **/
-             long getUploadOffset(int i) throws ServerError;
+             long getUploadOffset(int fileIndex) throws ServerError;
 
             /**
              * Step 2: Passes a set of client-side calculated hashes to the
@@ -341,7 +341,7 @@ module omero {
 
             /**
              * Step 3: Return the number of [omero:model::Fileset] instances
-             * expected by the server.
+             * expected by the server. These are parsed on [verifyUpload].
              **/
              int getFilesetCount() throws ServerError;
 
@@ -371,14 +371,12 @@ module omero {
              omero::cmd::Handle* startImport() throws ServerError;
 
             /**
-             * Step 6: Reacquire the handle which was returned by
+             * Step 6: Re-acquire the handle which was returned by
              * [verifyUpload]. This is useful in case a new client is
              * re-attaching to a running import. From the [omero::cmd::Handle]
              * instance, the original [ImportRequest] can also be found.
              **/
              omero::cmd::Handle* getHandle() throws ServerError;
-
-             ImportSettings getImportSettings();
 
         };
 
