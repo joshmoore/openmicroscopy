@@ -18,13 +18,13 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import loci.formats.FormatException;
 import loci.formats.FormatReader;
-
 import ome.formats.OMEROMetadataStoreClient;
 import ome.formats.importer.util.ErrorHandler;
 import ome.services.blitz.repo.path.ClientFilePathTransformer;
@@ -46,14 +46,12 @@ import omero.cmd.Response;
 import omero.grid.ImportProcessPrx;
 import omero.grid.ImportRequest;
 import omero.grid.ImportResponse;
-import omero.grid.ImportSettings;
 import omero.grid.ManagedRepositoryPrx;
 import omero.grid.ManagedRepositoryPrxHelper;
 import omero.grid.RepositoryMap;
 import omero.grid.RepositoryPrx;
 import omero.model.Dataset;
 import omero.model.Fileset;
-import omero.model.FilesetI;
 import omero.model.OriginalFile;
 import omero.model.Pixels;
 import omero.model.Screen;
@@ -224,14 +222,10 @@ public class ImportLibrary implements IObservable
                                                                     FilePathRestrictionInstance.UNIX_REQUIRED);
         final ClientFilePathTransformer sanitizer = new ClientFilePathTransformer(new MakePathComponentSafe(portableRequiredRules));
 
-        final ImportSettings settings = new ImportSettings();
         // TODO: here or on container.fillData, we need to
         // check if the container object has ChecksumAlgorithm
         // present and pass it into the settings object
-        final Fileset fs = new FilesetI();
-        container.fillData(new ImportConfig(), settings, fs, sanitizer);
-        return repo.importFileset(fs, settings);
-
+        return repo.importFiles(Arrays.asList(container.getUsedFiles()));
     }
 
     /**
@@ -409,10 +403,17 @@ public class ImportLibrary implements IObservable
      */
     public List<Pixels> importImage(final ImportContainer container, int index,
                                     int numDone, int total)
-            throws FormatException, IOException, Throwable
+            throws FormatException, IOException, ServerError, InterruptedException
+    {
+        ImportProcessPrx proc = performUpload(container, index, numDone, total);
+        return performImport(proc, container);
+    }
+
+    public ImportProcessPrx performUpload(ImportContainer container, int index,
+                                      int numDone, int total)
+            throws FormatException, IOException, ServerError
     {
         final ImportProcessPrx proc = createImport(container);
-        final HandlePrx handle;
         final String[] srcFiles = container.getUsedFiles();
         final List<String> checksums = new ArrayList<String>();
         final byte[] buf = new byte[store.getDefaultBlockSize()];
@@ -427,7 +428,8 @@ public class ImportLibrary implements IObservable
         }
 
         try {
-            handle = proc.verifyUpload(checksums);
+            proc.verifyUpload(checksums);
+            return proc;
         } catch (ChecksumValidationException cve) {
             failingChecksums = cve.failingChecksums;
             throw cve;
@@ -436,12 +438,17 @@ public class ImportLibrary implements IObservable
                     null, index, srcFiles.length, null, null, srcFiles,
                     checksums, failingChecksums, null));
         }
+    }
 
+    public List<Pixels> performImport(ImportProcessPrx process, ImportContainer container)
+            throws ServerError, InterruptedException
+    {
         // At this point the import is running, check handle for number of
         // steps.
+        final HandlePrx handle = process.getHandle();
         final ImportRequest req = (ImportRequest) handle.getRequest();
         final Fileset fs = req.activity.getParent();
-        final CmdCallbackI cb = createCallback(proc, handle, container);
+        final CmdCallbackI cb = createCallback(process, handle, container);
         cb.loop(60*60, 1000); // Wait 1 hr per step.
         final ImportResponse rsp = getImportResponse(cb, container, fs);
         return rsp.pixels;

@@ -28,6 +28,7 @@ import static omero.rtypes.rstring;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 import ome.services.blitz.repo.path.ClientFilePathTransformer;
@@ -218,10 +219,10 @@ public class ImportContainer
         this.userPixels = userPixels;
     }
 
-    public void fillData(ImportConfig config, ImportSettings settings, Fileset fs, 
-            ClientFilePathTransformer sanitizer) throws IOException {
-        // TODO: These should possible be a separate option like
-        // ImportUserSettings rather than mis-using ImportContainer.
+    public ImportSettings createSettings(ImportConfig config) throws IOException {
+
+        final ImportSettings settings = new ImportSettings();
+
         settings.doThumbnails = rbool(getDoThumbnails());
         settings.userSpecifiedTarget = getTarget();
         settings.userSpecifiedName = rstring(getUserSpecifiedName());
@@ -240,21 +241,19 @@ public class ImportContainer
             settings.userSpecifiedPixels = target; // May be null.
         }
 
-        // Fill used paths
+        settings.clientPaths = new ArrayList<String>();
         for (String usedFile : getUsedFiles()) {
-            final FilesetEntry entry = new FilesetEntryI();
-            final FsFile fsPath = sanitizer.getFsFileFromClientFile(new File(usedFile), Integer.MAX_VALUE);
-            entry.setClientPath(rstring(fsPath.toString()));
-            fs.addFilesetEntry(entry);
+            /*
+             TODO: where to use this
+             final FsFile fsPath = sanitizer.getFsFileFromClientFile(
+                new File(usedFile), Integer.MAX_VALUE);
+             */
+            settings.clientPaths.add(usedFile);
         }
 
-        // Fill BF info
-        FilesetVersionInfo clientVersionInfo = new FilesetVersionInfoI();
-        clientVersionInfo.setBioformatsReader(rstring(reader));
-        config.fillVersionInfo(clientVersionInfo);
-        UploadJob upload = new UploadJobI();
-        upload.setVersionInfo(clientVersionInfo);
-        fs.linkJob(upload);
+        settings.clientVersionInfo = config.createVersionInfo(reader);
+        return settings;
+
 
     }
 

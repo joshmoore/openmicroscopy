@@ -131,16 +131,9 @@ public class ManagedRepositoryITest extends AbstractServantTest {
     }
 
     public void testBasicImportExample() throws Exception {
-        final ClientFilePathTransformer clientPaths = 
-                new ClientFilePathTransformer(new MakePathComponentSafe(this.conservativeRules));
-        
-        File tmpDir = TempFileManager.create_path("mydata.", ".dir", true);
-        ImportContainer ic = makeFake(tmpDir);
-        ImportSettings settings = new ImportSettings();
-        Fileset fs = new FilesetI();
-        ic.fillData(new ImportConfig(), settings, fs, clientPaths);
 
-        ImportProcessPrx i = repo.importFileset(fs, settings, curr());
+        ImportProcessPrx i = repo.importFiles(
+                Arrays.<String>asList("a", "b"), curr());
         assertNotNull(i);
 
         upload(i.getUploader(0));

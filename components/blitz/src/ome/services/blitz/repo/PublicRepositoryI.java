@@ -395,10 +395,12 @@ public class PublicRepositoryI implements _RepositoryOperations, ApplicationCont
         }
 
         checked.setId(ofile.getId().getValue());
-        boolean canUpdate = repositoryDao.canUpdate(ofile, current);
-        if (requiresWrite && !canUpdate) {
-            throw new omero.SecurityViolation(null, null,
+        if (requiresWrite) {
+            boolean canUpdate = repositoryDao.canUpdate(ofile, current);
+            if (!canUpdate) {
+                throw new omero.SecurityViolation(null, null,
                     "requiresWrite is true but cannot modify");
+            }
         }
 
         return ofile;

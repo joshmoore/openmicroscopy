@@ -26,7 +26,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import omero.grid.ImportProcessPrx;
-import omero.model.Fileset;
 
 /**
  * Helper class for holding the individual {@link ManagedImportProcessI}
@@ -43,7 +42,6 @@ public class ProcessContainer {
 
     public interface Process {
         ImportProcessPrx getProxy();
-        Fileset getFileset();
         long getGroup();
         void ping();
         void shutdown();

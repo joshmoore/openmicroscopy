@@ -33,6 +33,7 @@ import ome.system.PreferenceContext;
 import ome.system.UpgradeCheck;
 import omero.model.Annotation;
 import omero.model.FilesetVersionInfo;
+import omero.model.FilesetVersionInfoI;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -252,7 +253,9 @@ public class ImportConfig {
         return omeroVersion;
     }
 
-    public void fillVersionInfo(FilesetVersionInfo versionInfo) {
+    public FilesetVersionInfo createVersionInfo(String reader) {
+        FilesetVersionInfo versionInfo = new FilesetVersionInfoI();
+        versionInfo.setBioformatsReader(rstring(reader));
         versionInfo.setBioformatsVersion(rstring(getBioFormatsVersion()));
         versionInfo.setOmeroVersion(rstring(getOmeroVersion()));
         versionInfo.setOsArchitecture(rstring(System.getProperty("os.arch")));
@@ -260,6 +263,7 @@ public class ImportConfig {
         versionInfo.setOsVersion(rstring(System.getProperty("os.version")));
         versionInfo.setLocale(rstring(Locale.getDefault().toString()));
         // TODO: add java version info
+        return versionInfo;
     }
 
     //CGB: Need replacing with logback equivalent.
