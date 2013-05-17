@@ -31,6 +31,7 @@ module omero {
         class Filament;
         class Fileset;
         class FilesetJobLink;
+        class FilesetVersionInfo;
         class Format;
         class IObject;
         class Image;

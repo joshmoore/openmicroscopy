@@ -78,6 +78,9 @@ module omero {
         ["java:type:java.util.ArrayList<omero.model.Dataset>:java.util.List<omero.model.Dataset>"]
             sequence<omero::model::Dataset> DatasetList;
 
+        ["java:type:java.util.ArrayList<omero.model.Fileset>:java.util.List<omero.model.Fileset>"]
+            sequence<omero::model::Fileset> FilesetList;
+
         ["java:type:java.util.ArrayList<omero.model.Image>:java.util.List<omero.model.Image>"]
             sequence<omero::model::Image> ImageList;
 

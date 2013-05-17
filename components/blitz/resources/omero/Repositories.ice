@@ -212,6 +212,12 @@ module omero {
          *  /Users/jack/Documents/Data/Experiment-2/2.dv.log
          * </pre>
          *
+         * Includes the directory which should be the import location for
+         * the set of paths passed in. Each set of paths consitutes a
+         * single import session. In order to prevent files from being
+         * overwritten or interfering with one another, a new directory
+         * will be created for the current session.
+
          **/
         class ImportLocation {
 
@@ -226,20 +232,6 @@ module omero {
              * from the original paths passed to the server.
              **/
             int omittedLevels;
-
-            /**
-             * Parsed string names which should be used by the
-             * clients during upload. This array will be of the
-             * same length as the argument passed to
-             * [ManagedRepository::importFileset] but will have
-             * shortened paths.
-             *
-             * <pre>
-             *  Experiment/1.dv
-             *  Experiment/1.dv.log
-             * </pre>
-             **/
-            omero::api::StringSet usedFiles;
 
             /**
              * Represents the directory to which all files
@@ -286,6 +278,19 @@ module omero {
              omero::RBool doThumbnails;
 
              /**
+              * Version information parsed on the client-side.
+              **/
+             omero::model::FilesetVersionInfo clientVersionInfo;
+
+             /**
+              * Path-strings as known to the client. This may contain
+              * separators and characters which are not allowed in
+              * the repository.
+              **/
+              omero::api::StringSet clientPaths;
+
+
+             /**
               * User choice of checksum algorithm for verifying upload.
               **/
              omero::model::ChecksumAlgorithm checksumAlgorithm;
@@ -294,51 +299,82 @@ module omero {
 
 
         /**
-         * User configuration options. These are likely set in the UI
-         * before the import is initiated.
+         * State machine for managing all steps of the import process.
+         *
+         * Several steps must occur before the asynchronous import can begin.
+         * All files must be uploaded and have their checksums verified.
+         * Finally, filesets must be created for each group of used files.
          **/
-        interface ImportProcess extends omero::api::StatefulServiceInterface{
-
-            //
-            // PRIMARY WORKFLOW
-            //
+        interface ImportProcess extends omero::api::StatefulServiceInterface {
 
             /**
              * Step 1: Returns a RawFileStore that can be used to upload one of
-             * the used files. The index is the same as the used file listed in
-             * [ImportLocation]. [omero::api::RawFileStore::close] should be
-             * called once all data has been transferred. If the file must be
-             * re-written, call [getUploader] with the same index again. Once
-             * all uploads have been completed, [verifyUpload] should be called
-             * to initiate background processing
+             * the used files. The index should match that passed in to
+             * [ManagedRepository.importFiles].
+             *
+             * [omero::api::RawFileStore::close] should be called once all data
+             * has been transferred. If the file must be re-written, call
+             * [getUploader] with the same index again. Once all uploads have
+             * been completed, [verifyUpload] should be called to initiate
+             * background processing
              **/
              omero::api::RawFileStore* getUploader(int i) throws ServerError;
 
             /**
-             * Step 2: Passes a set of client-side calculated hashes to the server
-             * for verifying that all of the files were correctly uploaded. If this
-             * passes then a [omero::cmd::Handle] proxy is returned, which completes
-             * all the necessary import steps. A successful import will return an
-             * [ImportResponse]. Otherwise, some [omero::cmd::ERR] will be returned.
-             **/
-             omero::cmd::Handle* verifyUpload(omero::api::StringSet hash) throws ServerError;
-
-            //
-            // INTROSPECTION
-            //
-
-            /**
-             * In case an upload must be resumed, this provides the
+             * Step 1b: In case an upload must be resumed, this provides the
              * location of the last successful upload.
              **/
              long getUploadOffset(int i) throws ServerError;
 
             /**
-             * Reacquire the handle which was returned by
-             * [verifyUpload]. This is useful in case a new
-             * client is re-attaching to a running import.
-             * From the [omero::cmd::Handle] instance, the
-             * original [ImportRequest] can also be found.
+             * Step 2: Passes a set of client-side calculated hashes to the
+             * server for verifying that all of the files were correctly
+             * uploaded. If this passes, then progress to the next step.
+             *
+             * If an exception is thrown, it will require direct intervention
+             * before any further action can take place. Find which files have
+             * mismatches and re-upload them, followed by calling verifyUpload
+             * again. If further uploads don't fix the mismatch, then the
+             * import will have to be cancelled.
+             **/
+             void verifyUpload(omero::api::StringSet hash) throws ServerError;
+
+            /**
+             * Step 3: Return the number of [omero:model::Fileset] instances
+             * expected by the server.
+             **/
+             int getFilesetCount() throws ServerError;
+
+            /**
+             * Step 3b: Returns the [ImportLocation] chosen by the server. This
+             * includes a reference to the [omero::model::OriginalFile]-directory
+             * where all files will be uploaded.
+             **/
+             ImportLocation getLocation() throws ServerError;
+
+            // TODO: 1c ? How early can we get this? And the log file?
+
+             /**
+              * Step 4: Return the [omero::model::Fileset] instances that the
+              * server found in the uploaded files and have saved to the
+              * database.
+              **/
+             omero::model::Fileset createFileset(int index, ImportSettings settings)
+                throws ServerError;
+
+            /**
+             * Step 5: [omero::cmd::Handle] proxy is returned, which completes
+             * all the necessary import steps. A successful import will return
+             * an [ImportResponse]. Otherwise, some [omero::cmd::ERR] will be
+             * returned.
+             */
+             omero::cmd::Handle* startImport() throws ServerError;
+
+            /**
+             * Step 6: Reacquire the handle which was returned by
+             * [verifyUpload]. This is useful in case a new client is
+             * re-attaching to a running import. From the [omero::cmd::Handle]
+             * instance, the original [ImportRequest] can also be found.
              **/
              omero::cmd::Handle* getHandle() throws ServerError;
 
@@ -426,23 +462,16 @@ module omero {
         ["ami"] interface ManagedRepository extends Repository {
 
             /**
-             * Returns the directory which should be the import location for
-             * the set of paths passed in. Each set of paths consitutes a
-             * single import session. In order to prevent files from being
-             * overwritten or interfering with one another, a new directory
-             * may be created for the current session.
+             * Returns an [ImportProcess] proxy which should be used
+             * to continue the rest of the import action. The list of
+             * filenames can be from one or more Bio-Formats filesets
+             * and should contain no directory elements. The server
+             * will identify how many expected filesets are contained.
+             * See [ImportProcess] for more information.
+             *
+             * Exceptions that may be thrown: TBD
              **/
-            ImportProcess* importFileset(omero::model::Fileset fs, ImportSettings settings) throws ServerError;
-
-            /**
-             * For clients without access to Bio-Formats, the simplified
-             * [importPaths] method allows passing solely the absolute
-             * path of the files to be uploaded (no directories) and all
-             * configuration happens server-side. Much of the functionality
-             * provided via [omero::model::Fileset] and [omero::grid::ImportSettings]
-             * is of course lost.
-             **/
-            ImportProcess* importPaths(omero::api::StringSet filePaths) throws ServerError;
+             ImportProcess* importFiles(omero::api::StringSet filePaths) throws ServerError;
 
             /**
              * List imports that are currently running in this importer.
