@@ -53,12 +53,14 @@ import omero.grid.ImportLocation;
 import omero.grid.ImportProcessPrx;
 import omero.grid.ImportRequest;
 import omero.grid.ImportResponse;
+import omero.grid.ImportSettings;
 import omero.grid.ManagedRepositoryPrx;
 import omero.grid.ManagedRepositoryPrxHelper;
 import omero.grid.RepositoryMap;
 import omero.grid.RepositoryPrx;
 import omero.model.Fileset;
 import omero.model.OriginalFile;
+import omero.model.Pixels;
 import omero.util.TempFileManager;
 
 /**
@@ -190,38 +192,24 @@ public class ManagedRepositoryTest
 	    // Setup that should be easier, most likely a single ctor on IL
 	    OMEROMetadataStoreClient client = new OMEROMetadataStoreClient();
 	    client.initialize(this.client);
-	    OMEROWrapper wrapper = new OMEROWrapper(new ImportConfig());
+	    ImportConfig config = new ImportConfig();
+	    OMEROWrapper wrapper = new OMEROWrapper(config);
 	    ImportLibrary lib = new ImportLibrary(client, wrapper);
 
-	    // This should also be simplified.
+	    // TODO: This should also be simplified.
 	    ImportContainer container = new ImportContainer(new File(srcPaths.get(0)),
 	            null /*target*/, null /*user pixels */, "FakeReader",
 	            srcPaths.toArray(new String[srcPaths.size()]), false /*isspw*/);
 
-	    // Now actually use the library.
-	    ImportProcessPrx proc = lib.createImport(container);
+	    ImportLibrary.UploadTask upload = lib.new UploadTask(container, 0, 0, 1);
+	    ImportProcessPrx proc = upload.call();
 
-	    // The following is largely a copy of ImportLibrary.importImage
-        final String[] srcFiles = container.getUsedFiles();
-        final List<String> checksums = new ArrayList<String>();
-        final byte[] buf = new byte[client.getDefaultBlockSize()];
-        final ChecksumProviderFactory cpf = new ChecksumProviderFactoryImpl();
-
-        for (int i = 0; i < numberToUpload; i++) {
-            checksums.add(lib.uploadFile(proc, srcFiles, i, cpf, buf));
-        }
-        proc.verifyUpload(checksums); // Throws if invalid
+	    ImportSettings settings = container.createSettings(config);
+	    ImportLibrary.FilesetTask fileset = lib.new FilesetTask(upload, settings, 0);
+	    List<Pixels> pixels = fileset.call();
         assertEquals(1, proc.getFilesetCount());
 
-        // Launch import and check handle for number of steps.
-        final HandlePrx handle = proc.startImport();
-        final ImportRequest req = (ImportRequest) handle.getRequest();
-        final Fileset fs = req.activity.getParent();
-        final CmdCallbackI cb = lib.createCallback(proc, handle, container);
-        cb.loop(60*60, 1000); // Wait 1 hr per step.
-        final ImportResponse rsp = lib.getImportResponse(cb, container, fs);
-
-        ImportState state = new ImportState(fs, proc.getLocation());
+        ImportState state = new ImportState(fileset.getFileset(), proc.getLocation());
         return state;
 	}
 

@@ -513,6 +513,10 @@ public class ImportLibrary implements IObservable
             pixels = rsp.pixels;
             return pixels;
         }
+
+        public Fileset getFileset() {
+            return fs;
+        }
     }
 
     @SuppressWarnings("serial")
