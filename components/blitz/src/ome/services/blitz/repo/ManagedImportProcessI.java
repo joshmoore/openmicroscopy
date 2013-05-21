@@ -59,6 +59,7 @@ import omero.model.PixelDataJobI;
 import omero.model.ThumbnailGenerationJob;
 import omero.model.ThumbnailGenerationJobI;
 import omero.model.UploadJob;
+import omero.sys.EventContext;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -128,6 +129,13 @@ public class ManagedImportProcessI extends AbstractAmdServant
      * Current which created this instance.
      */
     private final Ice.Current current;
+
+    /**
+     * {@link EventContext} loaded from the {@link Ice.Current}. Represents
+     * the calling session that is performing the upload. Individual fileset
+     * imports may be executed with a separate context.
+     */
+    private final EventContext eventContext;
 
     /**
      * The managed repo instance which created (and ultimately is reponsible
@@ -232,6 +240,8 @@ public class ManagedImportProcessI extends AbstractAmdServant
         // has been moved to verifyUpload() after all files are present
         // for scanning.
         this.current = __current;
+        // FIXME: This could be refactored here and in ProcessCreator.
+        this.eventContext = repo.repositoryDao.getEventContext(__current);
         this.proxy = registerProxy(__current);
         setApplicationContext(repo.context);
         // TODO: The above could be moved to SessionI.internalServantConfig as
@@ -269,7 +279,7 @@ public class ManagedImportProcessI extends AbstractAmdServant
     //
 
     public long getGroup() {
-        throw new RuntimeException("NYI");
+        return eventContext.groupId;
     }
 
     public void ping() {
