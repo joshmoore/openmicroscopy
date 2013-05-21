@@ -72,6 +72,38 @@ import omero.util.TempFileManager;
 public class ManagedRepositoryTest
    extends AbstractServerTest
 {
+    private static class ImportState {
+        final Fileset fs;
+        final ImportLocation location;
+
+        /**
+         * Used files are no longer a part of the interface, but here we're
+         * calculating the values to maintain the various checks in this
+         * test.
+         */
+        final List<String> usedFiles;
+
+        /**
+         * Copied from {@link ImportLocation} to make this object a little
+         * more like what the test is expecting.
+         */
+        final String sharedPath;
+
+        ImportState(Fileset fs, ImportLocation location) {
+            this.fs = fs;
+            this.location = location;
+            this.sharedPath = location.sharedPath;
+            this.usedFiles = new ArrayList<String>();
+            for (int i = 0; i < fs.sizeOfUsedFiles(); i++) {
+                OriginalFile f = fs.getFilesetEntry(i).getOriginalFile();
+                StringBuilder sb = new StringBuilder();
+                sb.append(f.getPath().getValue());
+                sb.append("/");
+                sb.append(f.getName().getValue());
+            }
+        }
+    }
+
     /* temporary file manager for sources of file uploads */
     private static final TempFileManager tempFileManager =
             new TempFileManager("test-" + ManagedRepositoryTest.class.getSimpleName());
@@ -142,7 +174,7 @@ public class ManagedRepositoryTest
      * @return the resulting import location
      * @throws Exception unexpected
      */
-    ImportLocation importFileset(List<String> srcPaths) throws Exception {
+    ImportState importFileset(List<String> srcPaths) throws Exception {
         return importFileset(srcPaths, srcPaths.size());
     }
 
@@ -153,7 +185,7 @@ public class ManagedRepositoryTest
 	 * @return the resulting import location
 	 * @throws Exception unexpected
 	 */
-	ImportLocation importFileset(List<String> srcPaths, int numberToUpload) throws Exception {
+	ImportState importFileset(List<String> srcPaths, int numberToUpload) throws Exception {
 
 	    // Setup that should be easier, most likely a single ctor on IL
 	    OMEROMetadataStoreClient client = new OMEROMetadataStoreClient();
@@ -188,7 +220,9 @@ public class ManagedRepositoryTest
         final CmdCallbackI cb = lib.createCallback(proc, handle, container);
         cb.loop(60*60, 1000); // Wait 1 hr per step.
         final ImportResponse rsp = lib.getImportResponse(cb, container, fs);
-        return req.location;
+
+        ImportState state = new ImportState(fs, proc.getLocation());
+        return state;
 	}
 
     /**
@@ -216,11 +250,12 @@ public class ManagedRepositoryTest
      * @param index a used file index within the import location's used files
      * @return the used file's managed repository path
      */
-    private static String pathToUsedFile(ImportLocation importLocation, int index) {
+    private static String pathToUsedFile(ImportState state, int index) {
+        final OriginalFile ofile = state.fs.getFilesetEntry(index).getOriginalFile();
         final StringBuffer sb = new StringBuffer();
-        sb.append(importLocation.sharedPath);
+        sb.append(ofile.getPath().getValue());
         sb.append(FsFile.separatorChar);
-        sb.append(importLocation.usedFiles.get(index));
+        sb.append(ofile.getName().getValue());
         return sb.toString();
     }
 
@@ -242,7 +277,7 @@ public class ManagedRepositoryTest
 
         // Completely new file
         srcPaths.add(file1.getAbsolutePath());
-        ImportLocation data = importFileset(srcPaths);
+        ImportState data = importFileset(srcPaths);
         assertEndsWith(pathToUsedFile(data, 0), destPath1);
 
         // Different files that should go in same directory
@@ -297,7 +332,7 @@ public class ManagedRepositoryTest
         srcPaths.add(file2.getAbsolutePath());
         destPaths.add(destPath1);
         destPaths.add(destPath2);
-        ImportLocation data = importFileset(srcPaths);
+        ImportState data = importFileset(srcPaths);
         assertTrue(data.usedFiles.size()==destPaths.size());
         for (int i=0; i<data.usedFiles.size(); i++) {
             assertEndsWith(pathToUsedFile(data, i), destPaths.get(i));
@@ -388,14 +423,14 @@ public class ManagedRepositoryTest
         destPaths.add(destFsFile1.toString());
         destPaths.add(destFsFile2.toString());
         destPaths.add(destFsFile3.toString());
-        ImportLocation data1 = importFileset(srcPaths);
+        ImportState data1 = importFileset(srcPaths);
         assertTrue(data1.usedFiles.size()==destPaths.size());
         for (int i=0; i<data1.usedFiles.size(); i++) {
             assertEndsWith(pathToUsedFile(data1, i), destPaths.get(i));
         }
 
         // Same files should go into new directory
-        ImportLocation data2 = importFileset(srcPaths);
+        ImportState data2 = importFileset(srcPaths);
         assertTrue(data2.usedFiles.size()==destPaths.size());
         for (int i=0; i<data2.usedFiles.size(); i++) {
             assertEndsWith(pathToUsedFile(data2, i), destPaths.get(i));
@@ -418,7 +453,7 @@ public class ManagedRepositoryTest
         final List<String> srcPaths = new ArrayList<String>();
 
         srcPaths.add(file1.getAbsolutePath());
-        ImportLocation data = importFileset(srcPaths);
+        ImportState data = importFileset(srcPaths);
 
         for (int index = 0; index < data.usedFiles.size(); index++) {
             assertFileExists("Upload failed. File does not exist: ", pathToUsedFile(data, index));
@@ -445,7 +480,7 @@ public class ManagedRepositoryTest
 
         srcPaths.add(file1.getAbsolutePath());
         srcPaths.add(file2.getAbsolutePath());
-        ImportLocation data = importFileset(srcPaths);
+        ImportState data = importFileset(srcPaths);
 
         for (int index = 0; index < data.usedFiles.size(); index++) {
             assertFileExists("Upload failed. File does not exist: ", pathToUsedFile(data, index));
@@ -473,7 +508,7 @@ public class ManagedRepositoryTest
         srcPaths.add(file1.getAbsolutePath());
         srcPaths.add(file2.getAbsolutePath());
         // TODO: due to verifyUpload one cannot obtain the import location without uploading both files
-        ImportLocation data = importFileset(srcPaths, 1);
+        ImportState data = importFileset(srcPaths, 1);
 
         assertFileExists("Upload failed. File does not exist: ", pathToUsedFile(data, 0));
         assertFileDoesNotExist("Something wrong. File does exist!: ", pathToUsedFile(data, 1));
@@ -505,7 +540,7 @@ public class ManagedRepositoryTest
         srcPaths.add(file1.getAbsolutePath());
         srcPaths.add(file2.getAbsolutePath());
         srcPaths.add(file3.getAbsolutePath());
-        ImportLocation data = importFileset(srcPaths);
+        ImportState data = importFileset(srcPaths);
 
         for (int index = 0; index < data.usedFiles.size(); index++) {
             assertFileExists("Upload failed. File does not exist: ", pathToUsedFile(data, index));
@@ -534,11 +569,11 @@ public class ManagedRepositoryTest
 
         srcPaths.add(file1.getAbsolutePath());
         srcPaths.add(file2.getAbsolutePath());
-        ImportLocation data1 = importFileset(srcPaths);
+        ImportState data1 = importFileset(srcPaths);
 
         srcPaths.set(0, file3.getAbsolutePath());
         srcPaths.set(1, file4.getAbsolutePath());
-        ImportLocation data2 = importFileset(srcPaths);
+        ImportState data2 = importFileset(srcPaths);
 
         for (int index = 0; index < data1.usedFiles.size(); index++) {
             assertFileExists("Upload failed. File does not exist: ", pathToUsedFile(data1, index));
@@ -564,7 +599,7 @@ public class ManagedRepositoryTest
      * @throws InterruptedException unexpected
      * @throws LockTimeout unexpected
      */
-    protected void assertDeletePaths(ImportLocation data) throws ServerError,
+    protected void assertDeletePaths(ImportState data) throws ServerError,
             InterruptedException, LockTimeout {
         final String[] pathsToDelete = new String[data.usedFiles.size()];
         for (int index = 0; index < data.usedFiles.size(); index++) {
