@@ -113,6 +113,8 @@ public class ManagedImportProcessI extends AbstractAmdServant
 
         final Class<? extends FormatReader> readerClass;
 
+        ImportSettings settings;
+
         Fileset fs;
 
         FilesetState(int[] indexes, Class<? extends FormatReader> readerClass) {
@@ -200,11 +202,6 @@ public class ManagedImportProcessI extends AbstractAmdServant
     //
 
     /**
-     * The settings as passed in by the user. Never null.
-     */
-    private/* final */ImportSettings settings;
-
-    /**
      * The import location as defined by the managed repository during
      * importFileset. Never null.
      */
@@ -274,10 +271,6 @@ public class ManagedImportProcessI extends AbstractAmdServant
 
     public ImportProcessPrx getProxy() {
         return this.proxy;
-    }
-
-    public ImportSettings getImportSettings(Current __current) {
-        return this.settings;
     }
 
     //
@@ -403,6 +396,7 @@ public class ManagedImportProcessI extends AbstractAmdServant
             // a client doesn't pass the checksum, there's no way to verify
             // the upload.
         }
+        filesetState.settings = settings;
 
         List<String> clientPaths = null;
         if (settings.clientPaths != null) {
@@ -478,7 +472,8 @@ public class ManagedImportProcessI extends AbstractAmdServant
                     "Server currently only supports single filesets");
         }
 
-        Fileset fs = targets.get(0).fs;
+        FilesetState state = targets.get(0);
+        Fileset fs = state.fs;
         // i==0 is the upload job which is implicit.
         FilesetJobLink link = fs.getFilesetJobLink(0);
         repo.repositoryDao.updateJob(link.getChild(),
@@ -493,7 +488,7 @@ public class ManagedImportProcessI extends AbstractAmdServant
         req.repoUuid = repo.getRepoUuid();
         req.activity = link;
         req.location = location;
-        req.settings = settings;
+        req.settings = state.settings;
         final AMD_submit submit = repo.submitRequest(sf, req, this.current);
         this.handle = submit.ret;
         return submit.ret;
