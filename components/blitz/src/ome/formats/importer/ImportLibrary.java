@@ -46,6 +46,7 @@ import omero.cmd.Response;
 import omero.grid.ImportProcessPrx;
 import omero.grid.ImportRequest;
 import omero.grid.ImportResponse;
+import omero.grid.ImportSettings;
 import omero.grid.ManagedRepositoryPrx;
 import omero.grid.ManagedRepositoryPrxHelper;
 import omero.grid.RepositoryMap;
@@ -408,6 +409,14 @@ public class ImportLibrary implements IObservable
             throws FormatException, IOException, ServerError, InterruptedException
     {
         ImportProcessPrx proc = performUpload(container, index, numDone, total);
+        int count = proc.getFilesetCount();
+        if (count > 1) {
+            throw new RuntimeException("NYI");
+        }
+        // FIXME: for (int i = 0; i < count; i++) {
+        ImportConfig config = new ImportConfig();
+        ImportSettings settings = container.createSettings(config);
+        proc.createFileset(0, settings);
         return performImport(proc, container);
     }
 
@@ -447,7 +456,7 @@ public class ImportLibrary implements IObservable
     {
         // At this point the import is running, check handle for number of
         // steps.
-        final HandlePrx handle = process.getHandle();
+        final HandlePrx handle = process.startImport();
         final ImportRequest req = (ImportRequest) handle.getRequest();
         final Fileset fs = req.activity.getParent();
         final CmdCallbackI cb = createCallback(process, handle, container);

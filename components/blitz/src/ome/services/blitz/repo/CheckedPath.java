@@ -27,12 +27,8 @@ import java.util.List;
 import javax.activation.MimetypesFileTypeMap;
 
 import loci.formats.FormatException;
+import loci.formats.IFormatReader;
 import loci.formats.ReaderWrapper;
-
-import org.apache.commons.io.FileUtils;
-
-import com.google.common.collect.ImmutableSet;
-
 import ome.io.nio.FileBuffer;
 import ome.services.blitz.repo.path.FsFile;
 import ome.services.blitz.repo.path.ServerFilePathTransformer;
@@ -42,6 +38,10 @@ import ome.util.checksum.ChecksumProviderFactory;
 import ome.util.checksum.ChecksumType;
 import omero.ValidationException;
 import omero.model.ChecksumAlgorithm;
+
+import org.apache.commons.io.FileUtils;
+
+import com.google.common.collect.ImmutableSet;
 
 /**
  * To prevent frequently re-calculating paths and re-creating File objects,
@@ -382,12 +382,12 @@ public class CheckedPath {
     }
 
     /**
-     * Perform BioFormats {@link ReaderWrapper#setId(String)} for this file.
+     * Perform BioFormats {@link IFormatReader#setId(String)} for this file.
      * @param reader the BioFormats reader upon which to operate
      * @throws FormatException passed up from {@link ReaderWrapper#setId(String)}
      * @throws IOException passed up from {@link ReaderWrapper#setId(String)}
      */
-    public void bfSetId(ReaderWrapper reader) throws FormatException, IOException {
+    public void bfSetId(IFormatReader reader) throws FormatException, IOException {
         reader.setId(file.getPath());
     }
     

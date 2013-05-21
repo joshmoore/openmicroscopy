@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import loci.formats.FormatReader;
+import loci.formats.ImageReader;
 import ome.formats.importer.ImportConfig;
 import ome.services.blitz.impl.AbstractAmdServant;
 import ome.services.blitz.impl.ServiceFactoryI;
@@ -33,6 +34,7 @@ import ome.services.blitz.repo.path.FilePathNamingValidator;
 import ome.services.blitz.repo.path.FsFile;
 import ome.services.blitz.util.ServiceFactoryAware;
 import omero.ServerError;
+import omero.ValidationException;
 import omero.api.RawFileStorePrx;
 import omero.cmd.HandlePrx;
 import omero.grid.ImportLocation;
@@ -51,7 +53,6 @@ import omero.model.FilesetI;
 import omero.model.FilesetJobLink;
 import omero.model.FilesetVersionInfo;
 import omero.model.IndexingJobI;
-import omero.model.Job;
 import omero.model.MetadataImportJob;
 import omero.model.MetadataImportJobI;
 import omero.model.OriginalFile;
@@ -59,7 +60,9 @@ import omero.model.PixelDataJobI;
 import omero.model.ThumbnailGenerationJob;
 import omero.model.ThumbnailGenerationJobI;
 import omero.model.UploadJob;
+import omero.model.UploadJobI;
 import omero.sys.EventContext;
+import omero.util.IceMapper;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -111,15 +114,14 @@ public class ManagedImportProcessI extends AbstractAmdServant
          */
         final int[] indexes;
 
-        final Class<? extends FormatReader> readerClass;
+        Class<? extends FormatReader> readerClass;
 
         ImportSettings settings;
 
         Fileset fs;
 
-        FilesetState(int[] indexes, Class<? extends FormatReader> readerClass) {
+        FilesetState(int[] indexes) {
             this.indexes = indexes;
-            this.readerClass = readerClass;
         }
     }
 
@@ -244,6 +246,12 @@ public class ManagedImportProcessI extends AbstractAmdServant
         setApplicationContext(repo.context);
         // TODO: The above could be moved to SessionI.internalServantConfig as
         // long as we're careful to remove all other, redundant calls to setAC.
+
+        ChecksumAlgorithm ca = new ChecksumAlgorithmI();
+        ca.setValue(omero.rtypes.rstring("SHA1-160"));
+        // TODO: readerClass is actually a list!
+        location = suggestImportPaths(relFile, baseFile, userRequestedFsFiles,
+                null, ca, __current);
     }
 
     public void setServiceFactory(ServiceFactoryI sf) throws ServerError {
@@ -361,30 +369,21 @@ public class ManagedImportProcessI extends AbstractAmdServant
                     failingChecksums);
         }
 
-        // Now that all the files are in place and known to be valid
-        // we can run Bio-Formats over them and pick up the key files.
-        Class<? extends FormatReader> readerClass = null;
         // TODO: for the moment we're just assuming the first file
         // is the target, which is the standard at the moment.
         int[] indexes = new int[userRequestedFsFiles.size()];
         for (int i = 0; i < indexes.length; i++) {
             indexes[i]=i;
         }
-        targets.add(new FilesetState(indexes, readerClass));
+        targets.add(new FilesetState(indexes));
 
-        // TODO: readerClass is actually a list!
-        location = suggestImportPaths(relFile, baseFile, userRequestedFsFiles,
-                readerClass, ca, __current);
     }
 
+    @SuppressWarnings("unchecked")
     public Fileset createFileset(int index, ImportSettings settings,
             Current __current) throws ServerError {
 
-        // Initialization version info
         final FilesetState filesetState = targets.get(index);
-        final ImportConfig config = new ImportConfig(); // Inject? Include in log?
-        final String readerClass = filesetState.readerClass.getName();
-        final FilesetVersionInfo serverVersionInfo = config.createVersionInfo(readerClass);
 
         if (settings == null) {
             settings = new ImportSettings();
@@ -426,23 +425,25 @@ public class ManagedImportProcessI extends AbstractAmdServant
 
         }
 
+        // Use the first CheckedPath for Bio-Formats setId
+        ImageReader reader = new ImageReader();
+        try {
+            checkedPaths.get(0).bfSetId(reader);
+        } catch (Exception e) {
+            ValidationException ve = new ValidationException();
+            IceMapper.fillServerError(ve, e);
+            throw ve;
+        }
+        filesetState.readerClass = (Class) reader.getReader().getClass();
+
+        final ImportConfig config = new ImportConfig(); // Inject? Include in log? FIXME
+        final String readerClass = filesetState.readerClass.getName();
+        final FilesetVersionInfo serverVersionInfo = config.createVersionInfo(readerClass);
+
+
         // Create and validate jobs
-        if (fs.sizeOfJobLinks() != 1) {
-            throw new omero.ValidationException(null, null,
-                    "Found more than one job link. "+
-                    "Link only updateJob on creation!");
-        }
-        final FilesetJobLink jobLink = fs.getFilesetJobLink(0);
-        final Job job = jobLink.getChild();
-        if (job == null) {
-            throw new omero.ValidationException(null, null,
-                    "Found null-UploadJob on creation");
-        }
-        if (!(job instanceof UploadJob)) {
-            throw new omero.ValidationException(null, null,
-                    "Found non-UploadJob on creation: "+
-                    job.getClass().getName());
-        }
+        UploadJob update = new UploadJobI(); // FIXME: unclear of the value of this post upload. A log file perhaps?
+        fs.linkJob(update);
 
         MetadataImportJob metadata = new MetadataImportJobI();
         metadata.setVersionInfo(serverVersionInfo);
@@ -467,7 +468,7 @@ public class ManagedImportProcessI extends AbstractAmdServant
 
     public HandlePrx startImport(Current __current) throws ServerError {
 
-        if (targets.size() != 0) {
+        if (targets.size() != 1) {
             throw new omero.ValidationException(null, null,
                     "Server currently only supports single filesets");
         }
