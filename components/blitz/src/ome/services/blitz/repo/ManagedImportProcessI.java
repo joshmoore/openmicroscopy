@@ -330,11 +330,14 @@ public class ManagedImportProcessI extends AbstractAmdServant
                             hashes.size()));
         }
 
+        ChecksumAlgorithm ca = new ChecksumAlgorithmI();
+        ca.setValue(omero.rtypes.rstring("SHA1-160"));
+
         Map<Integer, String> failingChecksums = new HashMap<Integer, String>();
         for (int i = 0; i < size; i++) {
             FsFile fsFile = fsFiles.get(i);
             CheckedPath cp = repo.checkPath(fsFile.toString(),
-                    settings.checksumAlgorithm, this.current);
+                    ca, this.current);
             final String clientHash = hashes.get(i);
             final String serverHash = cp.hash();
             if (!clientHash.equals(serverHash)) {

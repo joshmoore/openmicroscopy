@@ -275,9 +275,11 @@ public class ImportLibrary implements IObservable
             final ChecksumProviderFactory cpf, final byte[] buf)
             throws ServerError, IOException {
 
+	omero.model.ChecksumAlgorithm ca = new omero.model.ChecksumAlgorithmI();
+	ca.setValue(omero.rtypes.rstring("SHA1-160")); // FIXME
+
         ChecksumProvider cp = cpf.getProvider(
-                ChecksumAlgorithmMapper.getChecksumType(
-                        proc.getImportSettings().checksumAlgorithm));
+                ChecksumAlgorithmMapper.getChecksumType(ca));
         String digestString = null;
         File file = new File(srcFiles[index]);
         long length = file.length();
