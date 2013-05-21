@@ -22,6 +22,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 
 import loci.formats.FormatException;
 import loci.formats.FormatReader;
@@ -408,61 +409,110 @@ public class ImportLibrary implements IObservable
                                     int numDone, int total)
             throws FormatException, IOException, ServerError, InterruptedException
     {
-        ImportProcessPrx proc = performUpload(container, index, numDone, total);
-        int count = proc.getFilesetCount();
-        if (count > 1) {
-            throw new RuntimeException("NYI");
+
+        UploadTask upload = new UploadTask(container, index, numDone, total);
+        upload.call();
+
+        final List<Pixels> combinedPixels = new ArrayList<Pixels>();
+        final ImportConfig config = new ImportConfig();
+        final ImportSettings settings = container.createSettings(config);
+        int count = upload.proc.getFilesetCount();
+        for (int i = 0; i < count; i++) {
+            FilesetTask task = new FilesetTask(upload, settings, 0);
+            combinedPixels.addAll(task.call());
         }
-        // FIXME: for (int i = 0; i < count; i++) {
-        ImportConfig config = new ImportConfig();
-        ImportSettings settings = container.createSettings(config);
-        proc.createFileset(0, settings);
-        return performImport(proc, container);
+        return combinedPixels;
     }
 
-    public ImportProcessPrx performUpload(ImportContainer container, int index,
-                                      int numDone, int total)
-            throws FormatException, IOException, ServerError
-    {
-        final ImportProcessPrx proc = createImport(container);
-        final String[] srcFiles = container.getUsedFiles();
-        final List<String> checksums = new ArrayList<String>();
+    public class UploadTask implements Callable<ImportProcessPrx> {
+
+        final ImportContainer container;
+        final int index;
+        final int numDone;
+        final int total;
+
+        ImportProcessPrx proc;
+        List<String> checksums;
         final byte[] buf = new byte[store.getDefaultBlockSize()];
         Map<Integer, String> failingChecksums = new HashMap<Integer, String>();
 
-        notifyObservers(new ImportEvent.FILESET_UPLOAD_START(
-                null, index, srcFiles.length, null, null, null));
-
-        for (int i = 0; i < srcFiles.length; i++) {
-            checksums.add(uploadFile(proc, srcFiles, i, checksumProviderFactory,
-                    buf));
+        public UploadTask(ImportContainer container, int index,
+                        int numDone, int total) {
+            this.container = container;
+            this.index = index;
+            this.numDone = numDone;
+            this.total = total;
         }
 
-        try {
-            proc.verifyUpload(checksums);
-            return proc;
-        } catch (ChecksumValidationException cve) {
-            failingChecksums = cve.failingChecksums;
-            throw cve;
-        } finally {
-            notifyObservers(new ImportEvent.FILESET_UPLOAD_END(
-                    null, index, srcFiles.length, null, null, srcFiles,
-                    checksums, failingChecksums, null));
+        public ImportProcessPrx call() throws ServerError, IOException {
+
+            proc = createImport(container);
+            final String[] srcFiles = container.getUsedFiles();
+            checksums = new ArrayList<String>(srcFiles.length);
+
+            notifyObservers(new ImportEvent.FILESET_UPLOAD_START(
+                    null, index, srcFiles.length, null, null, null));
+
+            for (int i = 0; i < srcFiles.length; i++) {
+                String clientChecksum = uploadFile(
+                        proc, srcFiles, i, checksumProviderFactory, buf);
+                checksums.add(clientChecksum);
+            }
+
+            try {
+                proc.verifyUpload(checksums);
+                return proc;
+            } catch (ChecksumValidationException cve) {
+                failingChecksums = cve.failingChecksums;
+                throw cve;
+            } finally {
+                notifyObservers(new ImportEvent.FILESET_UPLOAD_END(
+                        null, index, srcFiles.length, null, null, srcFiles,
+                        checksums, failingChecksums, null));
+            }
         }
     }
 
-    public List<Pixels> performImport(ImportProcessPrx process, ImportContainer container)
-            throws ServerError, InterruptedException
-    {
-        // At this point the import is running, check handle for number of
-        // steps.
-        final HandlePrx handle = process.startImport();
-        final ImportRequest req = (ImportRequest) handle.getRequest();
-        final Fileset fs = req.activity.getParent();
-        final CmdCallbackI cb = createCallback(process, handle, container);
-        cb.loop(60*60, 1000); // Wait 1 hr per step.
-        final ImportResponse rsp = getImportResponse(cb, container, fs);
-        return rsp.pixels;
+    public class FilesetTask implements Callable<List<Pixels>> {
+
+        final int loops;
+        final int millisWait;
+        final UploadTask upload;
+        final int index;
+        final ImportSettings settings;
+
+        HandlePrx handle;
+        ImportRequest req;
+        Fileset fs;
+        CmdCallbackI cb;
+        ImportResponse rsp;
+        List<Pixels> pixels;
+
+        public FilesetTask(UploadTask upload, ImportSettings settings, int index) throws ServerError {
+            this(upload, settings, index, 60*60, 1000); // Wait 1 hr per step
+        }
+
+        public FilesetTask(UploadTask upload, ImportSettings settings,
+                int index, int loops, int millisWait)
+                throws ServerError {
+            this.upload = upload;
+            this.settings = settings;
+            this.index = index;
+            this.loops = loops;
+            this.millisWait = millisWait;
+            fs = upload.proc.createFileset(0, settings);
+        }
+
+        public List<Pixels> call() throws ServerError, InterruptedException {
+            handle = upload.proc.startImport();
+            req = (ImportRequest) handle.getRequest();
+            fs = req.activity.getParent();
+            cb = createCallback(upload.proc, handle, upload.container);
+            cb.loop(loops, millisWait);
+            rsp = getImportResponse(cb, upload.container, fs);
+            pixels = rsp.pixels;
+            return pixels;
+        }
     }
 
     @SuppressWarnings("serial")
