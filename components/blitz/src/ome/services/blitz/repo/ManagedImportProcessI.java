@@ -166,14 +166,19 @@ public class ManagedImportProcessI extends AbstractAmdServant
      */
     private final FsFile relFile;
 
-    private final FsFile baseFile;
+    /**
+     * May be modified by {@link #trimPaths(Class)}
+     */
+    private FsFile baseFile;
 
     /**
      * {@link FsFile} instances parsed from the {@link #clientPaths} provided
      * by the client. These contain only the requested user paths, not the
      * final paths with the final, template-based location.
+     *
+     * May be modified by {@link #trimPaths(Class)}
      */
-    private final List<FsFile> userRequestedFsFiles;
+    private List<FsFile> userRequestedFsFiles;
 
     /**
      * SessionI/ServiceFactoryI that this process is running in.
@@ -249,9 +254,9 @@ public class ManagedImportProcessI extends AbstractAmdServant
 
         ChecksumAlgorithm ca = new ChecksumAlgorithmI();
         ca.setValue(omero.rtypes.rstring("SHA1-160"));
-        // TODO: readerClass is actually a list!
-        location = suggestImportPaths(relFile, baseFile, userRequestedFsFiles,
-                null, ca, __current);
+        // TODO: readerClass is actually a list! Requires upload area.
+        trimPaths(null);
+        location = suggestImportPaths(ca, __current);
     }
 
     public void setServiceFactory(ServiceFactoryI sf) throws ServerError {
@@ -554,36 +559,29 @@ public class ManagedImportProcessI extends AbstractAmdServant
      * upload area, and provide an import location instance whose paths
      * correspond to existing directories corresponding to the sanitized
      * file paths.
-     * @param relPath Path parsed from the template
-     * @param basePath Common base of all the listed paths ("/my/path")
-     * @param reader BioFormats reader for data, may be null
      * @param checksumAlgorithm the checksum algorithm to use in verifying the integrity of uploaded files
      * @return {@link ImportLocation} instance
      */
-    protected ImportLocation suggestImportPaths(FsFile relPath, FsFile basePath, List<FsFile> paths,
-            Class<? extends FormatReader> reader, ChecksumAlgorithm checksumAlgorithm, Ice.Current __current)
+    protected ImportLocation suggestImportPaths(ChecksumAlgorithm checksumAlgorithm, Ice.Current __current)
                     throws omero.ServerError {
-        final Paths trimmedPaths = trimPaths(basePath, paths, reader);
-        basePath = trimmedPaths.basePath;
-        paths = trimmedPaths.fullPaths;
 
         // validate paths
-        this.filePathNamingValidator.validateFilePathNaming(relPath);
-        this.filePathNamingValidator.validateFilePathNaming(basePath);
-        for (final FsFile path : paths) {
+        this.filePathNamingValidator.validateFilePathNaming(relFile);
+        this.filePathNamingValidator.validateFilePathNaming(baseFile);
+        for (final FsFile path : userRequestedFsFiles) {
             this.filePathNamingValidator.validateFilePathNaming(path);
         }
 
         // Static elements which will be re-used throughout
         final ManagedImportLocationI data = new ManagedImportLocationI(); // Return value
-        data.logFile = repo.checkPath(relPath.toString()+".log", checksumAlgorithm, __current);
+        data.logFile = repo.checkPath(relFile.toString()+".log", checksumAlgorithm, __current);
 
         // try actually making directories
-        final FsFile newBase = FsFile.concatenate(relPath, basePath);
+        final FsFile newBase = FsFile.concatenate(relFile, baseFile);
         data.sharedPath = newBase.toString();
-        data.checkedPaths = new ArrayList<CheckedPath>(paths.size());
-        for (final FsFile path : paths) {
-            final String relativeToEnd = path.getPathFrom(basePath).toString();
+        data.checkedPaths = new ArrayList<CheckedPath>(userRequestedFsFiles.size());
+        for (final FsFile path : userRequestedFsFiles) {
+            final String relativeToEnd = path.getPathFrom(baseFile).toString();
             final String fullRepoPath = data.sharedPath + FsFile.separatorChar + relativeToEnd;
             // FIXME: Why is CheckedPath created with "new" here? That should
             // be avoided since each servant could specifiy it's own implementation.
@@ -606,36 +604,35 @@ public class ManagedImportProcessI extends AbstractAmdServant
 
 
     /**
-     * Trim off the start of long client-side paths.
+     * Trim off the start of long client-side paths in place.
      * @param basePath the common root
      * @param fullPaths the full paths from the common root down to the filename
      * @param readerClass BioFormats reader for data, may be null
      * @return possibly trimmed common root and full paths
      */
-    protected Paths trimPaths(FsFile basePath, List<FsFile> fullPaths,
-            Class<? extends FormatReader> readerClass) {
+    protected void trimPaths(Class<? extends FormatReader> readerClass) {
         // find how many common parent directories to retain according to BioFormats
         Integer commonParentDirsToRetain = null;
-        final String[] localStylePaths = new String[fullPaths.size()];
+        final String[] localStylePaths = new String[userRequestedFsFiles.size()];
         int index = 0;
-        for (final FsFile fsFile : fullPaths)
+        for (final FsFile fsFile : userRequestedFsFiles)
             localStylePaths[index++] = repo.serverPaths.getServerFileFromFsFile(fsFile).getAbsolutePath();
         try {
             commonParentDirsToRetain = readerClass.newInstance().getRequiredDirectories(localStylePaths);
         } catch (Exception e) { }
 
-        final List<String> basePathComponents = basePath.getComponents();
+        final List<String> basePathComponents = baseFile.getComponents();
         final int baseDirsToTrim;
         if (commonParentDirsToRetain == null) {
             // no help from BioFormats
 
             // find the length of the shortest path, including file name
             int smallestPathLength;
-            if (fullPaths.isEmpty())
+            if (userRequestedFsFiles.isEmpty())
                 smallestPathLength = 1; /* imaginary file name */
             else {
                 smallestPathLength = Integer.MAX_VALUE;
-                for (final FsFile path : fullPaths) {
+                for (final FsFile path : userRequestedFsFiles) {
                     final int pathLength = path.getComponents().size();
                     if (smallestPathLength > pathLength)
                         smallestPathLength = pathLength;
@@ -648,28 +645,18 @@ public class ManagedImportProcessI extends AbstractAmdServant
         else
             // plan to trim the common root according to BioFormats' suggestion
             baseDirsToTrim = basePathComponents.size() - commonParentDirsToRetain;
+
         if (baseDirsToTrim < 0)
-            return new Paths(basePath, fullPaths);
+            return; // EARLY EXIT
+
         // actually do the trimming
-        basePath = new FsFile(basePathComponents.subList(baseDirsToTrim, basePathComponents.size()));
-        final List<FsFile> trimmedPaths = new ArrayList<FsFile>(fullPaths.size());
-        for (final FsFile path : fullPaths) {
+        baseFile = new FsFile(basePathComponents.subList(baseDirsToTrim, basePathComponents.size()));
+        final List<FsFile> trimmedPaths = new ArrayList<FsFile>(userRequestedFsFiles.size());
+        for (final FsFile path : userRequestedFsFiles) {
             final List<String> pathComponents = path.getComponents();
             trimmedPaths.add(new FsFile(pathComponents.subList(baseDirsToTrim, pathComponents.size())));
         }
-        return new Paths(basePath, trimmedPaths);
-    }
-
-
-    /** Return value for {@link #trimPaths}. */
-    private static class Paths {
-        final FsFile basePath;
-        final List<FsFile> fullPaths;
-
-        Paths(FsFile basePath, List<FsFile> fullPaths) {
-            this.basePath = basePath;
-            this.fullPaths = fullPaths;
-        }
+        this.userRequestedFsFiles = trimmedPaths;
     }
 
 }
