@@ -50,13 +50,6 @@ import Ice.Current;
  */
 public class ProcessCreator {
 
-    public interface DirectoryMaker {
-
-        void makeDir(String path, boolean parents, Current __current)
-                throws ServerError;
-
-    }
-
     public interface ProcessState {
         Ice.Current getCurrent();
     }
@@ -89,7 +82,7 @@ public class ProcessCreator {
 
     /**
      */
-    public ProcessContainer.Process createProcess(DirectoryMaker dirMaker,
+    public ProcessContainer.Process createProcess(ManagedRepositoryI repo,
             List<FsFile> fsFiles,
             Ice.Current __current) throws ServerError {
 
@@ -101,7 +94,7 @@ public class ProcessCreator {
         // ManagedRepository/, e.g. %user%/%year%/etc.
         FsFile relPath = new FsFile(expandTemplate(__current));
         // at this point, relPath should not yet exist on the filesystem
-        createTemplateDir(dirMaker, relPath, __current);
+        createTemplateDir(repo, relPath, __current);
 
         // The next part of the string which is chosen by the user:
         // /home/bob/myStuff
@@ -109,12 +102,13 @@ public class ProcessCreator {
 
         // If any two files clash in that chosen basePath directory, then
         // we'' want to suggest a similar alternative.
-        return newProcess(relPath, basePath, fsFiles, __current);
+        return newProcess(repo, relPath, basePath, fsFiles, __current);
     }
 
-    protected ProcessContainer.Process newProcess(FsFile relPath, FsFile basePath,
+    protected ProcessContainer.Process newProcess(ManagedRepositoryI repo,
+            FsFile relPath, FsFile basePath,
             List<FsFile> fsFiles, Ice.Current __current) throws ServerError {
-        return new ManagedImportProcessI(null, namingValidator, relPath, basePath, fsFiles, __current);
+        return new ManagedImportProcessI(repo, namingValidator, relPath, basePath, fsFiles, __current);
     }
 
     /**
@@ -212,7 +206,7 @@ public class ProcessCreator {
      * starting at the top, until all the directories have been created.
      * The full path must not already exist, although a prefix of it may.
      */
-    protected void createTemplateDir(DirectoryMaker dirMaker, FsFile relPath,
+    protected void createTemplateDir(ManagedRepositoryI repo, FsFile relPath,
             Ice.Current curr) throws ServerError {
 
         final List<String> relPathComponents = relPath.getComponents();
@@ -221,9 +215,9 @@ public class ProcessCreator {
             throw new IllegalArgumentException("no template directory");
         if (relPathSize > 1) {
             final List<String> pathPrefix = relPathComponents.subList(0, relPathSize - 1);
-            dirMaker.makeDir(new FsFile(pathPrefix).toString(), true, curr);
+            repo.makeDir(new FsFile(pathPrefix).toString(), true, curr);
         }
-        dirMaker.makeDir(relPath.toString(), false, curr);
+        repo.makeDir(relPath.toString(), false, curr);
     }
 
     protected String getUserDirectoryName(Current __current) {

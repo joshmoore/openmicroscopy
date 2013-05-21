@@ -52,7 +52,7 @@ import Ice.Current;
  * @since 5.0
  */
 public class ManagedRepositoryI extends PublicRepositoryI
-    implements _ManagedRepositoryOperations, ProcessCreator.DirectoryMaker {
+    implements _ManagedRepositoryOperations {
 
     private final static Logger log = LoggerFactory.getLogger(ManagedRepositoryI.class);
 
