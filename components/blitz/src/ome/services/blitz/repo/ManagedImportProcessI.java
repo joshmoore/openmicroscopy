@@ -166,9 +166,10 @@ public class ManagedImportProcessI extends AbstractAmdServant
 
     /**
      * {@link FsFile} instances parsed from the {@link #clientPaths} provided
-     * by the client.
+     * by the client. These contain only the requested user paths, not the
+     * final paths with the final, template-based location.
      */
-    private final List<FsFile> fsFiles;
+    private final List<FsFile> userRequestedFsFiles;
 
     /**
      * SessionI/ServiceFactoryI that this process is running in.
@@ -233,7 +234,7 @@ public class ManagedImportProcessI extends AbstractAmdServant
         this.repo = repo;
         this.relFile = relFile;
         this.baseFile = baseFile;
-        this.fsFiles = fsFiles;
+        this.userRequestedFsFiles = fsFiles;
         this.filePathNamingValidator = filePathNamingValidator;
         // Note: initialization of
         //    Fileset fs, ImportLocation location, ImportSettings settings
@@ -250,6 +251,11 @@ public class ManagedImportProcessI extends AbstractAmdServant
 
     public void setServiceFactory(ServiceFactoryI sf) throws ServerError {
         this.sf = sf;
+    }
+
+    public FsFile getFsFile(int index) {
+        FsFile fsFile = userRequestedFsFiles.get(index);
+        return FsFile.concatenate(relFile, fsFile);
     }
 
     /**
@@ -301,7 +307,7 @@ public class ManagedImportProcessI extends AbstractAmdServant
             return state.prx; // EARLY EXIT!
         }
 
-        final FsFile fsFile = fsFiles.get(i);
+        final FsFile fsFile = getFsFile(i);
 
         boolean success = false;
         RawFileStorePrx prx = repo.file(fsFile.toString(), "rw", this.current);
@@ -330,7 +336,7 @@ public class ManagedImportProcessI extends AbstractAmdServant
     public void verifyUpload(List<String> hashes, Current __current)
             throws ServerError {
 
-        final int size = fsFiles.size();
+        final int size = userRequestedFsFiles.size();
         if (hashes == null) {
             throw new omero.ApiUsageException(null, null,
                     "hashes list cannot be null");
@@ -345,7 +351,7 @@ public class ManagedImportProcessI extends AbstractAmdServant
 
         Map<Integer, String> failingChecksums = new HashMap<Integer, String>();
         for (int i = 0; i < size; i++) {
-            FsFile fsFile = fsFiles.get(i);
+            FsFile fsFile = getFsFile(i);
             CheckedPath cp = repo.checkPath(fsFile.toString(),
                     ca, this.current);
             final String clientHash = hashes.get(i);
@@ -367,15 +373,15 @@ public class ManagedImportProcessI extends AbstractAmdServant
         Class<? extends FormatReader> readerClass = null;
         // TODO: for the moment we're just assuming the first file
         // is the target, which is the standard at the moment.
-        int[] indexes = new int[fsFiles.size()];
+        int[] indexes = new int[userRequestedFsFiles.size()];
         for (int i = 0; i < indexes.length; i++) {
             indexes[i]=i;
         }
         targets.add(new FilesetState(indexes, readerClass));
 
         // TODO: readerClass is actually a list!
-        location = suggestImportPaths(relFile, baseFile, fsFiles, readerClass,
-                settings.checksumAlgorithm, __current);
+        location = suggestImportPaths(relFile, baseFile, userRequestedFsFiles,
+                readerClass, ca, __current);
     }
 
     public Fileset createFileset(int index, ImportSettings settings,
@@ -410,7 +416,7 @@ public class ManagedImportProcessI extends AbstractAmdServant
 
         final Fileset fs = new FilesetI();
         for (int i : filesetState.indexes) {
-            final FsFile fsFile = fsFiles.get(i);
+            final FsFile fsFile = getFsFile(i);
             final FilesetEntry entry = new FilesetEntryI();
             final CheckedPath checked = repo.checkPath(fsFile.toString(),
                     settings.checksumAlgorithm, __current);
