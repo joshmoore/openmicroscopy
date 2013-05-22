@@ -254,8 +254,9 @@ public class ManagedImportProcessI extends AbstractAmdServant
 
         ChecksumAlgorithm ca = new ChecksumAlgorithmI();
         ca.setValue(omero.rtypes.rstring("SHA1-160"));
-        // TODO: readerClass is actually a list! Requires upload area.
-        trimPaths(null);
+
+        int commonParentDirsToRetain = dirsToRetain(/* FIXME */); 
+        trimPaths(commonParentDirsToRetain);
         location = suggestImportPaths(ca, __current);
     }
 
@@ -605,25 +606,17 @@ public class ManagedImportProcessI extends AbstractAmdServant
 
     /**
      * Trim off the start of long client-side paths in place.
-     * @param basePath the common root
-     * @param fullPaths the full paths from the common root down to the filename
-     * @param readerClass BioFormats reader for data, may be null
+     *
+     * @param commonParentDirsToRetain number of directories to retain or -1
+     *          if interrogating the {@link FormatReader} implementations was
+     *          not possible.
      * @return possibly trimmed common root and full paths
      */
-    protected void trimPaths(Class<? extends FormatReader> readerClass) {
-        // find how many common parent directories to retain according to BioFormats
-        Integer commonParentDirsToRetain = null;
-        final String[] localStylePaths = new String[userRequestedFsFiles.size()];
-        int index = 0;
-        for (final FsFile fsFile : userRequestedFsFiles)
-            localStylePaths[index++] = repo.serverPaths.getServerFileFromFsFile(fsFile).getAbsolutePath();
-        try {
-            commonParentDirsToRetain = readerClass.newInstance().getRequiredDirectories(localStylePaths);
-        } catch (Exception e) { }
+    protected void trimPaths(int commonParentDirsToRetain) {
 
         final List<String> basePathComponents = baseFile.getComponents();
         final int baseDirsToTrim;
-        if (commonParentDirsToRetain == null) {
+        if (commonParentDirsToRetain == -1) {
             // no help from BioFormats
 
             // find the length of the shortest path, including file name
@@ -650,13 +643,46 @@ public class ManagedImportProcessI extends AbstractAmdServant
             return; // EARLY EXIT
 
         // actually do the trimming
-        baseFile = new FsFile(basePathComponents.subList(baseDirsToTrim, basePathComponents.size()));
+        // baseFile = new FsFile(basePathComponents.subList(baseDirsToTrim, basePathComponents.size()));
         final List<FsFile> trimmedPaths = new ArrayList<FsFile>(userRequestedFsFiles.size());
         for (final FsFile path : userRequestedFsFiles) {
-            final List<String> pathComponents = path.getComponents();
-            trimmedPaths.add(new FsFile(pathComponents.subList(baseDirsToTrim, pathComponents.size())));
+            // FIXME: moving files into an ".inprogress" folder with no trimming at all
+            // FIXME final List<String> pathComponents = path.getComponents();
+            final List<String> pathComponents = new ArrayList<String>();
+            pathComponents.add(".inprogress");
+            pathComponents.addAll(path.getComponents());
+            // FIXME trimmedPaths.add(new FsFile(pathComponents.subList(baseDirsToTrim, pathComponents.size())));
+            trimmedPaths.add(new FsFile(pathComponents.subList(0, pathComponents.size())));
         }
         this.userRequestedFsFiles = trimmedPaths;
     }
 
+    /**
+     * find how many common parent directories to retain according to BioFormats
+
+     * @param readerClasses
+     * @return
+     */
+    protected int dirsToRetain(Class<? extends FormatReader>...readerClasses) {
+        final String[] localStylePaths = new String[userRequestedFsFiles.size()];
+        int index = 0;
+        for (final FsFile fsFile : userRequestedFsFiles) {
+            localStylePaths[index++] = repo.serverPaths.getServerFileFromFsFile(fsFile).getAbsolutePath();
+        }
+
+        int commonParentDirsToRetain = -1;
+            for (Class<? extends FormatReader> readerClass : readerClasses) {
+                try {
+                    FormatReader reader = readerClass.newInstance();
+                    int requiredDirs = reader.getRequiredDirectories(localStylePaths);
+                    if (requiredDirs > commonParentDirsToRetain) {
+                        commonParentDirsToRetain = requiredDirs;
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to instantiate reader class: {}", readerClass);
+                    continue;
+                }
+            }
+        return commonParentDirsToRetain;
+    }
 }

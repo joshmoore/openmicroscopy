@@ -535,7 +535,7 @@ public class PublicRepositoryI implements _RepositoryOperations, ApplicationCont
      * @return
      * @throws ServerError
      */
-    Ice.ObjectPrx registerServant(Ice.Object tie,
+    protected Ice.ObjectPrx registerServant(Ice.Object tie,
             AbstractAmdServant servant, Ice.Current current)
                     throws ServerError {
 
