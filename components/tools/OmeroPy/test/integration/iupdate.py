@@ -57,8 +57,8 @@ class TestIUpdate(lib.ITest):
         dil.child = image_saved.proxy()
         dil_saved = self.update.saveAndReturnObject(dil)
 
-        # The following line makes this test pass, but it should not be needed.
-        # image_saved = self.query.get('Image', image_saved.id.val)
+        # Save on image to prevent the later delete
+        image_saved.addDatasetImageLink(dil_saved)
 
         image_saved.fileset = fileset_saved.proxy()
         self.update.saveAndReturnObject(image_saved)
