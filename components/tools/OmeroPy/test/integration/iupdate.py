@@ -52,12 +52,16 @@ class TestIUpdate(lib.ITest):
         fileset = omero.model.FilesetI()
         fileset_saved = self.update.saveAndReturnObject(fileset)
 
-        image_saved.fileset = fileset_saved
-
         dil = omero.model.DatasetImageLinkI()
         dil.parent = dataset_saved.proxy()
-        dil.child = image_saved
+        dil.child = image_saved.proxy()
         dil_saved = self.update.saveAndReturnObject(dil)
+
+        # The following line makes this test pass, but it should not be needed.
+        # image_saved = self.query.get('Image', image_saved.id.val)
+
+        image_saved.fileset = fileset_saved.proxy()
+        self.update.saveAndReturnObject(image_saved)
 
         image_retrieved = self.query.get('Image', image_saved.id.val)
 
