@@ -7,9 +7,6 @@
 
 package ome.services.graphs;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -149,8 +146,6 @@ public abstract class GraphStep {
     private String savepoint = null;
 
     private boolean rollbackOnly = false;
-
-    private boolean softOnReap = false;
 
     public GraphStep(ExtendedMetadata em, int idx, List<GraphStep> stack,
             GraphSpec spec, GraphEntry entry, long[] ids) {
@@ -437,37 +432,41 @@ public abstract class GraphStep {
         }
     }
 
-    /**
-     * If the table/id pair for this step is not already contained in the cache,
-     * then add them. Otherwise, reduce our own operation to something less than
-     * REAP.
-     *
-     * @param reapTableIds
-     */
-    public void handleReap(HashMultimap<String, Long> reapTableIds) {
-
-        if (ids == null) {
-            // This is a superspec and therefore doesn't contain a concrete
-            // id that should be added to the table.
-            return; //EARLY EXIT
+    protected QueryBuilder optionalNullBuilder() {
+        QueryBuilder nullOp = null;
+        if (entry.isNull()) { // WORKAROUND see #2776, #2966
+            // If this is a null operation, we don't want to modify the source
+            // row,
+            // but modify a second row pointing at the source row via a FK.
+            //
+            // NB: below we also prevent this from
+            // being raised as an event. TODO: refactor out to Op
+            //
+            nullOp = new QueryBuilder();
+            if (table.contains("Job")) {
+                nullOp.update("UploadJob");
+                nullOp.append("set versionInfo = null ");
+                nullOp.where();
+                nullOp.and("id = :id");
+            } else {
+                nullOp.update(table);
+                nullOp.append("set relatedTo = null ");
+                nullOp.where();
+                nullOp.and("relatedTo.id = :id");
+            }
         }
-
-        // Attempting to turn on reaping for all items.
-        // if (!entry.isReap()) {
-        //    return; // EARLY EXIT.
-        // }
-
-        Long reapId = ids[ids.length-1];
-        if (reapTableIds.containsEntry(table, id)) {
-            logPhase("softOnReap");
-            softOnReap = true;
-        } else {
-            reapTableIds.put(table, reapId);
-        }
+        return nullOp;
     }
 
-    public boolean markedReap() {
-        return softOnReap;
+    protected void optionallyNullField(Session session, Long id) {
+        final QueryBuilder nullOp = optionalNullBuilder();
+        if (nullOp != null) {
+            nullOp.param("id", id);
+            Query q = nullOp.query(session);
+            int updated = q.executeUpdate();
+            if (log.isDebugEnabled()) {// FIXME: logging.
+                log.debug("Nulled " + updated + " Pixels.relatedTo fields");
+            }
+        }
     }
-
 }
