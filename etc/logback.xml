@@ -19,6 +19,12 @@
       <pattern>%date %-5level [%40.40logger{40}] \(%10.10thread\) %msg%n</pattern>
     </encoder>
 
+    <filter class="ch.qos.logback.classic.filter.LevelFilter">
+      <level>INFO</level>
+      <onMatch>ACCEPT</onMatch>
+      <onMismatch>DENY</onMismatch>
+    </filter>
+
   </appender>
 
 
@@ -40,6 +46,9 @@
         </encoder>
       </appender>
     </sift>
+    <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+      <level>DEBUG</level>
+    </filter>
   </appender>
 
 
@@ -57,12 +66,6 @@
   <logger name="org.perf4j.TimingLogger">
     <level value="INFO"/>
     <appender-ref ref="CoalescingStatistics"/>
-  </logger>
-
-  <!-- Import logs //////////////////////////////////////////////////////////// -->
-  <logger name="ome.services.blitz.repo.ManagedImportRequestI">
-    <level value="DEBUG"/>
-    <appender-ref ref="SIFT"/>
   </logger>
 
   <!-- All below are ROOT loggers -->
@@ -132,6 +135,22 @@
   <logger name="org.hibernate.pretty" level="ERROR"/>
   <logger name="org.hibernate.type" level="ERROR"/>
   <logger name="org.hibernate.validator" level="ERROR"/>
+
+    <!-- Import logs //////////////////////////////////////////////////////////// -->
+  <logger name="ome">
+    <level value="DEBUG"/>
+    <appender-ref ref="SIFT"/>
+  </logger>
+
+  <logger name="omero">
+    <level value="DEBUG"/>
+    <appender-ref ref="SIFT"/>
+  </logger>
+
+  <logger name="loci">
+    <level value="DEBUG"/>
+    <appender-ref ref="SIFT"/>
+  </logger>
 
   <root level="OFF">
     <appender-ref ref="FILE"/>
