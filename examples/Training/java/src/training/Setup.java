@@ -26,7 +26,7 @@ package training;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
-import java.util.Properties;
+import Ice.Properties;
 
 
 /**
@@ -60,18 +60,8 @@ public class Setup {
 	 */
 	private Properties loadConfig(String file)
 	{
-		Properties config = new Properties();
-		InputStream fis = null;
-		try {
-			fis = new FileInputStream(file);
-			config.load(fis);
-		} catch (Exception e) {
-			return null;
-		} finally {
-			try {
-				if (fis != null) fis.close();
-			} catch (Exception ex) {}
-		}
+		Ice.Communicator ic = Ice.Util.initialize(new String[]{"--Ice.Config="+file});
+		Properties config = ic.getProperties();
 		return config;
 	}
 	
@@ -100,23 +90,7 @@ public class Setup {
 		//homeDir = "";
 		//Read the configuration file.
 		Properties p = loadConfig(resolveFilePath(CONFIG_FILE, CONFIG_DIR));
-		ConfigurationInfo info = null;
-		try {
-			info = new ConfigurationInfo();
-			info.setHostName(p.getProperty("omero.hostname"));
-			info.setPassword(p.getProperty("omero.password"));
-			info.setUserName(p.getProperty("omero.username"));
-			info.setImageId(Long.parseLong(p.getProperty("omero.imageId")));
-			info.setDatasetId(Long.parseLong(p.getProperty("omero.datasetId")));
-			info.setProjectId(Long.parseLong(p.getProperty("omero.projectId")));
-			info.setPlateId(Long.parseLong(p.getProperty("omero.plateId")));
-			info.setPlateAcquisitionId(Long.parseLong(
-					p.getProperty("omero.plateAcquisitionId")));
-		} catch (Exception e) {
-			e.printStackTrace();
-			//wrong configuration
-			info = null;
-		}
+		ConfigurationInfo info = new ConfigurationInfo(p);
 		new Connector(info);
 		new CreateImage(info);
 		new DeleteData(info);

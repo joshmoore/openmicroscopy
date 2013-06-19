@@ -26,6 +26,7 @@ package training;
 //Java imports
 
 //Third-party libraries
+import Ice.Properties;
 
 //Application-internal dependencies
 
