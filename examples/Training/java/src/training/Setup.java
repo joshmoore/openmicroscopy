@@ -89,8 +89,13 @@ public class Setup {
 	{
 		//homeDir = "";
 		//Read the configuration file.
-		Properties p = loadConfig(resolveFilePath(CONFIG_FILE, CONFIG_DIR));
-		ConfigurationInfo info = new ConfigurationInfo(p);
+		ConfigurationInfo info = null;
+		if (System.getenv("ICE_CONFIG") == null) {
+			Properties p = loadConfig(resolveFilePath(CONFIG_FILE, CONFIG_DIR));
+			info = new ConfigurationInfo(p);
+		} else {
+			info = new ConfigurationInfo();
+		}
 		new Connector(info);
 		new CreateImage(info);
 		new DeleteData(info);
