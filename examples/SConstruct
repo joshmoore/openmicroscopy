@@ -183,7 +183,7 @@ else:
 #
 # Helpers
 #
-def get_targets(env, subdir, name):
+def get_targets(env, subdir, name, source_dir=None):
 
     targets = []
 
@@ -193,7 +193,8 @@ def get_targets(env, subdir, name):
         targets.append(javac)
         if env["run"] or env["run_java"]:
             env['ENV']['CLASSPATH'] = os.path.pathsep.join([ env['ENV']['CLASSPATH'], subdir ])
-            run = env.Alias(_(["%s"%subdir, "%s.class"%name]), [], "java -ea %s " % name)
+            file = name.replace("[.]", os.path.sep)
+            run = env.Alias(_([subdir, "%s.class"%file]), [], "java -ea %s " % name)
             Depends(run, javac)
             env.AlwaysBuild(run)
             targets.append(run)
