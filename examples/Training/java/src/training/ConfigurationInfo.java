@@ -72,13 +72,51 @@ public class ConfigurationInfo
 	
 	/** The id of a project.*/
 	private long projectId;
-	
-	/** Creates a new instance.*/
+
+	/** Properties passed to the constructor */
+	private final Properties properties;
+
+	/** Creates a new instance using ICE_CONFIG.*/
 	public ConfigurationInfo()
 	{
-		setPort(DEFAULT_PORT);
+		this(Ice.Util.initialize().getProperties());
 	}
-	
+
+	/** Creates a new instance.*/
+	public ConfigurationInfo(Properties properties)
+	{
+		this.properties = properties;
+		setPort(DEFAULT_PORT);
+		String host = getProperty("host");
+		if (host != null) setHostName(host);
+		String port = getProperty("port");
+		if (port != null) setPort(Integer.valueOf(port));
+		String password = getProperty("pass");
+		if (password != null) setPassword(password);
+		String user = getProperty("user");
+		if (user != null) setUserName(user);
+		String imageId = getProperty("imageId");
+		if (imageId != null) setImageId(Long.valueOf(imageId));
+		String datasetId = getProperty("datasetId");
+		if (datasetId != null) setDatasetId(Long.valueOf(datasetId));
+		String projectId = getProperty("projectId");
+		if (projectId != null) setProjectId(Long.valueOf(projectId));
+		String plateId = getProperty("plateId");
+		if (plateId != null) setPlateId(Long.valueOf(plateId));
+		String plateAcquisitionId = getProperty("plateAcquisitionId");
+		if (plateAcquisitionId != null) setPlateAcquisitionId(Long.valueOf(plateAcquisitionId));
+	}
+
+	private String getProperty(String key)
+	{
+		String value = properties.getPropertyWithDefault("omero."+key, "");
+		System.out.println(String.format("Searching for %s found %s", key, value));
+		if (value == null || value.length() == 0) {
+			return null;
+		}
+		return value;
+	}
+
 	/**
 	 * Returns the hostname.
 	 * 
