@@ -418,7 +418,7 @@ public class ImportLibrary implements IObservable
         final ImportSettings settings = container.createSettings(config);
         int count = upload.proc.getFilesetCount();
         for (int i = 0; i < count; i++) {
-            FilesetTask task = new FilesetTask(upload, settings, 0);
+            FilesetTask task = new FilesetTask(upload, settings, i);
             combinedPixels.addAll(task.call());
         }
         return combinedPixels;
