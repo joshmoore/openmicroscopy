@@ -1,24 +1,20 @@
 /*
- * ome.formats.importer.gui.GuiCommonElements
+ * Copyright (C) 2006-2013 University of Dundee & Open Microscopy Environment.
+ * All rights reserved.
  *
- *------------------------------------------------------------------------------
- *  Copyright (C) 2006-2008 University of Dundee. All rights reserved.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- *
- *------------------------------------------------------------------------------
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
 package ome.formats.importer;
@@ -31,17 +27,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import ome.services.blitz.repo.path.ClientFilePathTransformer;
-import ome.services.blitz.repo.path.FsFile;
 import omero.grid.ImportSettings;
 import omero.model.Annotation;
-import omero.model.Fileset;
-import omero.model.FilesetEntry;
-import omero.model.FilesetEntryI;
-import omero.model.FilesetVersionInfo;
-import omero.model.FilesetVersionInfoI;
-import omero.model.UploadJob;
-import omero.model.UploadJobI;
 import omero.model.IObject;
 
 public class ImportContainer
