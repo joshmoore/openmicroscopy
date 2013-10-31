@@ -20,12 +20,23 @@ finally:
     del __save__
 
 sys = __import__("sys")
-import traceback, threading, logging
+
+import traceback
+import threading
+import logging
+import collections
+
 import IceImport, Ice
 import omero_ext.uuid as uuid # see ticket:3774
 
 IceImport.load("Glacier2_Router_ice")
 import Glacier2
+
+
+WriteInfo = collections.namedtuple(
+    "WriteInfo",
+    ["block_size", "bytes_written", "checksum", "original_file"])
+
 
 class BaseClient(object):
     """
@@ -693,6 +704,12 @@ class BaseClient(object):
                     rfs.write(block, offset, len(block))
                     offset += len(block)
                 rfs.truncate(offset) # ticket:2337
+
+                ofile = rfs.save()
+                return WriteInfo(block_size=block_size,
+                                 bytes_written=offset,
+                                 checksum=None,
+                                 original_file=ofile)
             finally:
                 if close:
                     stream.close()
