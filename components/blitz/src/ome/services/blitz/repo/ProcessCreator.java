@@ -38,7 +38,7 @@ import org.apache.commons.logging.LogFactory;
 import Ice.Current;
 
 /**
- * Extensino point which can be modified and injected into
+ * Extension point which can be modified and injected into
  * {@link ManagedRepositoryI} instances to change which
  * {@link ProcessContainer.Process} is created. By default, a
  * {@link ManagedImportProcessI} will be created.

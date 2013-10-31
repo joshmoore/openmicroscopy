@@ -230,9 +230,9 @@ public class ManagedImportProcessI extends AbstractAmdServant
      * @param __current
      */
     public ManagedImportProcessI(ManagedRepositoryI repo,
-             FilePathNamingValidator filePathNamingValidator,
-            FsFile relFile, FsFile baseFile, List<FsFile> fsFiles, Current __current)
-                throws ServerError {
+            FilePathNamingValidator filePathNamingValidator,
+           FsFile relFile, FsFile baseFile, List<FsFile> fsFiles, Current __current)
+               throws ServerError {
 
         super(null, null);
         this.repo = repo;

@@ -64,7 +64,7 @@ public class RequestObjectFactoryRegistry extends
             @Override
             public Ice.Object create(String name) {
                 return new ManagedImportRequestI(reg, sizes, dao,
-                        new OMEROWrapper(new ImportConfig()));
+                        new OMEROWrapper(new ImportConfig())); // FIXME from Spring.
             }
 
         });
