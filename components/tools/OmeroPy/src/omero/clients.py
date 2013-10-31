@@ -663,7 +663,7 @@ class BaseClient(object):
         file = open(filename, 'rb')
         try:
             while True:
-                block = file.read(1024)
+                block = file.read(self.getDefaultBlockSize())
                 if not block:
                     break
                 digest.update(block)
@@ -671,12 +671,16 @@ class BaseClient(object):
             file.close()
         return digest.hexdigest()
 
-    def write_stream(self, rfs, stream, close=True, block_size=1000*1000):
+    def write_stream(self, rfs, stream, close=True, block_size=None):
         """
         Writes blocks from the stream to the RawFileStore sink.
         By default, the rfs and stream arguments will be closed
         on completion.
         """
+
+        if block_size is None:
+            block_size = self.getDefaultBlockSize()
+
         try:
             try:
                 offset = 0
@@ -697,7 +701,7 @@ class BaseClient(object):
                 rfs.close()
 
     def upload(self, filename, name = None, path = None,
-               type = None, ofile = None, block_size = 1024):
+               type = None, ofile = None, block_size = None):
         """
         Utility method to upload a file to the server.
         """
@@ -751,18 +755,21 @@ class BaseClient(object):
 
             prx = self.__sf.createRawFileStore()
             prx.setFileId(ofile.id.val)
-            self.write_stream(prx, file)
+            self.write_stream(prx, file, block_size=block_size)
         finally:
             file.close()  # Possibly a re-close
 
         return ofile
 
-    def download(self, ofile, filename = None, block_size = 1024*1024, filehandle = None):
+    def download(self, ofile, filename = None, block_size = None, filehandle = None):
         prx = self.__sf.createRawFileStore()
         try:
             if not ofile or not ofile.id:
                 raise omero.ClientError("No file to download")
             ofile = self.__sf.getQueryService().get("OriginalFile", ofile.id.val)
+
+            if block_size is None:
+                block_size = self.getDefaultBlockSize()
 
             if block_size > ofile.size.val:
                 block_size = ofile.size.val
