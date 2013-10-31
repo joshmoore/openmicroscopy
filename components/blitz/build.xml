@@ -210,6 +210,8 @@
 		</delete>
 		<scons_py>
 			<arg value="-Q"/>
+			<arg value="-j"/>
+			<arg value="1"/>
 		</scons_py>
 	</target>
 
