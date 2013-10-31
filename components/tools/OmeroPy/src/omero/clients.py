@@ -671,6 +671,31 @@ class BaseClient(object):
             file.close()
         return digest.hexdigest()
 
+    def write_stream(self, rfs, stream, close=True, block_size=1000*1000):
+        """
+        Writes blocks from the stream to the RawFileStore sink.
+        By default, the rfs and stream arguments will be closed
+        on completion.
+        """
+        try:
+            try:
+                offset = 0
+                block = []
+                rfs.write(block, offset, len(block)) # Touch
+                while True:
+                    block = stream.read(block_size)
+                    if not block:
+                        break
+                    rfs.write(block, offset, len(block))
+                    offset += len(block)
+                rfs.truncate(offset) # ticket:2337
+            finally:
+                if close:
+                    stream.close()
+        finally:
+            if close:
+                rfs.close()
+
     def upload(self, filename, name = None, path = None,
                type = None, ofile = None, block_size = 1024):
         """
@@ -725,20 +750,10 @@ class BaseClient(object):
             ofile = up.saveAndReturnObject(ofile)
 
             prx = self.__sf.createRawFileStore()
-            try:
-                prx.setFileId(ofile.id.val)
-                prx.truncate(size) # ticket:2337
-                offset = 0
-                while True:
-                    block = file.read(block_size)
-                    if not block:
-                        break
-                    prx.write(block, offset, len(block))
-                    offset += len(block)
-            finally:
-                prx.close()
+            prx.setFileId(ofile.id.val)
+            self.write_stream(prx, file)
         finally:
-            file.close()
+            file.close()  # Possibly a re-close
 
         return ofile
 

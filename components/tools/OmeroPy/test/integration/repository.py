@@ -219,24 +219,10 @@ class AbstractRepoTest(lib.ITest):
     def upload_folder(self, proc, folder):
         ret_val = []
         for i, fobj in enumerate(folder.files()):  # Assuming same order
+            f = fobj.open()
             rfs = proc.getUploader(i)
-            try:
-                f = fobj.open()
-                try:
-                    offset = 0
-                    block = []
-                    rfs.write(block, offset, len(block)) # Touch
-                    while True:
-                        block = f.read(1000*1000)
-                        if not block:
-                            break
-                        rfs.write(block, offset, len(block))
-                        offset += len(block)
-                    ret_val.append(self.client.sha1(fobj.abspath()))
-                finally:
-                    f.close()
-            finally:
-                rfs.close()
+            self.client.write_stream(rfs, f)
+            ret_val.append(self.client.sha1(fobj.abspath()))
         return ret_val
 
     def fullImport(self, client):
