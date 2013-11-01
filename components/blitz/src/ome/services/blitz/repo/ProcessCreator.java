@@ -140,6 +140,7 @@ public class ProcessCreator {
             else
                 break;
         }
+        commonRoot.add(0, ".inprogress");
         return new FsFile(commonRoot);
     }
 

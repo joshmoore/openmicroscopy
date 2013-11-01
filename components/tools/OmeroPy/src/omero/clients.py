@@ -689,6 +689,13 @@ class BaseClient(object):
         on completion.
         """
 
+        try:
+            from hashlib import sha1 as sha_new
+        except ImportError:
+            from sha import new as sha_new
+
+        digest = sha_new()
+
         if block_size is None:
             block_size = self.getDefaultBlockSize()
 
@@ -703,12 +710,13 @@ class BaseClient(object):
                         break
                     rfs.write(block, offset, len(block))
                     offset += len(block)
+                    digest.update(block)
                 rfs.truncate(offset) # ticket:2337
 
                 ofile = rfs.save()
                 return WriteInfo(block_size=block_size,
                                  bytes_written=offset,
-                                 checksum=None,
+                                 checksum=digest.hexdigest(),
                                  original_file=ofile)
             finally:
                 if close:

@@ -66,7 +66,8 @@ class ImportCallback(CmdCallbackI):
 class Task(object):
 
     def __init__(self, library):
-        self.log = logging.getLogger("omero.importer.%s" % self.__class__.__name__)
+        self.log = logging.getLogger(
+            "omero.importer.%s" % self.__class__.__name__)
         self.library = library
 
     def __call__():
@@ -95,23 +96,24 @@ class UploadTask(Task):
 
 class FilesetTask(Task):
 
-    def __init__(self, library, upload, index, settings, loops=1000, millisWait=60*60):
+    def __init__(self, library, upload, settings,
+                 index, loops=1000, millisWait=60*60):
         super(FilesetTask, self).__init__(library)
         self.upload = upload
         self.index = index
-        self.settings = self.create_settings()
+        self.settings = settings
         self.loops = loops
-        self.milliswait = millisWait
+        self.millisWait = millisWait
 
-        self.fileset = upload.proc.createFileset(0, settings)
+        self.fileset = upload.proc.createFileset(index, settings)
 
     def __call__(self):
         self.handle = self.upload.proc.startImport()
         self.req = self.handle.getRequest()
         self.fs = self.req.activity.getParent()
-        self.cb = ImportCallback()
+        self.cb = ImportCallback(self.library.client, self.handle)
         self.cb.loop(self.loops, self.millisWait)
-        self.rsp = self.library.get_import_response(self.cb, self.upload.container, self.fs)
+        self.rsp = self.library.get_import_response(self.cb)
         self.pixels = self.rsp.pixels
         return self.pixels
 
@@ -140,20 +142,26 @@ class ImportLibrary(object):
         in order to support asynchronous imports.
         """
 
-        upload = UploadTask(self, paths)
-        upload()
+        self.upload = UploadTask(self, paths)
+        self.upload()
 
-        settings = None
-        count = upload.proc.getFilesetCount()
+        self.tasks = []
+
+        count = self.upload.proc.getFilesetCount()
         combined_pixels = []
         for i in range(count):
-            task = FilesetTask(upload, settings, i)
-            pixels = task.call()
+            settings = self.create_settings(paths)
+            task = FilesetTask(self, self.upload, settings, i)
+            self.tasks.append(task)
+            pixels = task()
             combined_pixels.append(pixels)
 
         return combined_pixels
 
-    def create_settings(self):
+    def get_callbacks(self):
+        return [task.cb for task in self.tasks]
+
+    def create_settings(self, paths):
         settings = ImportSettings()
         settings.doThumbnails = rbool(True)
         settings.userSpecifiedTarget = None
@@ -162,6 +170,7 @@ class ImportLibrary(object):
         settings.userSpecifiedAnnotationList = None
         settings.userSpecifiedPixels = None
         settings.clientVersionInfo = self.create_version_info()
+        settings.clientPaths = list(paths)
         return settings
 
     def create_version_info(self):
@@ -174,7 +183,7 @@ class ImportLibrary(object):
         clientVersionInfo = FilesetVersionInfoI()
         clientVersionInfo.setBioformatsReader(rstring("DirectoryReader"))
         clientVersionInfo.setBioformatsVersion(rstring("Unknown"))
-        clientVersionInfo.setOmeroVersion(rstring(omero_version));
+        clientVersionInfo.setOmeroVersion(rstring(omero_version))
         clientVersionInfo.setOsArchitecture(rstring(machine))
         clientVersionInfo.setOsName(rstring(system))
         clientVersionInfo.setOsVersion(rstring(release))
@@ -206,18 +215,17 @@ class ImportLibrary(object):
             info = self.client.write_stream(rfs, stream)
             self.log.info("FILE_UPLOAD_BYTES:%s" % info.bytes_written)
 
-
             id = info.original_file.id.val
             path = info.original_file.path.val
             name = info.original_file.name.val
             s_hash = info.original_file.hash.val
             c_hash = info.checksum
 
-            self.log.info("%s/%s id=%s" %
-                     path, name, id)
-            self.log.debug("checksums: client=%s,server=%s",
-                     c_hash, s_hash)
+            self.log.info("%s/%s id=%s", path, name, id)
+            self.log.debug("checksums: client=%s,server=%s", c_hash, s_hash)
             self.log.info("FILE_UPLOAD_COMPLETE")
+
+            return c_hash
         except:
             self.log.warn("FILE_UPLOAD_ERROR")
             raise
@@ -232,11 +240,11 @@ class ImportLibrary(object):
         if isinstance(rsp, ERR):
             self.log.error("INTERNAL_EXCEPTION")
             raise Exception(
-                    "Failure response on import!\n"
-                    "Category: %s\n"
-                    "Name: %s\n"
-                    "Parameters: %s\n", rsp.category, rsp.name,
-                    rsp.parameters)
+                "Failure response on import!\n"
+                "Category: %s\n"
+                "Name: %s\n"
+                "Parameters: %s\n", rsp.category, rsp.name,
+                rsp.parameters)
         elif isinstance(rsp, ImportResponse):
             rv = rsp
 
@@ -260,10 +268,22 @@ class ImportLibrary(object):
         for proxy in map.proxies:
             if proxy:
                 rv = ManagedRepositoryPrx.checkedCast(proxy)
-                if rv != None:
+                if rv is not None:
                     return rv
         return None
 
     def check_managed_repo(self):
-        if self.repo == None:
+        if self.repo is None:
             raise Exception("No FS! Cannot proceed")
+
+    def close(self):
+        try:
+            for cb in self.get_callbacks():
+                cb.close(True)
+        except:
+            self.log.error("Error closing callback", exc_info=True)
+
+        try:
+            self.upload.proc.close()
+        except:
+            self.log.error("Error closing ImportProcess", exc_info=True)

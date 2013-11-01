@@ -194,10 +194,10 @@ class AbstractRepoTest(lib.ITest):
             library.close()
 
     def assertImport(self, library):
-        cb = library.get_callback()
-        rsp = self.assertPasses(cb)
-        self.assertEquals(1, len(rsp.pixels))
-        return rsp
+        callbacks = library.get_callbacks()
+        for cb in callbacks:
+            rsp = self.assertPasses(cb)
+            self.assertEquals(1, len(rsp.pixels))
 
 
 class TestRepository(AbstractRepoTest):
