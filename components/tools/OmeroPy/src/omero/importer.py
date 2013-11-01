@@ -161,6 +161,9 @@ class ImportLibrary(object):
     def get_callbacks(self):
         return [task.cb for task in self.tasks]
 
+    def get_filesets(self):
+        return [task.fs for task in self.tasks]
+
     def create_settings(self, paths):
         settings = ImportSettings()
         settings.doThumbnails = rbool(True)

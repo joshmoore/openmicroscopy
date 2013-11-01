@@ -175,8 +175,8 @@ class AbstractRepoTest(lib.ITest):
 
     def create_test_dir(self):
         folder = create_path(folder=True)
-        (folder / "a.fake").touch()
-        (folder / "b.fake").touch()
+        (folder / "a&series=2.fake").touch()
+        (folder / "b&series=2.fake").touch()
         return folder
 
     def fullImport(self, client):
@@ -194,10 +194,19 @@ class AbstractRepoTest(lib.ITest):
             library.close()
 
     def assertImport(self, library):
+        filesets = library.get_filesets()
+        assert 2 == len(filesets)
+        for fs in filesets:
+            assert 2 == fs.sizeOfUsedFiles()
+            assert 2 == fs.sizeOfImages()
+
+        rsps = []
         callbacks = library.get_callbacks()
         for cb in callbacks:
             rsp = self.assertPasses(cb)
-            self.assertEquals(1, len(rsp.pixels))
+            assert 2 == len(rsp.pixels)
+            rsps.append(rsp)
+        return rsps
 
 
 class TestRepository(AbstractRepoTest):
@@ -714,7 +723,8 @@ class TestOriginalMetadata(AbstractRepoTest):
         req = omero.cmd.OriginalMetadataRequest()
 
         client = self.new_client()
-        rsp = self.fullImport(client) # Note: fake test produces no metadata!
+        rsps = self.fullImport(client) # Note: fake test produces no metadata!
+        rsp = rsps[0]
         image = rsp.objects[0]
 
         req.imageId = image.id.val
