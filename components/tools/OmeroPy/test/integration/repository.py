@@ -737,4 +737,6 @@ class TestOriginalMetadata(AbstractRepoTest):
 
 
 if __name__ == '__main__':
+    import logging
+    logging.basicConfig(level=10)
     unittest.main()
