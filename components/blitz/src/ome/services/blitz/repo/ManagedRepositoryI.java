@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Glencoe Software, Inc. All rights reserved.
+ * Copyright (C) 2012-2013 Glencoe Software, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,8 +19,10 @@
 package ome.services.blitz.repo;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 
 import ome.services.blitz.repo.path.FilePathRestrictionInstance;
 import ome.services.blitz.repo.path.FsFile;
@@ -42,6 +44,10 @@ import org.slf4j.LoggerFactory;
 
 import Ice.Current;
 
+import com.google.common.base.Joiner;
+import com.google.common.collect.Collections2;
+import com.google.common.collect.Lists;
+
 /**
  * Extension of the PublicRepository API which only manages files
  * under ${omero.data.dir}/ManagedRepository.
@@ -56,6 +62,11 @@ public class ManagedRepositoryI extends PublicRepositoryI
 
     private final static Logger log = LoggerFactory.getLogger(ManagedRepositoryI.class);
 
+    /* referenced by only the bare-bones ManagedRepositoryI constructor used in testing */
+    private static final String ALL_CHECKSUM_ALGORITHMS =
+            Joiner.on(',').join(Collections2.transform(ChecksumAlgorithmMapper.getAllChecksumAlgorithms(),
+                    ChecksumAlgorithmMapper.CHECKSUM_ALGORITHM_NAMER));
+
     private final ProcessContainer processes;
 
     private final ProcessCreator creator;
@@ -67,18 +78,18 @@ public class ManagedRepositoryI extends PublicRepositoryI
      * @param dao
      */
     public ManagedRepositoryI(RepositoryDao dao, ProcessCreator creator) throws Exception {
-        this(dao, creator, new ProcessContainer(), new ChecksumProviderFactoryImpl(),
-                null, new MakePathComponentSafe(
-                        FilePathRestrictionInstance
-                            .getUnixFilePathRestrictions()));
+        this(dao, creator, new ProcessContainer(),
+                new ChecksumProviderFactoryImpl(),
+                ALL_CHECKSUM_ALGORITHMS, new MakePathComponentSafe(
+                        FilePathRestrictionInstance.getUnixFilePathRestrictions()));
     }
 
     public ManagedRepositoryI(RepositoryDao dao,
             ProcessCreator creator, ProcessContainer processes,
             ChecksumProviderFactory checksumProviderFactory,
-            omero.model.ChecksumAlgorithm checksumAlgorithm,
+            String checksumAlgorithmSupported,
             MakePathComponentSafe makePathComponentSafe) throws Exception {
-        super(dao, checksumProviderFactory, checksumAlgorithm, makePathComponentSafe);
+        super(dao, checksumProviderFactory, checksumAlgorithmSupported, makePathComponentSafe);
         this.creator = creator;
         this.processes = processes;
     }
@@ -153,7 +164,18 @@ public class ManagedRepositoryI extends PublicRepositoryI
     }
 
     public List<ChecksumAlgorithm> listChecksumAlgorithms(Current __current) {
-        return ChecksumAlgorithmMapper.getAllChecksumAlgorithms();
+        return this.checksumAlgorithms;
+    }
+
+    public ChecksumAlgorithm suggestChecksumAlgorithm(List<ChecksumAlgorithm> supported, Current __current) {
+        final Set<String> supportedNames =
+                new HashSet<String>(Lists.transform(supported, ChecksumAlgorithmMapper.CHECKSUM_ALGORITHM_NAMER));
+        for (final ChecksumAlgorithm configured : listChecksumAlgorithms(__current)) {
+            if (supportedNames.contains(ChecksumAlgorithmMapper.CHECKSUM_ALGORITHM_NAMER.apply(configured))) {
+                return configured;
+            }
+        }
+        return null;
     }
 
     //

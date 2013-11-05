@@ -292,7 +292,8 @@ class ScriptControl(BaseControl):
             self.ctx.err("Failed to clean processors: %s" % e)
 
         self.ctx.out("\nDeleting script from server...")
-        self.delete(args.for_pub(str(id)))
+        args.id = long(id)
+        self.delete(args)
 
     def cat(self, args):
         client = self.ctx.conn(args)
@@ -439,7 +440,8 @@ class ScriptControl(BaseControl):
             def print_params(which, params):
                 import omero
                 self.ctx.out(which)
-                for k, v in params.items():
+                for k in sorted(params, key=lambda name: params.get(name).grouping):
+                    v = params.get(k)
                     self.ctx.out("  %s - %s" % (k, (v.description and v.description or "(no description)")))
                     self.ctx.out("    Optional: %s" % v.optional)
                     self.ctx.out("    Type: %s" % v.prototype.ice_staticId())

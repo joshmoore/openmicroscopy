@@ -81,7 +81,7 @@ import Ice.UserException;
  * @since Beta4.1
  * @see ome.grid.SharedResources
  */
-public class SharedResourcesI extends AbstractAmdServant implements
+public class SharedResourcesI extends AbstractCloseableAmdServant implements
         _SharedResourcesOperations, BlitzOnly, ServiceFactoryAware,
         ParamsHelper.Acquirer { // FIXME
 
@@ -137,6 +137,11 @@ public class SharedResourcesI extends AbstractAmdServant implements
             }
             tableIds.clear();
         }
+    }
+
+    @Override
+    protected void postClose(Current current) {
+        // no-op
     }
 
     // Acquisition framework
@@ -420,8 +425,9 @@ public class SharedResourcesI extends AbstractAmdServant implements
 
         InteractiveProcessorI ip = new InteractiveProcessorI(sf.principal,
                 sf.sessionManager, sf.executor, server, job, timeout,
-                sf.control, new ParamsHelper(this, sf.getExecutor(), sf.getPrincipal()),
-                current);
+                sf.control,
+                new ParamsHelper(this, sf.getExecutor(), sf.getPrincipal()),
+                helper, current);
         Ice.Identity procId = sessionedID("InteractiveProcessor");
         Ice.ObjectPrx rv = sf.registerServant(procId, new _InteractiveProcessorTie(ip));
         sf.allow(rv);

@@ -93,7 +93,7 @@ public class ManagedImportProcessITest extends MockObjectTestCase {
         File properties = ResourceUtils.getFile("classpath:omero.properties");
         Properties p = new Properties();
         p.load(new FileInputStream(properties));
-        String template = p.getProperty("omero.fslite.path");
+        String template = p.getProperty("omero.fs.repo.path");
         return template;
     }
 

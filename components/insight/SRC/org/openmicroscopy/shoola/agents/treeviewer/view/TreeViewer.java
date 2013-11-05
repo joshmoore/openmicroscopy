@@ -36,6 +36,7 @@ import javax.swing.JFrame;
 
 //Third-party libraries
 
+import org.openmicroscopy.shoola.agents.treeviewer.ImageChecker.ImageCheckerType;
 //Application-internal dependencies
 import org.openmicroscopy.shoola.agents.treeviewer.browser.Browser;
 import org.openmicroscopy.shoola.agents.util.DataObjectRegistration;
@@ -45,6 +46,7 @@ import org.openmicroscopy.shoola.agents.util.browser.TreeImageTimeSet;
 import org.openmicroscopy.shoola.env.LookupNames;
 import org.openmicroscopy.shoola.env.data.model.AdminObject;
 import org.openmicroscopy.shoola.env.data.model.ApplicationData;
+import org.openmicroscopy.shoola.env.data.model.MIFResultObject;
 import org.openmicroscopy.shoola.env.data.model.ScriptObject;
 import org.openmicroscopy.shoola.env.data.model.TimeRefObject;
 import org.openmicroscopy.shoola.env.data.util.SecurityContext;
@@ -339,7 +341,7 @@ public interface TreeViewer
 	 * 
 	 * @return See above.
 	 */
-	public Map getBrowsers();
+	public Map<Integer, Browser> getBrowsers();
 
 	/**
 	 * Transitions the viewer to the {@link #DISCARDED} state.
@@ -1097,6 +1099,13 @@ public interface TreeViewer
 	 * @return See above.
 	 */
 	GroupData getSelectedGroup();
+	
+	/**
+	 * Returns the only group displayed if any.
+	 * 
+	 * @return See above.
+	 */
+	GroupData getSingleGroupDisplayed();
 
 	/** 
 	 * Removes group.
@@ -1155,4 +1164,15 @@ public interface TreeViewer
 	 * @param index The mode to set.
 	 */
 	void setDisplayMode(int index);
+
+	/**
+	 * Handles the result checking if images to delete/move are split or not
+	 * 
+	 * @param result The result to handle.
+	 * @param action The action to do after the check.
+	 * @param index The type of action.
+	 */
+	void handleSplitImage(List<MIFResultObject> result, Object action,
+			ImageCheckerType index);
+
 }

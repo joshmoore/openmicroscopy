@@ -2,7 +2,7 @@
  * org.openmicroscopy.shoola.env.data.OmeroImageServiceImpl
  *
  *------------------------------------------------------------------------------
- *  Copyright (C) 2006 University of Dundee. All rights reserved.
+ *  Copyright (C) 2006-2013 University of Dundee. All rights reserved.
  *
  *
  * 	This program is free software; you can redistribute it and/or modify
@@ -25,7 +25,6 @@ package org.openmicroscopy.shoola.env.data;
 
 
 //Java import
-import java.awt.Dimension;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileInputStream;
@@ -60,6 +59,7 @@ import com.sun.opengl.util.texture.TextureData;
 import ome.formats.importer.ImportCandidates;
 import ome.formats.importer.ImportContainer;
 import omero.api.RenderingEnginePrx;
+import omero.api.ThumbnailStorePrx;
 import omero.model.Annotation;
 import omero.model.Channel;
 import omero.model.Dataset;
@@ -75,6 +75,7 @@ import omero.model.TagAnnotation;
 import omero.romio.PlaneDef;
 import omero.sys.Parameters;
 
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.RandomStringUtils;
 import org.openmicroscopy.shoola.env.LookupNames;
@@ -88,7 +89,6 @@ import org.openmicroscopy.shoola.env.data.model.ROIResult;
 import org.openmicroscopy.shoola.env.data.model.FigureParam;
 import org.openmicroscopy.shoola.env.data.model.SaveAsParam;
 import org.openmicroscopy.shoola.env.data.model.ScriptObject;
-import org.openmicroscopy.shoola.env.data.model.ThumbnailData;
 import org.openmicroscopy.shoola.env.data.util.ModelMapper;
 import org.openmicroscopy.shoola.env.data.util.PojoMapper;
 import org.openmicroscopy.shoola.env.data.util.SecurityContext;
@@ -179,46 +179,35 @@ class OmeroImageServiceImpl
 	 * @param hcs Value returns by the import containers.
 	 * @param userName The login name of the user to import for.
 	 */
-	private Boolean importCandidates(SecurityContext ctx,
+	private Object importCandidates(SecurityContext ctx,
 		Map<File, StatusLabel> files, StatusLabel status,
 		ImportableObject object, IObject ioContainer,
-		List<Annotation> list, long userID, boolean close, boolean hcs, 
+		List<Annotation> list, long userID, boolean close, boolean hcs,
 		String userName)
 	throws DSAccessException, DSOutOfServiceException
 	{
 		if (status.isMarkedAsCancel()) {
-			if (close) gateway.closeImport(ctx);
+			if (close) gateway.closeImport(ctx, userName);
 			return Boolean.valueOf(false);
 		}
-		boolean thumbnail = object.isLoadThumbnail();
 		Entry<File, StatusLabel> entry;
 		Iterator<Entry<File, StatusLabel>> jj = files.entrySet().iterator();
 		StatusLabel label = null;
 		File file;
-		Object result;
-		List<ImageData> images = new ArrayList<ImageData>();
-		ImageData image;
-		Set<ImageData> ll;
-		Iterator<ImageData> kk;
-		List<Object> converted;
 		boolean toClose = false;
 		int n = files.size()-1;
 		int index = 0;
 		ImportCandidates ic;
 		List<ImportContainer> icContainers;
+		ImportContainer importIc;
 		while (jj.hasNext()) {
 			entry = jj.next();
 			file = (File) entry.getKey();
-			if (hcs) {
-			//if (ImportableObject.isHCSFile(file) || hcs) {
-				if (!file.getName().endsWith(
-						ImportableObject.DAT_EXTENSION)) {
-					if (ioContainer != null && 
-							!(ioContainer.getClass().equals(Screen.class) ||
-							ioContainer.getClass().equals(ScreenI.class)))
-							ioContainer = null;
-				}
-			}
+			if (hcs && !file.getName().endsWith(ImportableObject.DAT_EXTENSION))
+				if (ioContainer != null && 
+					!(ioContainer.getClass().equals(Screen.class) ||
+					ioContainer.getClass().equals(ScreenI.class)))
+					ioContainer = null;
 			label = (StatusLabel) entry.getValue();
 			if (close) {
 				toClose = index == n;
@@ -229,139 +218,34 @@ class OmeroImageServiceImpl
 					if (ioContainer == null) label.setNoContainer();
 					ic = gateway.getImportCandidates(ctx, object, file, status);
 					icContainers = ic.getContainers();
-					if (icContainers.size() == 0)
-						return Boolean.valueOf(false);
-					result = gateway.importImage(ctx, object, ioContainer,
-							icContainers.get(0),
-							label, toClose, ImportableObject.isHCSFile(file), userName);
-					if (result instanceof ImageData) {
-						image = (ImageData) result;
-						images.add(image);
-						if (thumbnail)
-							label.setFile(file, 
-								createImportedImage(ctx, userID, image));
-						else label.setFile(file, image);
-					} else if (result instanceof Set) {
-						ll = (Set<ImageData>) result;
-						annotatedImportedImage(ctx, list, ll, userName);
-						images.addAll(ll);
-						kk = ll.iterator();
-						converted = new ArrayList<Object>(ll.size());
-						while (kk.hasNext()) {
-							image = kk.next();
-							if (thumbnail)
-								converted.add(
-									createImportedImage(ctx, userID, image));
-							else converted.add(image);
+					if (icContainers.size() == 0) {
+						label.setCallback(new ImportException(
+								ImportException.FILE_NOT_VALID_TEXT));
+					} else {
+						//Check after scanning
+						if (label.isMarkedAsCancel())
+							label.setCallback(Boolean.valueOf(false));
+						else {
+							importIc = icContainers.get(0);
+							importIc.setCustomAnnotationList(list);
+							label.setCallback(gateway.importImageFile(ctx,
+									object, ioContainer, importIc,
+									label, toClose,
+									ImportableObject.isHCSFile(file),
+									userName));
 						}
-						label.setFile(file, converted);
-					} else label.setFile(file, result);
+					}
 				} catch (Exception e) {
-					label.setFile(file, e);
+					label.setCallback(e);
 				}
+			} else {
+				label.setCallback(Boolean.valueOf(false));
 			}
 		}
-		annotatedImportedImage(ctx, list, images, userName);
-		if (close) gateway.closeImport(ctx);
+		if (close) gateway.closeImport(ctx, userName);
 		return null;
 	}
-	
-	/**
-	 * Annotates the imported images.
-	 * 
-	 * @param ctx The security context.
-	 * @param annotations The annotations to add.
-	 * @param images The imported images.
-	 * @param userName The name of the user who will own the links
-	 */
-	private void annotatedImportedImage(SecurityContext ctx,
-		List<Annotation> annotations, Collection images, String userName)
-	{
-		if (annotations.size() == 0 || images.size() == 0) return;
-		Iterator i = images.iterator();
-		ImageData image;
-		Iterator<Annotation> j;
-		List<IObject> list = new ArrayList<IObject>();
-		IObject io;
-		while (i.hasNext()) {
-			image = (ImageData) i.next();
-			j = annotations.iterator();
-			while (j.hasNext()) {
-				io = ModelMapper.linkAnnotation(image.asIObject(), j.next());
-				if (io != null)
-					list.add(io);
-			}
-		}
-		if (list.size() == 0) return;
-		try {
-			gateway.saveAndReturnObject(ctx, list, new HashMap(), userName);
-		} catch (Exception e) {
-			//ignore 
-		}
-	}
-	
-	/**
-	 * Creates a thumbnail for the imported image.
-	 * 
-	 * @param ctx The security context.
-	 * @param userID  The identifier of the user.
-	 * @param image   The image to handle.
-	 * @return See above.
-	 */
-	private Object createImportedImage(SecurityContext ctx, long userID,
-		ImageData image)
-	{
-		if (image != null) {
-			ThumbnailData data;
-			try {
-				PixelsData pix = image.getDefaultPixels();
-				BufferedImage img = createImage(
-						gateway.getThumbnailByLongestSide(ctx, pix.getId(),
-								Factory.THUMB_DEFAULT_WIDTH));
-				data = new ThumbnailData(image.getId(), img, userID, true);
-				data.setImage(image);
-				return data;
-			} catch (Exception e) {
-				data = new ThumbnailData(image.getId(), 
-						createDefaultImage(image), userID, false);
-				data.setImage(image);
-				data.setError(e);
-				return data;
-			}
-		}
-		return image;
-	}
-	
-	/**
-	 * Formats the result of an image import.
-	 * 
-	 * @param ctx The security context.
-	 * @param image The image to handle.
-	 * @param userID The user's id.
-	 * @param thumbnail Pass <code>true</code> if thumbnail has to be created,
-	 * 					<code>false</code> otherwise.
-	 * @return See above.
-	 */
-	private Object formatResult(SecurityContext ctx, ImageData image,
-		long userID, boolean thumbnail)
-	{
-		Boolean backoff = null;
-		try {
-			PixelsData pixels = image.getDefaultPixels();
-			backoff = gateway.isLargeImage(ctx, pixels.getId());
-		} catch (Exception e) {}
-		//if (backoff != null && backoff.booleanValue())
-		//	return new ThumbnailData(image, backoff);
-		if (thumbnail) {
-			ThumbnailData thumb = (ThumbnailData) createImportedImage(ctx,
-				userID, image);
-			thumb.setBackOffForPyramid(backoff);
-			return thumb;
-		} 
-		return image;
-	}
-	
-	
+
 	/**
 	 * Returns <code>true</code> if the binary data are available, 
 	 * <code>false</code> otherwise.
@@ -392,26 +276,7 @@ class OmeroImageServiceImpl
 					e);
 		}
 	}
-	
-    /**
-     * Creates a default thumbnail for the passed image.
-     * 
-     * @param data The image to handle.
-     * @return See above.
-     */
-    private BufferedImage createDefaultImage(ImageData data) 
-    {
-    	PixelsData pxd = null;
-        try {
-        	pxd = data.getDefaultPixels();
-		} catch (Exception e) {} //something went wrong during import
-        if (pxd == null)
-        	return Factory.createDefaultImageThumbnail(-1);
-        Dimension d = Factory.computeThumbnailSize(Factory.THUMB_DEFAULT_WIDTH,
-        		Factory.THUMB_DEFAULT_HEIGHT, pxd.getSizeX(), pxd.getSizeY());
-        return Factory.createDefaultImageThumbnail(d.width, d.height);
-    }
-    
+
 	/**
 	 * Creates a <code>BufferedImage</code> from the passed array of bytes.
 	 * 
@@ -448,7 +313,7 @@ class OmeroImageServiceImpl
 		throws DSOutOfServiceException, DSAccessException
 	{
 		IObject ioContainer = null;
-		Map parameters = new HashMap();
+		Map<Object, Object> parameters = new HashMap<Object, Object>();
 		DataObject createdData;
 		IObject project = null;
 		IObject link;
@@ -521,13 +386,19 @@ class OmeroImageServiceImpl
 									(DatasetData) 
 									PojoMapper.asDataObject(
 									ioContainer));
-							link = (ProjectDatasetLink) 
-							ModelMapper.linkParentToChild(
-									(Dataset) ioContainer, 
+							//Check that the project still exists
+							IObject ho = gateway.findIObject(ctx,
+									container.asIObject());
+							if (ho != null) {
+								link = (ProjectDatasetLink) 
+								ModelMapper.linkParentToChild(
+									(Dataset) ioContainer,
 									(Project) container.asProject());
-							link = (ProjectDatasetLink) 
-							gateway.saveAndReturnObject(ctx, link,
-									parameters, userName);
+									link = (ProjectDatasetLink) 
+									gateway.saveAndReturnObject(ctx, link,
+										parameters, userName);
+							}
+							
 						} else ioContainer = createdData.asIObject();
 					}
 				} else { //dataset w/o project.
@@ -560,7 +431,8 @@ class OmeroImageServiceImpl
 				} else ioContainer = container.asIObject();
 			}
 		}
-		return ioContainer;
+		//Check that the container still exist
+		return gateway.findIObject(ctx, ioContainer);
 	}
 	
 	/**
@@ -650,7 +522,12 @@ class OmeroImageServiceImpl
 			throw new RenderingServiceException("RenderImage", e);
 		}
 	}
-	
+
+	public boolean isAlive(SecurityContext ctx) throws DSOutOfServiceException
+	{
+	    return null != gateway.getConnector(ctx, true, true);
+	}
+
 	/** 
 	 * Implemented as specified by {@link OmeroImageService}. 
 	 * @see OmeroImageService#shutDown(SecurityContext,long)
@@ -693,7 +570,7 @@ class OmeroImageServiceImpl
 	 * @see OmeroImageService#getThumbnailSet(SecurityContext, List, int)
 	 */
 	public Map<Long, BufferedImage> getThumbnailSet(SecurityContext ctx,
-		List pixelsID, int max)
+		Collection<Long> pixelsID, int max)
 		throws RenderingServiceException
 	{
 		Map<Long, BufferedImage> r = new HashMap<Long, BufferedImage>();
@@ -1091,6 +968,8 @@ class OmeroImageServiceImpl
 		if (importable == null || importable.getFile() == null)
 			throw new IllegalArgumentException("No images to import.");
 		StatusLabel status = importable.getStatus();
+		SecurityContext ctx = new SecurityContext(importable.getGroup().getId());
+		//If import as.
 		ExperimenterData loggedIn = context.getAdminService().getUserDetails();
 		long userID = loggedIn.getId();
 		String userName = null;
@@ -1100,19 +979,16 @@ class OmeroImageServiceImpl
 			if (exp.getId() != loggedIn.getId())
 				userName = exp.getUserName();
 		}
-		SecurityContext ctx = 
-			new SecurityContext(importable.getGroup().getId());
-
-		if (status.isMarkedAsCancel()) {
-			if (close) gateway.closeImport(ctx);
-			return Boolean.valueOf(false);
-		}
-		Object result = null;
+	      if (status.isMarkedAsCancel()) {
+	            if (close) gateway.closeImport(ctx, userName);
+	            return Boolean.valueOf(false);
+	        }
 		Collection<TagAnnotationData> tags = object.getTags();
-		List<Annotation> list = new ArrayList<Annotation>();
+		List<Annotation> customAnnotationList = new ArrayList<Annotation>();
 		List<IObject> l;
 		//Tags
-		if (tags != null && tags.size() > 0) {
+		Map<Object, Object> parameters = new HashMap<Object, Object>();
+		if (!CollectionUtils.isEmpty(tags)) {
 			List<TagAnnotationData> values = new ArrayList<TagAnnotationData>();
 			Iterator<TagAnnotationData> i = tags.iterator();
 			TagAnnotationData tag;
@@ -1121,38 +997,36 @@ class OmeroImageServiceImpl
 				tag = i.next();
 				if (tag.getId() > 0) {
 					values.add(tag);
-					list.add((Annotation) tag.asIObject());
+					customAnnotationList.add((Annotation) tag.asIObject());
 				} else l.add(tag.asIObject());
 			}
 			//save the tag.
 			try {
-				l = gateway.saveAndReturnObject(ctx, l, new HashMap(), userName);
+				l = gateway.saveAndReturnObject(ctx, l, parameters, userName);
 				Iterator<IObject> j = l.iterator();
 				Annotation a;
 				while (j.hasNext()) {
 					a = (Annotation) j.next();
 					values.add(new TagAnnotationData((TagAnnotation) a));
-					list.add(a);
+					customAnnotationList.add(a); // THIS!
 				}
 				object.setTags(values);
-			} catch (Exception e) {}
+			} catch (Exception e) {
+			    LogMessage msg = new LogMessage();
+			    msg.print("Cannot create the tags.");
+			    msg.print(e);
+			    context.getLogger().error(this, msg);
+			}
 		}
 		IObject link;
 		//prepare the container.
-		List<ImageData> images = new ArrayList<ImageData>();
-		//IObject io;
-		Set<ImageData> ll;
-		ImageData image;
-		Iterator<ImageData> kk;
-		List<Object> converted;
 		List<String> candidates;
 		ImportCandidates ic = null;
 		File file = importable.getFile();
-		boolean thumbnail = object.isLoadThumbnail();
 		DatasetData dataset = importable.getDataset();
 		DataObject container = importable.getParent();
 		IObject ioContainer = null;
-		Map parameters = new HashMap();
+		
 		DataObject createdData;
 		IObject project = null;
 		DataObject folder = null;
@@ -1173,7 +1047,7 @@ class OmeroImageServiceImpl
 							String value = candidates.get(0);
 							if (!file.getAbsolutePath().equals(value) && 
 								object.isFileinQueue(value)) {
-								if (close) gateway.closeImport(ctx);
+								if (close) gateway.closeImport(ctx, userName);
 								status.markedAsDuplicate();
 								return Boolean.valueOf(true);
 							}
@@ -1197,36 +1071,23 @@ class OmeroImageServiceImpl
 					container = null;
 			}
 			//remove hcs check if we want to create screen from folder.
-			if (!hcsFile && importable.isFolderAsContainer()) { 
+			if (!hcsFile && importable.isFolderAsContainer()) {
 				//we have to import the image in this container.
 				folder = object.createFolderAsContainer(importable, hcsFile);
-				if (folder instanceof DatasetData) {
-					try {
-						ioContainer = determineContainer(ctx,
-								(DatasetData) folder, container, object,
-								userName);
-						status.setContainerFromFolder(PojoMapper.asDataObject(
-								ioContainer));
-					} catch (Exception e) {
-						LogMessage msg = new LogMessage();
-						msg.print("Cannot create the container hosting the " +
-								"images.");
-						msg.print(e);
-						context.getLogger().error(this, msg);
-					}
-				} else if (folder instanceof ScreenData) {
-					try {
-						ioContainer = determineContainer(ctx, null, folder,
-								object, userName);
-						status.setContainerFromFolder(PojoMapper.asDataObject(
-								ioContainer));
-					} catch (Exception e) {
-						LogMessage msg = new LogMessage();
-						msg.print("Cannot create the Screen hosting " +
-								"the plate.");
-						msg.print(e);
-						context.getLogger().error(this, msg);
-					}
+				DatasetData d = null;
+				DataObject c = container;
+				if (folder instanceof DatasetData) d = (DatasetData) folder;
+				else if (folder instanceof ScreenData) c = folder;
+				try {
+					ioContainer = determineContainer(ctx, d, c, object,
+							userName);
+					status.setContainerFromFolder(PojoMapper.asDataObject(
+							ioContainer));
+				} catch (Exception e) {
+					LogMessage msg = new LogMessage();
+					msg.print("Cannot create the container.");
+					msg.print(e);
+					context.getLogger().error(this, msg);
 				}
 			}
 			if (folder == null && dataset != null) { //dataset
@@ -1262,7 +1123,11 @@ class OmeroImageServiceImpl
 								context.getLogger().error(this, msg);
 							}
 						}
-					} else ioContainer = container.asIObject();
+					} else {
+						//Check that the container still exists
+						ioContainer = gateway.findIObject(ctx,
+								container.asIObject());
+					}
 				}
 			}
 			if (ImportableObject.isArbitraryFile(file)) {
@@ -1270,12 +1135,15 @@ class OmeroImageServiceImpl
 					ic = gateway.getImportCandidates(ctx, object, file, status);
 				candidates = ic.getPaths();
 				int size = candidates.size();
-				if (size == 0) return Boolean.valueOf(false);
+				if (size == 0) {
+					return new ImportException(
+							ImportException.FILE_NOT_VALID_TEXT);
+				}
 				else if (size == 1) {
 					String value = candidates.get(0);
 					if (!file.getAbsolutePath().equals(value) && 
 						object.isFileinQueue(value)) {
-						if (close) gateway.closeImport(ctx);
+						if (close) gateway.closeImport(ctx, userName);
 						status.markedAsDuplicate();
 						return Boolean.valueOf(true);
 					}
@@ -1284,26 +1152,12 @@ class OmeroImageServiceImpl
 					if (ioContainer == null) status.setNoContainer();
 					importIc = ic.getContainers().get(0);
 					status.setUsedFiles(importIc.getUsedFiles());
-					result = gateway.importImage(ctx, object, ioContainer,
+					//Check after scanning
+					if (status.isMarkedAsCancel())
+						return Boolean.valueOf(false);
+					return gateway.importImageFile(ctx, object, ioContainer,
 							importIc, status, close,
 							ImportableObject.isHCSFile(f),userName);
-					if (result instanceof ImageData) {
-						image = (ImageData) result;
-						images.add(image);
-						annotatedImportedImage(ctx, list, images, userName);
-						return formatResult(ctx, image, userID, thumbnail);
-					} else if (result instanceof Set) {
-						ll = (Set<ImageData>) result;
-						annotatedImportedImage(ctx, list, ll, userName);
-						kk = ll.iterator();
-						converted = new ArrayList<Object>(ll.size());
-						while (kk.hasNext()) {
-							converted.add(formatResult(ctx, kk.next(), userID,
-									thumbnail));
-						}
-						return converted;
-					}
-					return result;
 				} else {
 					List<ImportContainer> containers = ic.getContainers();
 					hcs = isHCS(containers);
@@ -1320,46 +1174,40 @@ class OmeroImageServiceImpl
 					}
 						
 					status.setFiles(files);
-					Boolean v = importCandidates(ctx, files, status, object,
-							ioContainer, list, userID, close, hcs, userName);
-					if (v != null) {
-						return v.booleanValue();
-					}
+					Object v = importCandidates(ctx, files, status, object,
+							ioContainer, customAnnotationList, userID, close,
+							hcs, userName);
+					if (v != null) return v;
 				}
 			} else { //single file let's try to import it.
 				if (ioContainer == null)
 					status.setNoContainer();
 				ic = gateway.getImportCandidates(ctx, object, file, status);
 				icContainers = ic.getContainers();
-				if (icContainers.size() == 0)
-					return Boolean.valueOf(false);
-				importIc = icContainers.get(0);
-				status.setUsedFiles(importIc.getUsedFiles());
-				result = gateway.importImage(ctx, object, ioContainer, importIc,
-					status, close, ImportableObject.isHCSFile(file), userName);
-				if (result instanceof ImageData) {
-					image = (ImageData) result;
-					images.add(image);
-					annotatedImportedImage(ctx, list, images, userName);
-					return formatResult(ctx, image, userID, thumbnail);
-				} else if (result instanceof Set) {
-					ll = (Set<ImageData>) result;
-					annotatedImportedImage(ctx, list, ll, userName);
-					kk = ll.iterator();
-					converted = new ArrayList<Object>(ll.size());
-					while (kk.hasNext()) {
-						converted.add(formatResult(ctx, kk.next(), userID,
-								thumbnail));
-					}
-					return converted;
+				if (icContainers.size() == 0) {
+					return new ImportException(
+							ImportException.FILE_NOT_VALID_TEXT);
 				}
-				return result;
+				importIc = icContainers.get(0);
+				importIc.setCustomAnnotationList(customAnnotationList);
+				status.setUsedFiles(importIc.getUsedFiles());
+				//Check after scanning
+				if (status.isMarkedAsCancel())
+					return Boolean.valueOf(false);
+				return gateway.importImageFile(ctx, object, ioContainer,
+						importIc,
+					status, close, ImportableObject.isHCSFile(file), userName);
 			}
 		} //file import ends.
 		//Checks folder import.
 		ic = gateway.getImportCandidates(ctx, object, file, status);
 		List<ImportContainer> lic = ic.getContainers();
-		if (lic.size() == 0) return Boolean.valueOf(false);
+		if (lic.size() == 0)
+			return new ImportException(
+				ImportException.FILE_NOT_VALID_TEXT);
+		if (status.isMarkedAsCancel()) {
+			return Boolean.valueOf(false);
+		}
 		Map<File, StatusLabel> hcsFiles = new HashMap<File, StatusLabel>();
 		Map<File, StatusLabel> otherFiles = new HashMap<File, StatusLabel>();
 		Map<File, StatusLabel> files = new HashMap<File, StatusLabel>();
@@ -1390,9 +1238,6 @@ class OmeroImageServiceImpl
 		status.setFiles(files);
 		//check candidates and see if we are dealing with HCS data
 		if (hcsFiles.size() > 0) {
-			//remove comment if we want screen from folder.
-			//if (container == null && importable.isFolderAsContainer())
-			//	container = object.createFolderAsContainer(importable, true);
 			if (container != null && container instanceof ScreenData) {
 				if (container.getId() <= 0) {
 					//project needs to be created to.
@@ -1414,10 +1259,11 @@ class OmeroImageServiceImpl
 							context.getLogger().error(this, msg);
 						}
 					}
-				} else ioContainer = container.asIObject();
+				} else ioContainer = gateway.findIObject(ctx,
+						container.asIObject());
 			}
 			importCandidates(ctx, hcsFiles, status, object,
-					ioContainer, list, userID, close, true, userName);
+					ioContainer, customAnnotationList, userID, close, true, userName);
 		}
 		if (otherFiles.size() > 0) {
 			folder = object.createFolderAsContainer(importable);
@@ -1431,6 +1277,7 @@ class OmeroImageServiceImpl
 					if (folder instanceof DatasetData) {
 						if (container != null) {
 							try {
+								Project p;
 								if (container.getId() <= 0) { 
 									//project needs to be created to.
 									createdData = object.hasObjectBeenCreated(
@@ -1441,32 +1288,19 @@ class OmeroImageServiceImpl
 												parameters, userName);
 										object.addNewDataObject(
 											PojoMapper.asDataObject(project));
-										link = (ProjectDatasetLink) 
-										ModelMapper.linkParentToChild(
-												(Dataset) ioContainer, 
-												(Project) project);
-										link = (ProjectDatasetLink) 
-										gateway.saveAndReturnObject(ctx, link,
-												parameters, userName);
+										p = (Project) project;
 									} else {
-										link = (ProjectDatasetLink) 
-										ModelMapper.linkParentToChild(
-												(Dataset) ioContainer, 
-												(Project) 
-												createdData.asProject());
-										link = (ProjectDatasetLink) 
-										gateway.saveAndReturnObject(ctx, link,
-												parameters, userName);
+										p = (Project) createdData.asProject();
 									}
 								} else { //project already exists.
-									link = (ProjectDatasetLink) 
-									ModelMapper.linkParentToChild(
-											(Dataset) ioContainer, 
-											(Project) container.asProject());
-									link = (ProjectDatasetLink) 
-									gateway.saveAndReturnObject(ctx, link, 
-											parameters, userName);
+									p = (Project) container.asProject();
 								}
+								link = (ProjectDatasetLink) 
+										ModelMapper.linkParentToChild(
+												(Dataset) ioContainer, p);
+										link = (ProjectDatasetLink) 
+										gateway.saveAndReturnObject(ctx, link,
+												parameters, userName);
 							} catch (Exception e) {
 								LogMessage msg = new LogMessage();
 								msg.print("Cannot create the container " +
@@ -1494,7 +1328,7 @@ class OmeroImageServiceImpl
 			}
 			//import the files that are not hcs files.
 			importCandidates(ctx, otherFiles, status, object,
-				ioContainer, list, userID, close, false, userName);
+				ioContainer, customAnnotationList, userID, close, false, userName);
 		}
 		return Boolean.valueOf(true);
 	}
@@ -2019,6 +1853,32 @@ class OmeroImageServiceImpl
 		throws DSAccessException, DSOutOfServiceException
 	{
 		return gateway.getFileSet(ctx, Arrays.asList(imageId));
+	}
+
+	/**
+	 * Implemented as specified by {@link OmeroDataService}.
+	 * @see OmeroImageService#createThumbnailStore(SecurityContext)
+	 */
+	public ThumbnailStorePrx createThumbnailStore(SecurityContext ctx)
+			throws DSAccessException, DSOutOfServiceException
+	{
+		if (ctx == null) return null;
+		Connector c = gateway.getConnector(ctx, true, false);
+		// Pass close responsiblity off to the caller.
+		return c.getThumbnailService();
+	}
+	
+	/**
+	 * Implemented as specified by {@link OmeroDataService}.
+	 * @see OmeroImageService#getRenderingDef(SecurityContext, long, long)
+	 */
+	public Long getRenderingDef(SecurityContext ctx, long pixelsID,
+			long userID)
+		throws DSOutOfServiceException, DSAccessException
+	{
+		RenderingDef def = gateway.getRenderingDef(ctx, pixelsID, userID);
+		if (def == null) return -1L;
+		return def.getId().getValue();
 	}
 
 }

@@ -35,6 +35,8 @@ import java.util.Set;
 
 //Third-party libraries
 
+import omero.api.StatefulServiceInterfacePrx;
+
 //Application-internal dependencies
 import org.openmicroscopy.shoola.env.data.model.DeletableObject;
 import org.openmicroscopy.shoola.env.data.util.SearchDataContext;
@@ -45,6 +47,7 @@ import pojos.DataObject;
 import pojos.ExperimenterData;
 import pojos.GroupData;
 import pojos.ImageData;
+import pojos.PlateData;
 
 /** 
  * 
@@ -430,6 +433,30 @@ public class NullOmeroPojoService
 			List<DataObject> objects) throws DSOutOfServiceException,
 			DSAccessException, ProcessException
 	{
+		return null;
+	}
+
+	/**
+     * No-operation implementation
+     * @see OmeroDataService#loadPlateFromImage(SecurityContext, Collection)
+     */
+	public Map<Long, PlateData> loadPlateFromImage(SecurityContext ctx,
+			Collection<Long> ids) throws DSOutOfServiceException,
+			DSAccessException {
+		return null;
+	}
+	
+	
+	public void closeService(SecurityContext ctx,
+			StatefulServiceInterfacePrx svc) {}
+
+	/**
+     * No-operation implementation
+     * @see OmeroDataService#getImagesBySplitFilesets(SecurityContext, Class, List)
+     */
+	public Map<Long, Map<Boolean, List<ImageData>>> getImagesBySplitFilesets(
+			SecurityContext ctx, Class<?> rootType, List<Long> rootIDs)
+			throws DSOutOfServiceException, DSAccessException {
 		return null;
 	}
 

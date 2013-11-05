@@ -38,12 +38,14 @@ import ome.util.checksum.ChecksumProviderFactory;
 import ome.util.checksum.ChecksumProviderFactoryImpl;
 import omero.ChecksumValidationException;
 import omero.ServerError;
+import omero.api.IMetadataPrx;
 import omero.api.RawFileStorePrx;
 import omero.api.ServiceFactoryPrx;
 import omero.cmd.CmdCallbackI;
 import omero.cmd.ERR;
 import omero.cmd.HandlePrx;
 import omero.cmd.Response;
+import omero.cmd.Status;
 import omero.grid.ImportProcessPrx;
 import omero.grid.ImportRequest;
 import omero.grid.ImportResponse;
@@ -52,16 +54,23 @@ import omero.grid.ManagedRepositoryPrx;
 import omero.grid.ManagedRepositoryPrxHelper;
 import omero.grid.RepositoryMap;
 import omero.grid.RepositoryPrx;
+import omero.model.Annotation;
 import omero.model.Dataset;
+import omero.model.FileAnnotation;
+import omero.model.FileAnnotationI;
 import omero.model.Fileset;
 import omero.model.OriginalFile;
 import omero.model.Pixels;
 import omero.model.Screen;
+import omero.sys.Parameters;
+import omero.sys.ParametersI;
 
 import org.apache.commons.collections.Buffer;
 import org.apache.commons.collections.buffer.CircularFifoBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import Ice.Current;
 
 /**
  * support class for the proper usage of {@link OMEROMetadataStoreClient} and
@@ -96,6 +105,18 @@ public class ImportLibrary implements IObservable
 
     private final ManagedRepositoryPrx repo;
 
+    private final ServiceFactoryPrx sf;
+
+    /**
+     * Adapter for use with any callbacks created by the library.
+     */
+    private final Ice.ObjectAdapter oa;
+
+    /**
+     * Router category which allows callbacks to be accessed behind a firewall.
+     */
+    private final String category;
+
     /**
      * The library will not close the client instance. The reader will be closed
      * between calls to import.
@@ -113,6 +134,14 @@ public class ImportLibrary implements IObservable
 
         this.store = client;
         repo = lookupManagedRepository();
+        // Adapter which should be used for callbacks. This is more
+        // complicated than it needs to be at the moment. We're only sure that
+        // the OMSClient has a ServiceFactory (and not necessarily a client)
+        // so we have to inspect various fields to get the adapter.
+        sf = store.getServiceFactory();
+        oa = sf.ice_getConnection().getAdapter();
+        final Ice.Communicator ic = oa.getCommunicator();
+        category = omero.client.getRouter(ic).getCategoryForClient();
     }
 
     //
@@ -224,9 +253,6 @@ public class ImportLibrary implements IObservable
                                                                     FilePathRestrictionInstance.UNIX_REQUIRED);
         final ClientFilePathTransformer sanitizer = new ClientFilePathTransformer(new MakePathComponentSafe(portableRequiredRules));
 
-        // TODO: here or on container.fillData, we need to
-        // check if the container object has ChecksumAlgorithm
-        // present and pass it into the settings object
         return repo.importFiles(Arrays.asList(container.getUsedFiles()));
     }
 
@@ -416,6 +442,11 @@ public class ImportLibrary implements IObservable
         final List<Pixels> combinedPixels = new ArrayList<Pixels>();
         final ImportConfig config = new ImportConfig();
         final ImportSettings settings = container.createSettings(config);
+
+        // TODO: This may be overwriting
+        // TODO: two remote calls seems odd.
+        settings.checksumAlgorithm = repo.suggestChecksumAlgorithm(repo.listChecksumAlgorithms());
+
         int count = upload.proc.getFilesetCount();
         for (int i = 0; i < count; i++) {
             FilesetTask task = new FilesetTask(upload, settings, i);
@@ -484,7 +515,7 @@ public class ImportLibrary implements IObservable
         HandlePrx handle;
         ImportRequest req;
         Fileset fs;
-        CmdCallbackI cb;
+        ImportCallback cb;
         ImportResponse rsp;
         List<Pixels> pixels;
 
@@ -509,7 +540,7 @@ public class ImportLibrary implements IObservable
             fs = req.activity.getParent();
             cb = createCallback(upload.proc, handle, upload.container);
             cb.loop(loops, millisWait);
-            rsp = getImportResponse(cb, upload.container, fs);
+            rsp = cb.getImportResponse();
             pixels = rsp.pixels;
             return pixels;
         }
@@ -517,90 +548,145 @@ public class ImportLibrary implements IObservable
         public Fileset getFileset() {
             return fs;
         }
+
+    }
+
+    public ImportCallback createCallback(ImportProcessPrx proc,
+        HandlePrx handle, ImportContainer container) throws ServerError {
+        return new ImportCallback(proc, handle, container);
     }
 
     @SuppressWarnings("serial")
-    public CmdCallbackI createCallback(ImportProcessPrx proc, HandlePrx handle,
-            final ImportContainer container) throws ServerError
-    {
-        // Adapter which should be used for callbacks. This is more
-        // complicated than it needs to be at the moment. We're only sure that
-        // the OMSClient has a ServiceFactory (and not necessarily a client)
-        // so we have to inspect various fields to get the adapter.
-        final ServiceFactoryPrx sf = store.getServiceFactory();
-        final Ice.ObjectAdapter oa = sf.ice_getConnection().getAdapter();
-        final Ice.Communicator ic = oa.getCommunicator();
-        final String category = omero.client.getRouter(ic).getCategoryForClient();
+    public class ImportCallback extends CmdCallbackI {
 
-        return new CmdCallbackI(oa, category, handle) {
-            public void step(int step, int total, Ice.Current current) {
-                if (step == 1) {
-                    notifyObservers(new ImportEvent.METADATA_IMPORTED(
-                            0, container.getFile().getAbsolutePath(),
-                            null, null, 0, null, step, total));
-                } else if (step == 2) {
-                    notifyObservers(new ImportEvent.PIXELDATA_PROCESSED(
-                            0, container.getFile().getAbsolutePath(),
-                            null, null, 0, null, step, total));
-                } else if (step == 3) {
-                    notifyObservers(new ImportEvent.THUMBNAILS_GENERATED(
-                            0, container.getFile().getAbsolutePath(),
-                            null, null, 0, null, step, total));
-                } else if (step == 4) {
-                    notifyObservers(new ImportEvent.METADATA_PROCESSED(
-                            0, container.getFile().getAbsolutePath(),
-                            null, null, 0, null, step, total));
-                } else if (step == 5) {
-                    notifyObservers(new ImportEvent.OBJECTS_RETURNED(
-                            0, container.getFile().getAbsolutePath(),
-                            null, null, 0, null, step, total));
+        final ImportContainer container;
+
+        final Long logFileId;
+
+        /**
+         * If null, then {@link #onFinished(Response, Status, Current)} has
+         * not yet been called with a non-error response. Field is volatile
+         * because a separate {@link Thread} will fill in the value.
+         */
+        volatile ImportResponse importResponse = null;
+
+        public ImportCallback(ImportProcessPrx proc, HandlePrx handle,
+                ImportContainer container) throws ServerError {
+                super(oa, category, handle);
+                this.container = container;
+                this.logFileId = loadLogFile();
+                initializationDone();
+        }
+
+        protected Long loadLogFile() throws ServerError {
+            final ImportRequest req = (ImportRequest) handle.getRequest();
+            final Long fsId = req.activity.getParent().getId().getValue();
+            final IMetadataPrx metadataService = sf.getMetadataService();
+            final List<String> nsToInclude = new ArrayList<String>(
+                    Arrays.asList(omero.constants.namespaces.NSLOGFILE.value));
+            final List<String> nsToExclude = new ArrayList<String>();
+            final List<Long> rootIds = new ArrayList<Long>(Arrays.asList(fsId));
+            final Parameters param = new ParametersI();
+            Map<Long,List<Annotation>> annotationMap = new HashMap<Long,List<Annotation>>();
+            List<Annotation> annotations = new ArrayList<Annotation>();
+            Long ofId = null;
+            try {
+                annotationMap = metadataService.loadSpecifiedAnnotationsLinkedTo(
+                        FileAnnotation.class.getName(), nsToInclude, nsToExclude,
+                        Fileset.class.getName(), rootIds, param);
+                if (annotationMap.containsKey(fsId)) {
+                    annotations = annotationMap.get(fsId);
+                    if (annotations.size() != 0) {
+                        FileAnnotation fa = (FileAnnotationI) annotations.get(0);
+                        ofId = fa.getFile().getId().getValue();
+                    }
                 }
+            } catch (ServerError e) {
+                ofId = null;
             }
-        };
-    }
-
-    /**
-     * Returns a non-null {@link ImportResponse} or throws notifies observers
-     * and throws a {@link RuntimeException}.
-     * @param cb
-     * @param container
-     * @return
-     */
-    public ImportResponse getImportResponse(CmdCallbackI cb,
-            final ImportContainer container, Fileset fs)
-    {
-        Response rsp = cb.getResponse();
-        ImportResponse rv = null;
-        if (rsp instanceof ERR) {
-            final ERR err = (ERR) rsp;
-            final RuntimeException rt = new RuntimeException(String.format(
-                    "Failure response on import!\n" +
-                    "Category: %s\n" +
-                    "Name: %s\n" +
-                    "Parameters: %s\n", err.category, err.name,
-                    err.parameters));
-            notifyObservers(new ErrorHandler.INTERNAL_EXCEPTION(
-                    container.getFile().getAbsolutePath(), rt,
-                    container.getUsedFiles(), container.getReader()));
-            throw rt;
-        } else if (rsp instanceof ImportResponse) {
-            rv = (ImportResponse) rsp;
+            return ofId;
         }
 
-        if (rv == null) {
-            final RuntimeException rt
-                = new RuntimeException("Unknown response: " + rsp);
-            notifyObservers(new ErrorHandler.INTERNAL_EXCEPTION(
-                    container.getFile().getAbsolutePath(), rt,
-                    container.getUsedFiles(), container.getReader()));
-            throw rt;
+        @Override
+        public void step(int step, int total, Ice.Current current) {
+            if (step == 1) {
+                notifyObservers(new ImportEvent.METADATA_IMPORTED(
+                        0, container.getFile().getAbsolutePath(),
+                        null, null, 0, null, step, total, logFileId));
+            } else if (step == 2) {
+                notifyObservers(new ImportEvent.PIXELDATA_PROCESSED(
+                        0, container.getFile().getAbsolutePath(),
+                        null, null, 0, null, step, total, logFileId));
+            } else if (step == 3) {
+                notifyObservers(new ImportEvent.THUMBNAILS_GENERATED(
+                        0, container.getFile().getAbsolutePath(),
+                        null, null, 0, null, step, total, logFileId));
+            } else if (step == 4) {
+                notifyObservers(new ImportEvent.METADATA_PROCESSED(
+                        0, container.getFile().getAbsolutePath(),
+                        null, null, 0, null, step, total, logFileId));
+            } else if (step == 5) {
+                notifyObservers(new ImportEvent.OBJECTS_RETURNED(
+                        0, container.getFile().getAbsolutePath(),
+                        null, null, 0, null, step, total, logFileId));
+            }
         }
 
-        notifyObservers(new ImportEvent.IMPORT_DONE(
-                0, container.getFile().getAbsolutePath(),
-                null, null, 0, null, rv.pixels, fs, rv.objects));
+        /**
+         * Overridden to handle the end of the process.
+         * @see CmdCallbackI#onFinished(Response, Status, Current)
+         */
+        @Override
+        public void onFinished(Response rsp, Status status, Current c)
+        {
+            waitOnInitialization(); // Need non-null container
+            ImportResponse rv = null;
+            final ImportRequest req = (ImportRequest) handle.getRequest();
+            final Fileset fs = req.activity.getParent();
+            if (rsp instanceof ERR) {
+                final ERR err = (ERR) rsp;
+                final RuntimeException rt = new RuntimeException(
+                        String.format(
+                        "Failure response on import!\n" +
+                        "Category: %s\n" +
+                        "Name: %s\n" +
+                        "Parameters: %s\n", err.category, err.name,
+                        err.parameters));
+                notifyObservers(new ErrorHandler.INTERNAL_EXCEPTION(
+                        container.getFile().getAbsolutePath(), rt,
+                        container.getUsedFiles(), container.getReader()));
+            } else if (rsp instanceof ImportResponse) {
+                rv = (ImportResponse) rsp;
+                if (this.importResponse == null)
+                {
+                    // Only respond once.
+                    notifyObservers(new ImportEvent.IMPORT_DONE(
+                        0, container.getFile().getAbsolutePath(),
+                        null, null, 0, null, rv.pixels, fs, rv.objects));
+                }
+                this.importResponse = rv;
+            } else {
+                final RuntimeException rt
+                    = new RuntimeException("Unknown response: " + rsp);
+                notifyObservers(new ErrorHandler.INTERNAL_EXCEPTION(
+                        container.getFile().getAbsolutePath(), rt,
+                        container.getUsedFiles(), container.getReader()));
+            }
+            onFinishedDone();
+        }
 
-        return rv;
+        /**
+         * Assumes that users have already waited on proper
+         * completion, i.e. that {@link #onFinished(Response, Status, Current)}
+         * has been called.
+         *
+         * @return may be null.
+         */
+        public ImportResponse getImportResponse()
+        {
+            waitOnFinishedDone();
+            return importResponse;
+        }
     }
 
     // ~ Helpers
@@ -645,6 +731,7 @@ public class ImportLibrary implements IObservable
     public void clear()
     {
         store.setGroup(null);
+        store.setCurrentLogFile(null);
         store.createRoot();
     }
 

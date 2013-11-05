@@ -430,7 +430,8 @@ jQuery.fn.viewportImage = function(options) {
                 staticBaseURL   : mediaroot+'3rdparty/panojs/images/',
                 blankTile       : mediaroot+'3rdparty/panojs/images/blank.gif',
                 loadingTile     : mediaroot+'3rdparty/panojs/images/blank.gif',
-                zoomLevelScaling : zoomLevelScaling
+                zoomLevelScaling : zoomLevelScaling,
+                delay           : 300
             });
             
             viewerBean.mouseReleasedHandler = function(e) {
@@ -471,8 +472,8 @@ jQuery.fn.viewportImage = function(options) {
             };
             
             // thumbnail url overwritten
-            // bird-eye view cannot relay on levels in order to load thumbail,
-            // becuase of the way pyramid is generated.
+            // bird-eye view cannot rely on levels in order to load thumbnail,
+            // because of the way pyramid is generated.
             viewerBean.thumbnailURL = function() {
                 return this.tileUrlProvider.thumbnailUrl;
             };

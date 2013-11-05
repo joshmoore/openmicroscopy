@@ -172,6 +172,15 @@ public class GraphEntry {
         return prepend(superspec, path, parts);
     }
 
+    /**
+     * Returns the size of {@link #parts} and {@link #path} combined.
+     * This value plus the {@link #split(String)} size of superspec is
+     * the full size of the {@link #path(String)} return value.
+     */
+    public int ownParts() {
+        return parts.length + split(path).length;
+    }
+
     //
     // Helpers
     //
@@ -287,7 +296,7 @@ public class GraphEntry {
     /**
      * A KEEP setting is a way of putting a KEEP suggestion to vote. If there is
      * a subspec, however, that vote must be passed down. If the KEEP is vetoed,
-     * it is the responsiblity of the subspec to make sure that only the proper
+     * it is the responsibility of the subspec to make sure that only the proper
      * parts are kept or not kept.
      */
     public boolean skip() {

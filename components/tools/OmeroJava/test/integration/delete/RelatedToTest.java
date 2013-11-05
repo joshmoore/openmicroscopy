@@ -14,6 +14,7 @@ import omero.model.Pixels;
 import omero.sys.ParametersI;
 
 import org.testng.annotations.Test;
+import static org.testng.AssertJUnit.*;
 
 /**
  * Collections of tests for the <code>Delete</code> service. This carries on
@@ -21,7 +22,7 @@ import org.testng.annotations.Test;
  *
  * @since 4.2.1
  */
-@Test(groups = { "delete", "integration", "ticket:2615" })
+@Test(groups = "ticket:2615")
 public class RelatedToTest extends AbstractServerTest {
 
     @Test(groups = { "ticket:1228", "ticket:2776" })
@@ -37,8 +38,8 @@ public class RelatedToTest extends AbstractServerTest {
         p2 = (Pixels) iUpdate.saveAndReturnObject(p2);
         assertEquals(p1.getId(), p2.getRelatedTo().getId());
 
-        delete(client, new Delete(DeleteServiceTest.REF_IMAGE, i1
-                .getId().getValue(), null));
+        delete(client, new Delete(DeleteServiceTest.REF_IMAGE, i1.getId()
+                .getValue(), null));
 
         assertDoesNotExist(i1);
         assertDoesNotExist(p1);
@@ -67,8 +68,8 @@ public class RelatedToTest extends AbstractServerTest {
         Pixels pixels = pixels1.getRelatedTo();
         assertNotNull(pixels);
         assertTrue(pixels.getId().getValue() == pixels2.getId().getValue());
-        delete(client, new Delete(DeleteServiceTest.REF_IMAGE, img2
-                .getId().getValue(), null));
+        delete(client, new Delete(DeleteServiceTest.REF_IMAGE, img2.getId()
+                .getValue(), null));
 
         String sql = "select i from Image i where i.id = :id";
         ParametersI param = new ParametersI();
@@ -106,7 +107,8 @@ public class RelatedToTest extends AbstractServerTest {
         Pixels pixels = pixels1.getRelatedTo();
         assertNotNull(pixels);
         assertTrue(pixels.getId().getValue() == pixels2.getId().getValue());
-        iDelete.deleteImage(img2.getId().getValue(), true);
+        delete(client, new Delete(DeleteServiceTest.REF_IMAGE, img2.getId()
+                .getValue(), null));
 
         String sql = "select i from Image i where i.id = :id";
         ParametersI param = new ParametersI();

@@ -1,6 +1,11 @@
 package ome.services.blitz.test.utests;
 
+import static omero.rtypes.rstring;
+
+import java.util.Collections;
+import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 import junit.framework.Assert;
 import ome.services.blitz.repo.ManagedRepositoryI;
@@ -8,7 +13,9 @@ import ome.services.blitz.repo.ProcessCreator;
 import ome.services.blitz.repo.RepositoryDao;
 import ome.services.blitz.repo.path.FilePathNamingValidator;
 import ome.services.blitz.repo.path.FilePathRestrictionInstance;
+import ome.services.blitz.util.ChecksumAlgorithmMapper;
 import omero.model.ChecksumAlgorithm;
+import omero.model.ChecksumAlgorithmI;
 
 import org.jmock.Mock;
 import org.jmock.MockObjectTestCase;
@@ -65,5 +72,57 @@ public class ManagedRepositoryITest extends MockObjectTestCase {
                     algorithm.getValue().getValue()));
         }
         Assert.assertTrue(expectedAlgorithmNames.isEmpty());
+    }
+
+    /**
+     * Test that the server does give checksum algorithm suggestions in accordance with its preferred algorithm.
+     */
+    @Test
+    public void testSuggestFavoredChecksumAlgorithm() {
+        final List<ChecksumAlgorithm> configured = this.tmri.listChecksumAlgorithms(curr);
+        final ChecksumAlgorithm favored = configured.get(0);
+        final String favoredName = ChecksumAlgorithmMapper.CHECKSUM_ALGORITHM_NAMER.apply(favored);
+
+        ChecksumAlgorithm suggestion;
+        String suggestionName;
+
+        suggestion = this.tmri.suggestChecksumAlgorithm(Collections.singletonList(favored), curr);
+        suggestionName = ChecksumAlgorithmMapper.CHECKSUM_ALGORITHM_NAMER.apply(suggestion);
+        Assert.assertEquals(favoredName, suggestionName);
+
+        suggestion = this.tmri.suggestChecksumAlgorithm(configured, curr);
+        suggestionName = ChecksumAlgorithmMapper.CHECKSUM_ALGORITHM_NAMER.apply(suggestion);
+        Assert.assertEquals(favoredName, suggestionName);
+    }
+
+    /**
+     * Test that the server does suggest a less-preferred checksum algorithm if the client does not support the preferred.
+     */
+    @Test
+    public void testSuggestUnfavoredChecksumAlgorithm() {
+        final List<ChecksumAlgorithm> configured = this.tmri.listChecksumAlgorithms(curr);
+        final ChecksumAlgorithm unfavored = configured.get(configured.size() - 1);
+        final String unfavoredName = ChecksumAlgorithmMapper.CHECKSUM_ALGORITHM_NAMER.apply(unfavored);
+
+        ChecksumAlgorithm suggestion;
+        String suggestionName;
+
+        suggestion = this.tmri.suggestChecksumAlgorithm(Collections.singletonList(unfavored), curr);
+        suggestionName = ChecksumAlgorithmMapper.CHECKSUM_ALGORITHM_NAMER.apply(suggestion);
+        Assert.assertEquals(unfavoredName, suggestionName);
+    }
+
+    /**
+     * Test that the server does report when no checksum algorithm is acceptable.
+     */
+    @Test
+    public void testSuggestNoChecksumAlgorithm() {
+        final ChecksumAlgorithm badAlgorithm = new ChecksumAlgorithmI();
+        badAlgorithm.setValue(rstring(UUID.randomUUID().toString()));
+
+        ChecksumAlgorithm suggestion;
+
+        suggestion = this.tmri.suggestChecksumAlgorithm(Collections.singletonList(badAlgorithm), curr);
+        Assert.assertNull(suggestion);
     }
 }

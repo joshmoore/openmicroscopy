@@ -2,7 +2,7 @@
  * ome.services.blitz.repo.PublicRepositoryI
  *
  *------------------------------------------------------------------------------
- *  Copyright (C) 2006-2011 University of Dundee. All rights reserved.
+ *  Copyright (C) 2006-2013 University of Dundee. All rights reserved.
  *
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -34,6 +34,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableList.Builder;
+
 import org.apache.commons.io.filefilter.FileFilterUtils;
 import org.apache.commons.io.filefilter.IOFileFilter;
 import org.apache.commons.io.filefilter.NameFileFilter;
@@ -52,6 +55,8 @@ import ome.api.IQuery;
 import ome.api.RawFileStore;
 import ome.formats.importer.ImportConfig;
 import ome.formats.importer.OMEROWrapper;
+import ome.model.annotations.FileAnnotation;
+import ome.model.annotations.FilesetAnnotationLink;
 import ome.services.blitz.impl.AbstractAmdServant;
 import ome.services.blitz.impl.ServiceFactoryI;
 import ome.services.blitz.repo.path.FilePathRestrictionInstance;
@@ -60,6 +65,7 @@ import ome.services.blitz.repo.path.FsFile;
 import ome.services.blitz.repo.path.MakePathComponentSafe;
 import ome.services.blitz.repo.path.ServerFilePathTransformer;
 import ome.services.blitz.util.BlitzExecutor;
+import ome.services.blitz.util.ChecksumAlgorithmMapper;
 import ome.services.blitz.util.FindServiceFactoryMessage;
 import ome.services.blitz.util.RegisterServantMessage;
 import ome.services.util.Executor;
@@ -92,6 +98,7 @@ import omero.grid._RepositoryOperations;
 import omero.grid._RepositoryTie;
 import omero.model.ChecksumAlgorithm;
 import omero.model.OriginalFile;
+import omero.model.OriginalFileI;
 import omero.model.enums.ChecksumAlgorithmSHA1160;
 import omero.util.IceMapper;
 
@@ -100,6 +107,7 @@ import omero.util.IceMapper;
  *
  * @author Colin Blackburn <cblackburn at dundee dot ac dot uk>
  * @author Josh Moore, josh at glencoesoftware.com
+ * @author m.t.b.carroll@dundee.ac.uk
  */
 public class PublicRepositoryI implements _RepositoryOperations, ApplicationContextAware {
 
@@ -139,7 +147,8 @@ public class PublicRepositoryI implements _RepositoryOperations, ApplicationCont
 
     protected final ChecksumProviderFactory checksumProviderFactory;
 
-    protected final omero.model.ChecksumAlgorithm checksumAlgorithm;
+    /* in descending order of preference */
+    protected final ImmutableList<ChecksumAlgorithm> checksumAlgorithms;
 
     protected final MakePathComponentSafe makePathComponentSafe;
 
@@ -149,13 +158,23 @@ public class PublicRepositoryI implements _RepositoryOperations, ApplicationCont
 
     public PublicRepositoryI(RepositoryDao repositoryDao,
             ChecksumProviderFactory checksumProviderFactory,
-            omero.model.ChecksumAlgorithm checksumAlgorithm,
+            String checksumAlgorithmSupported,
             MakePathComponentSafe makePathComponentSafe) throws Exception {
         this.repositoryDao = repositoryDao;
         this.checksumProviderFactory = checksumProviderFactory;
-        this.checksumAlgorithm = checksumAlgorithm;
         this.repoUuid = null;
         this.makePathComponentSafe = makePathComponentSafe;
+
+        final Builder<ChecksumAlgorithm> checksumAlgorithmsBuilder = ImmutableList.builder();
+        for (final String term : checksumAlgorithmSupported.split(",")) {
+            if (StringUtils.isNotBlank(term)) {
+                checksumAlgorithmsBuilder.add(ChecksumAlgorithmMapper.getChecksumAlgorithm(term.trim()));
+            }
+        }
+        this.checksumAlgorithms = checksumAlgorithmsBuilder.build();
+        if (this.checksumAlgorithms.isEmpty()) {
+            throw new IllegalArgumentException("a checksum algorithm must be supported");
+        }
 
     }
 
@@ -407,7 +426,7 @@ public class PublicRepositoryI implements _RepositoryOperations, ApplicationCont
     }
 
     /* TODO: The server should not have any hard-coded preference for the SHA-1 algorithm
-     * (which may not be the setting of omero.checksum.default) in such a generic code path.
+     * (which may not be the setting of omero.checksum.supported) in such a generic code path.
      * Clients wishing to assume SHA-1 for checksumming files created using this method should
      * somehow specify this to the server via the API. This method can then be removed.
      */
@@ -444,8 +463,62 @@ public class PublicRepositoryI implements _RepositoryOperations, ApplicationCont
             }
         }
 
+    /**
+     * Should be refactored elsewhere.
+     * @param checkedPath 
+     * @param current
+     */
+    @Deprecated
+    protected OriginalFile registerLogFile(final String repoUuid, final long filesetId,
+            final CheckedPath checkedPath, Ice.Current current)
+                throws ServerError {
+
+        final Executor executor = this.context.getBean("executor", Executor.class);
+        final Map<String, String> ctx = current.ctx;
+        final String session = ctx.get(omero.constants.SESSIONUUID.value);
+        final String group = ctx.get(omero.constants.GROUP.value);
+        final Principal principal = new Principal(session, group, null);
+        final String LOG_FILE_NS =
+                omero.constants.namespaces.NSLOGFILE.value;
+
+        try {
+            FilesetAnnotationLink link = (FilesetAnnotationLink)
+                    executor.execute(ctx, principal, new Executor.SimpleWork(this, "setOriginalFileHasherToSHA1", id) {
+                @Transactional(readOnly = false)
+                public Object doWork(Session session, ServiceFactory sf) {
+
+                    ome.model.core.OriginalFile logFile = null;
+                    try {
+                         logFile = repositoryDao.register(repoUuid,
+                            checkedPath, "text/plain", sf, getSqlAction());
+                    } catch (ServerError se) {
+                        throw new RuntimeException("Failed to register log file", se);
+                    }
+
+                    // use sf to get the services to link Fileset and the OriginalFile
+                    ome.api.IUpdate iUpdate = sf.getUpdateService();
+                    ome.model.annotations.FileAnnotation fa = new ome.model.annotations.FileAnnotation();
+                    fa.setNs(LOG_FILE_NS);
+                    fa.setFile(logFile.proxy());
+                    FilesetAnnotationLink fsl = new FilesetAnnotationLink();
+                    fsl.link(new ome.model.fs.Fileset(filesetId, false), fa);
+                    return iUpdate.saveAndReturnObject(fsl);
+                }
+            });
+            FileAnnotation fs = (FileAnnotation) link.child();
+            return new OriginalFileI(fs.getFile().getId(), false);
+        } catch (Exception e) {
+            throw (ServerError) new IceMapper().handleException(e, executor.getContext());
+        }
+}
+
     protected OriginalFile findOrCreateInDb(CheckedPath checked, String mode,
             Ice.Current curr) throws ServerError {
+        return findOrCreateInDb(checked, mode, null, curr);
+    }
+
+    protected OriginalFile findOrCreateInDb(CheckedPath checked, String mode,
+            String mimetype, Ice.Current curr) throws ServerError {
 
         OriginalFile ofile = findInDb(checked, mode, curr);
         if (ofile != null) {
@@ -455,7 +528,7 @@ public class PublicRepositoryI implements _RepositoryOperations, ApplicationCont
         if (checked.exists()) {
             omero.grid.UnregisteredFileException ufe
                 = new omero.grid.UnregisteredFileException();
-            ofile = (OriginalFile) new IceMapper().map(checked.asOriginalFile(null));
+            ofile = (OriginalFile) new IceMapper().map(checked.asOriginalFile(mimetype));
             ufe.file = ofile;
             throw ufe;
         }

@@ -643,6 +643,10 @@
 	        color:hsl(210,10%,30%);
 	    }
 
+        #chgrp_split_filesets .split_fileset {
+            font-size: 13px;
+            line-height: 15px;
+        }
         .fileset_image {
             max-width:35px;
             margin:3px;
@@ -1463,6 +1467,7 @@
             }
 
             #dataIcons .ui-selected { 
+                color: white;
                 background-color:#3875d7;
                 border:solid 1px #3875d7;
                 -webkit-box-shadow: 0 1px 1px rgba(0,0,0,.2); 

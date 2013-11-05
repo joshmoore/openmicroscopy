@@ -33,6 +33,8 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Toolkit;
 import java.awt.image.BufferedImage;
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryUsage;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -743,9 +745,10 @@ class ImViewerModel
 	void discard()
 	{
 		state = ImViewer.DISCARDED;
-		if (imageIcon != null) imageIcon.flush();
+		imageIcon = null;
 		browser.discard();
 		if (image == null) return;
+		resetTiles();
 		Iterator<Integer> i = loaders.keySet().iterator();
 		while (i.hasNext()) {
 			loaders.get(i.next()).cancel();
@@ -1972,7 +1975,7 @@ class ImViewerModel
 		buf.append("\n");
 		
 		String imageNameWithRange = combineFilenameWith(ref.getImageName(),
-				getImageName(), startZ, endZ);
+				getImageName());
 		
 		int startT = ref.getStartT();
 		int endT = ref.getEndT();
@@ -1999,18 +2002,13 @@ class ImViewerModel
 	 * 
 	 * @param imageName The name of the projection
 	 * @param imageName The original name of the image
-	 * @param startZ The starting Z value used to create the projection
-	 * @param endZ The ending Z value used to create the projection
 	 * @return See above.
 	 */
-	private String combineFilenameWith(String projectName, String imageName,
-			int startZ, int endZ) {
+	private String combineFilenameWith(String projectName, String imageName) {
 		String extension = FilenameUtils.getExtension(imageName);
 		
 		StringBuilder nameBuilder = new StringBuilder();
 		nameBuilder.append(projectName);
-		nameBuilder.append(String.format("_ZRange_%s_%s", (startZ + 1),
-				(endZ + 1)));
 		nameBuilder.append(".");
 		nameBuilder.append(extension);
 		
@@ -2749,6 +2747,7 @@ class ImViewerModel
     /** Resets the tiles.*/
     void resetTiles()
     {
+    	if (tiles == null) return;
     	Iterator<Tile> i = tiles.values().iterator();
 		while (i.hasNext())
 			i.next().setImage(null);

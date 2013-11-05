@@ -58,6 +58,7 @@ import loci.formats.IFormatReader;
 import loci.formats.ImageReader;
 import loci.formats.meta.IMinMaxStore;
 import loci.formats.meta.MetadataStore;
+import loci.formats.meta.MetadataRoot;
 import ome.formats.enums.EnumerationProvider;
 import ome.formats.enums.IQueryEnumProvider;
 import ome.formats.importer.ImportEvent;
@@ -74,6 +75,9 @@ import ome.formats.model.ReferenceProcessor;
 import ome.formats.model.ShapeProcessor;
 import ome.formats.model.TargetProcessor;
 import ome.formats.model.WellProcessor;
+import ome.services.blitz.repo.CheckedPath;
+import ome.services.blitz.repo.ManagedImportLocationI;
+import ome.services.blitz.repo.ManagedImportRequestI;
 import ome.system.UpgradeCheck;
 import ome.util.LSID;
 import ome.xml.model.AffineTransform;
@@ -114,7 +118,9 @@ import omero.api.RawPixelsStorePrx;
 import omero.api.ServiceFactoryPrx;
 import omero.api.ServiceInterfacePrx;
 import omero.api.ThumbnailStorePrx;
+import omero.constants.CLIENTUUID;
 import omero.constants.METADATASTORE;
+import omero.constants.namespaces.NSCOMPANIONFILE;
 import omero.grid.ImportSettings;
 import omero.grid.InteractiveProcessorPrx;
 import omero.metadatastore.IObjectContainer;
@@ -143,6 +149,8 @@ import omero.model.ExperimenterGroup;
 import omero.model.Filament;
 import omero.model.FilamentType;
 import omero.model.FileAnnotation;
+import omero.model.FileAnnotationI;
+import omero.model.Fileset;
 import omero.model.FilesetJobLink;
 import omero.model.Filter;
 import omero.model.FilterSet;
@@ -151,6 +159,8 @@ import omero.model.Format;
 import omero.model.IObject;
 import omero.model.Illumination;
 import omero.model.Image;
+import omero.model.ImageAnnotationLink;
+import omero.model.ImageAnnotationLinkI;
 import omero.model.ImageI;
 import omero.model.ImagingEnvironment;
 import omero.model.Immersion;
@@ -177,6 +187,7 @@ import omero.model.MicroscopeType;
 import omero.model.Objective;
 import omero.model.ObjectiveSettings;
 import omero.model.OriginalFile;
+import omero.model.OriginalFileI;
 import omero.model.Permissions;
 import omero.model.Pixels;
 import omero.model.PixelsType;
@@ -208,6 +219,7 @@ import omero.sys.ParametersI;
 import omero.util.TempFileManager;
 
 import org.apache.commons.io.FilenameUtils;
+import org.apache.log4j.MDC;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -261,7 +273,7 @@ public class OMEROMetadataStoreClient
     /** Bio-Formats reader that's populating us. */
     private IFormatReader reader;
 
-    private List<Pixels> pixelsList;
+    private OMEROMetadataStoreClientRoot pixelsList = new OMEROMetadataStoreClientRoot();
 
     private boolean encryptedConnection = false;
 
@@ -295,6 +307,9 @@ public class OMEROMetadataStoreClient
 
     /** Image/Plate description the user specified for use by model processors. */
     private String userSpecifiedDescription;
+
+    /** Filename of the log file where services will save logging output. */
+    private String logFilename;
 
     /** Linkage target for all Images/Plates for use by model processors. */
     private IObject userSpecifiedTarget;
@@ -394,6 +409,11 @@ public class OMEROMetadataStoreClient
         if (groupID != null) {
             callCtx.put("omero.group", groupID.toString());
             log.info(String.format("Call context: {omero.group:%s}", groupID));
+        }
+        if (logFilename != null) {
+            callCtx.put("omero.logfilename", logFilename);
+            log.info(String.format("Call context: {omero.logfilename:%s}",
+                    logFilename));
         }
 
         // Blitz services
@@ -715,6 +735,62 @@ public class OMEROMetadataStoreClient
         }
     }
 
+    //
+    // SERVER-SIDE API
+    //
+
+    public void updateFileSize(OriginalFile file, long size) throws ServerError {
+        file = (OriginalFile) iQuery.get("OriginalFile", file.getId().getValue());
+        file.setSize(rlong(size));
+        iUpdate.saveObject(file);
+    }
+
+    /**
+     * Uses the {@link ManagedImportRequestI#reader reader} object to obtain
+     * a list of companion files from the current image. Resolves the name of
+     * the file into an OriginalFile and tries to link to the image in the DB.
+     * @param imageList A list of image to which companion files will be
+     *                  attached.
+     */
+    public void attachCompanionFilesToImage(Fileset fs, List<Image> imageList)
+        throws ServerError {
+
+        final String[] companionFiles = reader.getUsedFiles(true);
+        if (companionFiles == null || companionFiles.length == 0) {
+            return; // EARLY EXIT
+        }
+
+        final List<IObject> links = new ArrayList<IObject>();
+        for (int i = 0; i < fs.sizeOfUsedFiles(); i++) {
+            OriginalFile of = fs.getFilesetEntry(i).getOriginalFile();
+            String fileName = FilenameUtils.concat(
+                    of.getPath().getValue(), of.getName().getValue());
+            for (String companionFile : companionFiles) {
+                if (companionFile.endsWith(fileName)) {
+                    for (Image image : imageList) {
+                        ImageAnnotationLink iali =
+                                new ImageAnnotationLinkI();
+                        FileAnnotation fa = new FileAnnotationI();
+                        fa.setNs(rstring(NSCOMPANIONFILE.value));
+                        fa.setFile(new OriginalFileI(
+                                of.getId().getValue(), false));
+                        iali.setParent(new ImageI(
+                                image.getId().getValue(), false));
+                        iali.setChild(fa);
+                        links.add(iali);
+                    }
+                }
+            }
+        }
+        if (links.size() > 0) {
+            iUpdate.saveCollection(links);
+        }
+    }
+
+
+    //
+    // METADATASTORE INTERFACE
+    //
 
     /**
      * Sets the active enumeration provider.
@@ -880,7 +956,7 @@ public class OMEROMetadataStoreClient
      */
     public RTime toRType(Timestamp value)
     {
-        return value == null? null : rtime(value.asDate().getTime());
+        return value == null? null : rtime(value.asInstant().getMillis());
     }
 
     /**
@@ -1083,9 +1159,9 @@ public class OMEROMetadataStoreClient
     }
 
     /* (non-Javadoc)
-     * @see loci.formats.meta.MetadataStore#getRoot()
+     * @see loci.formats.meta.MetadataStore#getRoot(loci.formats.meta.MetadataRoot)
      */
-    public Object getRoot()
+    public MetadataRoot getRoot()
     {
         return pixelsList;
     }
@@ -1701,7 +1777,7 @@ public class OMEROMetadataStoreClient
             delegate.updateObjects(containerArray);
             delegate.updateReferences(referenceStringCache);
             Map<String, List<IObject>> rv = delegate.saveToDB(link);
-            pixelsList = (List) rv.get("Pixels");
+            pixelsList = new OMEROMetadataStoreClientRoot((List) rv.get("Pixels"));
 
             if (log.isDebugEnabled())
             {
@@ -3085,6 +3161,15 @@ public class OMEROMetadataStoreClient
     }
 
     /* (non-Javadoc)
+     * @see loci.formats.meta.MetadataStore#setDetectorSettingsIntegration(ome.xml.model.primitives.PositiveInteger,int,int)
+     */
+    public void  setDetectorSettingsIntegration(PositiveInteger integration, int imageIndex, int channelIndex)
+    {
+        DetectorSettings o = getDetectorSettings(imageIndex, channelIndex);
+        o.setIntegration(toRType(integration));
+    }
+
+    /* (non-Javadoc)
      * @see loci.formats.meta.MetadataStore#setDetectorSettingsOffset(java.lang.Double, int, int)
      */
     public void setDetectorSettingsOffset(Double offset, int imageIndex,
@@ -3112,6 +3197,15 @@ public class OMEROMetadataStoreClient
     {
         DetectorSettings o = getDetectorSettings(imageIndex, channelIndex);
         o.setVoltage(toRType(voltage));
+    }
+
+    /* (non-Javadoc)
+     * @see loci.formats.meta.MetadataStore#setDetectorSettingsZoom(java.lang.Double,int,int)
+     */
+    public void  setDetectorSettingsZoom(Double zoom, int imageIndex, int channelIndex)
+    {
+        DetectorSettings o = getDetectorSettings(imageIndex, channelIndex);
+        o.setZoom(toRType(zoom));
     }
 
     ////////Dichroic/////////
@@ -5155,9 +5249,9 @@ public class OMEROMetadataStoreClient
     }
 
     /* (non-Javadoc)
-     * @see loci.formats.meta.MetadataStore#setObjectiveNominalMagnification(java.lang.Integer, int, int)
+     * @see loci.formats.meta.MetadataStore#setObjectiveNominalMagnification(java.lang.Double, int, int)
      */
-    public void setObjectiveNominalMagnification(PositiveInteger nominalMagnification,
+    public void setObjectiveNominalMagnification(Double nominalMagnification,
             int instrumentIndex, int objectiveIndex)
     {
         Objective o = getObjective(instrumentIndex, objectiveIndex);
@@ -5222,12 +5316,24 @@ public class OMEROMetadataStoreClient
     }
 
     /* (non-Javadoc)
+     * @see loci.formats.meta.MetadataStore#setPixelsBigEndian(java.lang.Boolean,int)
+     */
+    public void  setPixelsBigEndian(Boolean value,  int index)
+    {
+        // TODO : not in OMERO model
+        //Pixels o = getPixels(imageIndex);
+        //o.setBigEndian(value);
+    }
+
+    /* (non-Javadoc)
      * @see loci.formats.meta.MetadataStore#setPixelsBinDataBigEndian(java.lang.Boolean, int, int)
      */
     public void setPixelsBinDataBigEndian(Boolean bigEndian, int imageIndex,
             int binDataIndex)
     {
         // TODO : not in OMERO model
+        //Pixels o = getPixels(imageIndex);
+        //o.setBinDataBigEndian(value);
     }
 
     /* (non-Javadoc)
@@ -5242,6 +5348,17 @@ public class OMEROMetadataStoreClient
         o.setDimensionOrder((DimensionOrder) getEnumeration(
             DimensionOrder.class, "XYZCT"));
     }
+
+    /* (non-Javadoc)
+     * @see loci.formats.meta.MetadataStore#setPixelsInterleaved(java.lang.Boolean,int)
+     */
+    public void  setPixelsInterleaved(Boolean value,  int index)
+    {
+        // TODO: not in OMERO model
+        //Pixels o = getPixels(imageIndex);
+        //o.setInterleaved(value);
+    }
+
 
     /* (non-Javadoc)
      * @see loci.formats.meta.MetadataStore#setPixelsPhysicalSizeX(ome.xml.model.primitives.PositiveFloat, int)
@@ -5268,6 +5385,15 @@ public class OMEROMetadataStoreClient
     {
         Pixels o = getPixels(imageIndex);
         o.setPhysicalSizeZ(toRType(physicalSizeZ));
+    }
+
+    /* (non-Javadoc)
+     * @see loci.formats.meta.MetadataStore#setPixelsSignificantBits(ome.xml.model.primitives.PositiveInteger,int)
+     */
+    public void  setPixelsSignificantBits(PositiveInteger value,  int imageIndex)
+    {
+        Pixels o = getPixels(imageIndex);
+        o.setSignificantBits(toRType(value));
     }
 
     /* (non-Javadoc)
@@ -5381,6 +5507,8 @@ public class OMEROMetadataStoreClient
     public void setPlaneHashSHA1(String hashSHA1, int imageIndex, int planeIndex)
     {
         // TODO : not in the OMERO model
+        //PlaneInfo o = getPlane(imageIndex, planeIndex);
+        //o.setHashSHA1(toRType(exposureTime));
     }
 
     /* (non-Javadoc)
@@ -6300,12 +6428,20 @@ public class OMEROMetadataStoreClient
     }
 
     /* (non-Javadoc)
-     * @see loci.formats.meta.MetadataStore#setRoot(java.lang.Object)
+     * @see loci.formats.meta.MetadataStore#setRoot(MetadataRoot)
      */
+    public void setRoot(MetadataRoot root)
+    {
+        // TODO Auto-generated method stub
+    }
+
+    /* (non-Javadoc)
+     * @see loci.formats.meta.MetadataStore#setRoot(MetadataRoot)
+     */
+    @Deprecated
     public void setRoot(Object root)
     {
         // TODO Auto-generated method stub
-
     }
 
     //////// Screen /////////
@@ -6512,6 +6648,16 @@ public class OMEROMetadataStoreClient
     {
         CommentAnnotation o = getCommentAnnotation(commentAnnotationIndex);
         o.setNs(toRType(namespace));
+    }
+
+    /* (non-Javadoc)
+     * @see loci.formats.meta.MetadataStore#setCommentAnnotationAnnotator(java.lang.String,int)
+     */
+    public void  setCommentAnnotationAnnotator(String value, int index)
+    {
+        // TODO : not in OMERO model
+        //CommentAnnotation o = getCommentAnnotation(commentAnnotationIndex);
+        //o.setAnnotator(toRType(value));
     }
 
     /* (non-Javadoc)
@@ -7112,6 +7258,34 @@ public class OMEROMetadataStoreClient
     }
 
     /* (non-Javadoc)
+     * @see loci.formats.meta.MetadataStore#setXMLAnnotationAnnotator(java.lang.String,int)
+     */
+    public void  setXMLAnnotationAnnotator(String value, int index)
+    {
+        // TODO : not in OMERO model
+    }
+
+    /* (non-Javadoc)
+     * @see loci.formats.meta.MetadataStore#setXMLAnnotationAnnotationRef(java.lang.String, int, int)
+     */
+    public void setXMLAnnotationAnnotationRef(String annotation,
+            int XMLAnnotationIndex, int annotationRefIndex)
+    {
+        LSID key = new LSID(XmlAnnotation.class, XMLAnnotationIndex);
+        addReference(key, new LSID(annotation));
+    }
+
+    /* (non-Javadoc)
+     * @see loci.formats.meta.MetadataStore#setXMLAnnotationDescription(java.lang.String, int)
+     */
+    public void setXMLAnnotationDescription(String description,
+            int XMLAnnotationIndex)
+    {
+        XmlAnnotation o = getXMLAnnotation(XMLAnnotationIndex);
+        o.setDescription(toRType(description));
+    }
+
+    /* (non-Javadoc)
      * @see loci.formats.meta.MetadataStore#setBooleanAnnotationAnnotationRef(java.lang.String, int, int)
      */
     public void setBooleanAnnotationAnnotationRef(String annotation,
@@ -7127,8 +7301,16 @@ public class OMEROMetadataStoreClient
     public void setBooleanAnnotationDescription(String description,
             int booleanAnnotationIndex)
     {
-        // TODO Auto-generated method stub
+        BooleanAnnotation o = getBooleanAnnotation(booleanAnnotationIndex);
+        o.setDescription(toRType(description));
+    }
 
+    /* (non-Javadoc)
+     * @see loci.formats.meta.MetadataStore#setBooleanAnnotationAnnotator(java.lang.String,int)
+     */
+    public void  setBooleanAnnotationAnnotator(String value, int index)
+    {
+        // TODO : not in OMERO model
     }
 
     /* (non-Javadoc)
@@ -7147,8 +7329,8 @@ public class OMEROMetadataStoreClient
     public void setCommentAnnotationDescription(String description,
             int commentAnnotationIndex)
     {
-        // TODO Auto-generated method stub
-
+        CommentAnnotation o = getCommentAnnotation(commentAnnotationIndex);
+        o.setDescription(toRType(description));
     }
 
     /* (non-Javadoc)
@@ -7167,8 +7349,16 @@ public class OMEROMetadataStoreClient
     public void setDoubleAnnotationDescription(String description,
             int doubleAnnotationIndex)
     {
-        // TODO Auto-generated method stub
+        DoubleAnnotation o = getDoubleAnnotation(doubleAnnotationIndex);
+        o.setDescription(toRType(description));
+    }
 
+    /* (non-Javadoc)
+     * @see loci.formats.meta.MetadataStore#setDoubleAnnotationAnnotator(java.lang.String,int)
+     */
+    public void  setDoubleAnnotationAnnotator(String value, int index)
+    {
+        // TODO : not in OMERO model
     }
 
     /* (non-Javadoc)
@@ -7187,8 +7377,16 @@ public class OMEROMetadataStoreClient
     public void setFileAnnotationDescription(String description,
             int fileAnnotationIndex)
     {
-        // TODO Auto-generated method stub
+        FileAnnotation o = getFileAnnotation(fileAnnotationIndex);
+        o.setDescription(toRType(description));
+    }
 
+    /* (non-Javadoc)
+     * @see loci.formats.meta.MetadataStore#setFileAnnotationAnnotator(java.lang.String,int)
+     */
+    public void  setFileAnnotationAnnotator(String value, int index)
+    {
+        // TODO : not in OMERO model
     }
 
     /* (non-Javadoc)
@@ -7197,9 +7395,18 @@ public class OMEROMetadataStoreClient
     public void setListAnnotationDescription(String description,
             int listAnnotationIndex)
     {
-        // TODO Auto-generated method stub
-
+        ListAnnotation o = getListAnnotation(listAnnotationIndex);
+        o.setDescription(toRType(description));
     }
+
+    /* (non-Javadoc)
+     * @see loci.formats.meta.MetadataStore#setListAnnotationAnnotator(java.lang.String,int)
+     */
+    public void  setListAnnotationAnnotator(String value, int index)
+    {
+        // TODO : not in OMERO model
+    }
+
 
     /* (non-Javadoc)
      * @see loci.formats.meta.MetadataStore#setLongAnnotationAnnotationRef(java.lang.String, int, int)
@@ -7217,8 +7424,16 @@ public class OMEROMetadataStoreClient
     public void setLongAnnotationDescription(String description,
             int longAnnotationIndex)
     {
-        // TODO Auto-generated method stub
+        LongAnnotation o = getLongAnnotation(longAnnotationIndex);
+        o.setDescription(toRType(description));
+    }
 
+    /* (non-Javadoc)
+     * @see loci.formats.meta.MetadataStore#setLongAnnotationAnnotator(java.lang.String,int)
+     */
+    public void  setLongAnnotationAnnotator(String value, int XMLAnnotationIndex)
+    {
+        // TODO : not in OMERO model
     }
 
     /**
@@ -7250,8 +7465,8 @@ public class OMEROMetadataStoreClient
     public void setTagAnnotationDescription(String description,
             int tagAnnotationIndex)
     {
-        // TODO Auto-generated method stub
-
+        TagAnnotation o = getTagAnnotation(tagAnnotationIndex);
+        o.setDescription(toRType(description));
     }
 
     /* (non-Javadoc)
@@ -7276,6 +7491,14 @@ public class OMEROMetadataStoreClient
     {
         TagAnnotation o = getTagAnnotation(tagAnnotationIndex);
         o.setNs(toRType(namespace));
+    }
+
+    /* (non-Javadoc)
+     * @see loci.formats.meta.MetadataStore#setTagAnnotationAnnotator(java.lang.String,int)
+     */
+    public void  setTagAnnotationAnnotator(String value, int index)
+    {
+        // TODO : not in OMERO model
     }
 
     /* (non-Javadoc)
@@ -7316,8 +7539,8 @@ public class OMEROMetadataStoreClient
     public void setTermAnnotationDescription(String description,
             int termAnnotationIndex)
     {
-        // TODO Auto-generated method stub
-
+        TermAnnotation o = getTermAnnotation(termAnnotationIndex);
+        o.setDescription(toRType(description));
     }
 
     /* (non-Javadoc)
@@ -7345,6 +7568,14 @@ public class OMEROMetadataStoreClient
     }
 
     /* (non-Javadoc)
+     * @see loci.formats.meta.MetadataStore#setTermAnnotationAnnotator(java.lang.String,int)
+     */
+    public void  setTermAnnotationAnnotator(String value, int index)
+    {
+        // TODO : not in OMERO model
+    }
+
+    /* (non-Javadoc)
      * @see loci.formats.meta.MetadataStore#setTermAnnotationValue(java.lang.String, int)
      */
     public void setTermAnnotationValue(String value, int termAnnotationIndex)
@@ -7369,28 +7600,16 @@ public class OMEROMetadataStoreClient
     public void setTimestampAnnotationDescription(String description,
             int timestampAnnotationIndex)
     {
-        // TODO Auto-generated method stub
-
+        TimestampAnnotation o = getTimestampAnnotation(timestampAnnotationIndex);
+        o.setDescription(toRType(description));
     }
 
     /* (non-Javadoc)
-     * @see loci.formats.meta.MetadataStore#setXMLAnnotationAnnotationRef(java.lang.String, int, int)
+     * @see loci.formats.meta.MetadataStore#setTimestampAnnotationAnnotator(java.lang.String,int)
      */
-    public void setXMLAnnotationAnnotationRef(String annotation,
-            int XMLAnnotationIndex, int annotationRefIndex)
+    public void  setTimestampAnnotationAnnotator(String value, int index)
     {
-        LSID key = new LSID(XmlAnnotation.class, XMLAnnotationIndex);
-        addReference(key, new LSID(annotation));
-    }
-
-    /* (non-Javadoc)
-     * @see loci.formats.meta.MetadataStore#setXMLAnnotationDescription(java.lang.String, int)
-     */
-    public void setXMLAnnotationDescription(String description,
-            int XMLAnnotationIndex)
-    {
-        // TODO Auto-generated method stub
-
+        // TODO : not in OMERO model
     }
 
     //
@@ -8089,6 +8308,26 @@ public class OMEROMetadataStoreClient
     {
         Well o = getWell(plateIndex, wellIndex);
         o.setType(toRType(type));
+    }
+
+    /* (non-Javadoc)
+     * @see loci.formats.meta.MetadataStore#setRightsRightsHeld(java.lang.String)
+     */
+    public void  setRightsRightsHeld(String value)
+    {
+        // TODO : not in OMERO model
+    }
+
+    /* (non-Javadoc)
+     * @see loci.formats.meta.MetadataStore#setRightsRightsHolder(java.lang.String)
+     */
+    public void  setRightsRightsHolder(String value)
+    {
+        // TODO : not in OMERO model
+    }
+
+    public void setCurrentLogFile(String logFilename) {
+        this.logFilename = logFilename;
     }
 
 }

@@ -270,6 +270,7 @@ def render_thumbnail (request, iid, w=None, h=None, conn=None, _defcb=None, **kw
     @return:            http response containing jpeg
     """
     server_id = request.session['connector'].server_id
+    direct = True
     if w is None:
         size = (64,)
     else:
@@ -277,6 +278,8 @@ def render_thumbnail (request, iid, w=None, h=None, conn=None, _defcb=None, **kw
             size = (int(w),)
         else:
             size = (int(w), int(h))
+    if size == (96,):
+        direct = False
     user_id = conn.getUserId()
     jpeg_data = webgateway_cache.getThumb(request, server_id, user_id, iid, size)
     if jpeg_data is None:
@@ -290,7 +293,7 @@ def render_thumbnail (request, iid, w=None, h=None, conn=None, _defcb=None, **kw
             else:
                 raise Http404
         else:
-            jpeg_data = img.getThumbnail(size=size)
+            jpeg_data = img.getThumbnail(size=size, direct=direct)
             if jpeg_data is None:
                 logger.debug("(c)Image %s not found..." % (str(iid)))
                 if _defcb:
@@ -544,7 +547,7 @@ def get_shape_thumbnail (request, conn, image, s, compress_quality):
     # we have our full-sized region. Need to resize to thumbnail. 
     current_w, current_h = img.size
     factor = float(MAX_WIDTH) / current_w
-    resizeH = current_h * factor
+    resizeH = int(current_h * factor)
     img = img.resize((MAX_WIDTH, resizeH))
     
     draw = ImageDraw.Draw(img)
@@ -1594,7 +1597,7 @@ def full_viewer (request, iid, conn=None, **kwargs):
              'image': image,
              'opts': rid,
              'roiCount': image.getROICount(),
-             'viewport_server': kwargs.get('viewport_server', '/webgateway'),
+             'viewport_server': kwargs.get('viewport_server', reverse('webgateway')),
              'object': 'image:%i' % int(iid)}
 
         template = kwargs.get('template', "webgateway/viewport/omero_image.html")

@@ -131,7 +131,6 @@ public class ManagedRepositoryITest extends AbstractServantTest {
     }
 
     public void testBasicImportExample() throws Exception {
-
         ImportProcessPrx i = repo.importFiles(
                 Arrays.<String>asList("a", "b"), curr());
         assertNotNull(i);
@@ -141,6 +140,24 @@ public class ManagedRepositoryITest extends AbstractServantTest {
 
         // FIXME: TBD
 
+        /*
+
+        final ClientFilePathTransformer clientPaths = 
+                new ClientFilePathTransformer(new MakePathComponentSafe(this.conservativeRules));
+        
+        File tmpDir = TempFileManager.create_path("mydata.", ".dir", true);
+        ImportContainer ic = makeFake(tmpDir);
+        ImportSettings settings = new ImportSettings();
+        Fileset fs = new FilesetI();
+        ic.fillData(new ImportConfig(), settings, fs, clientPaths);
+        final Current curr = curr();
+        settings.checksumAlgorithm = repo.suggestChecksumAlgorithm(repo.listChecksumAlgorithms(curr), curr);
+
+        ImportProcessPrx i = repo.importFileset(fs, settings, curr);
+
+        */
+
+        
     }
 
     void upload(RawFileStorePrx prx) throws Exception {

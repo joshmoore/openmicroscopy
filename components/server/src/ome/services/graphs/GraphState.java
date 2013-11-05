@@ -26,18 +26,19 @@ import ome.system.OmeroContext;
 import ome.system.SimpleEventContext;
 import ome.util.SqlAction;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.hibernate.Filter;
 import org.hibernate.Session;
 import org.hibernate.engine.LoadQueryInfluencers;
 import org.hibernate.engine.SessionImplementor;
 import org.hibernate.exception.ConstraintViolationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Tree-structure containing all scheduled actions which closely resembles the
  * tree structure of the {@link GraphSpec} itself. All ids of the intended
  * actions will be collected in a preliminary phase. This is necessary since
- * intermediate actions, may disconnect the graph, causing later actions to fail
+ * intermediate actions may disconnect the graph, causing later actions to fail
  * if they were solely based on the id of the root element.
  *
  * The {@link GraphState} instance can only be initialized with a graph of
@@ -45,7 +46,7 @@ import org.hibernate.exception.ConstraintViolationException;
  *
  * To handle SOFT requirements, each new attempt to process either a node or a
  * leaf in the subgraph is surrounded by a savepoint. Ids added during a
- * savepoint (or a sub-savepoint) or only valid until release is called, at
+ * savepoint (or a sub-savepoint) are only valid until release is called, at
  * which time they are merged into the final view.
  *
  * @author Josh Moore, josh at glencoesoftware.com
@@ -65,11 +66,11 @@ public class GraphState implements GraphStep.Callback {
      *
      *  The instance once set is {@link Collections#unmodifiableList(List) unmodifiable}.
      */
-    private final List<GraphStep> steps;
+    private final GraphSteps steps;
 
     /**
      * List of Maps of db table names to the ids actually processed from that
-     * table. The first entry of the list are the actual results. All later
+     * table. The first entry of the list is the actual results. All later
      * elements are temporary views from some savepoint.
      *
      * TODO : refactor into {@link GraphStep}
@@ -113,18 +114,21 @@ public class GraphState implements GraphStep.Callback {
         final List<GraphStep> steps = new ArrayList<GraphStep>();
         final GraphTables tables = new GraphTables();
 
+        // Making use of an internal Hibernate API. The issue here is that we
+        // must temporarily remove all filters (whose names it isn't easy to
+        // find) and then replace them *without* starting from the raw
+        // definitions, since that requires re-setting the parameters. Longer
+        // term, it may be necessary to keep track with this state ourselves,
+        // and provide an enable/disable method.
         final LoadQueryInfluencers infl = ((SessionImplementor) session).getLoadQueryInfluencers();
         @SuppressWarnings("unchecked")
-        final Set<String> names = infl.getEnabledFilterNames();
+        final Map<String, Filter> filters = infl.getEnabledFilters();
+        final Map<String, Filter> copy = new HashMap<String, Filter>(filters);
         try {
-            for (String name: names) {
-                session.disableFilter(name);
-            }
+            filters.clear();
             descend(session, steps, spec, tables);
         } finally {
-            for (String name: names) {
-                session.enableFilter(name);
-            }
+            filters.putAll(copy);
         }
 
         final LinkedList<GraphStep> stack = new LinkedList<GraphStep>();
@@ -148,8 +152,7 @@ public class GraphState implements GraphStep.Callback {
         };
 
         // Post-process and lock.
-        this.steps = Collections.unmodifiableList(
-                factory.postProcess(steps));
+        this.steps = factory.postProcess(steps);
         for (GraphStep step : this.steps) {
             step.setEventContext(gec);
         }
@@ -160,7 +163,7 @@ public class GraphState implements GraphStep.Callback {
     //
 
     /**
-     * Walk throw the sub-spec graph actually loading the ids which must be
+     * Walk through the sub-spec graph actually loading the ids which must be
      * scheduled for processing. Also responsible for adding the
      * {@link EventContext} to each {@link GraphSpec}.
      *
@@ -195,7 +198,7 @@ public class GraphState implements GraphStep.Callback {
     }
 
     /**
-     * Walk throw the sub-spec graph again, using the results provided to build
+     * Walk through the sub-spec graph again, using the results provided to build
      * up a graph of {@link GraphStep} instances.
      */
     private static void parse(GraphStepFactory factory, List<GraphStep> steps, GraphSpec spec, GraphTables tables,
@@ -256,6 +259,14 @@ public class GraphState implements GraphStep.Callback {
         return steps.size();
     }
 
+    public GraphStep getStep(int i) {
+        return steps.get(i);
+    }
+
+    public GraphOpts getOpts() {
+        return opts;
+    }
+
     /**
      * Return the total number of ids which were processed. This is calculated by
      * taking the only the completed savepoints into account.
@@ -279,7 +290,7 @@ public class GraphState implements GraphStep.Callback {
     public Set<Long> getProcessedIds(String table) {
         Set<Long> set = lookup(table);
         if (set == null) {
-            return new HashSet<Long>();
+            return Collections.emptySet();
         } else {
             return Collections.unmodifiableSet(set);
         }
@@ -307,12 +318,40 @@ public class GraphState implements GraphStep.Callback {
     // Iteration methods, used for actual processing
     //
 
-    /**
+     /**
+      *
+      * @param step
+      *             which step is to be invoked. Running a step multiple times is
+      *             not supported.
+      * @return Any warnings which were noted during execution.
+      * @throws GraphException
+      *             Any errors which were caused during execution. Which
+      *             execution states may be encountered is strongly tied to the
+      *             definition of the specification and to the options which are
+      *             passed in during initialization.
+      */
+     public String execute(int j) throws GraphException {
+         return perform(j, false);
+     }
+
+     /**
+      * Prepares the next phase ({@link #validate(int)}) by returning how
+      * many validation steps should be performed.
+      * @return
+      */
+     public int validation() {
+         int total = getTotalFoundCount();
+         for (int i = 0; i < total; i++) {
+             steps.get(i).validation();
+         }
+         return total;
+     }
+
+     /**
      *
      * @param step
-     *            which step is to be invoked. Running a step multiple times is
-     *            not supported.
-     *
+     *             which step is to be invoked. Running a step multiple times is
+     *             not supported.
      * @return Any warnings which were noted during execution.
      * @throws GraphException
      *             Any errors which were caused during execution. Which
@@ -320,9 +359,28 @@ public class GraphState implements GraphStep.Callback {
      *             definition of the specification and to the options which are
      *             passed in during initialization.
      */
-    public String execute(int j) throws GraphException {
+    public String validate(int j) throws GraphException {
+        return perform(j, true);
+    }
+
+    /**
+     * @param validate
+     *       after the proper execution of all steps has taken place,
+     *       a validation call is made.
+     */
+    public String perform(int j, boolean validate) throws GraphException {
 
         final GraphStep step = steps.get(j);
+
+        if (validate) {
+            if (steps.alreadyValidated(step)) {
+                return "";
+            }
+        } else {
+            if (steps.alreadySucceeded(step)) {
+                return "";
+            }
+        }
 
         String msgOrNull = step.start(this);
         if (msgOrNull != null) {
@@ -348,10 +406,15 @@ public class GraphState implements GraphStep.Callback {
 
             try {
 
-                step.action(this, session, sql, opts);
+                if (!validate) {
+                    step.action(this, session, sql, opts);
+                } else {
+                    step.validate(this, session, sql, opts);
+                }
 
                 // Finalize.
                 step.release(this);
+                steps.succeeded(step);
                 return "";
 
             } catch (ConstraintViolationException cve) {
@@ -359,7 +422,7 @@ public class GraphState implements GraphStep.Callback {
                 return handleException(step, cve, cause);
             } catch (GraphException ge) {
                 String cause = "GraphException: " + ge.message;
-                return handleException(step, ge,cause);
+                return handleException(step, ge, cause);
             }
 
         } finally {
@@ -388,7 +451,7 @@ public class GraphState implements GraphStep.Callback {
 
         // If this entry is "SOFT" then there's nothing
         // special we need to do.
-        if (step.entry.isSoft() || step.markedReap()) {
+        if (step.entry.isSoft() || steps.willBeTriedAgain(step)) {
             log.debug(msg);
             return "Skipping processing of " + step.table + ":" + step.id + "\n";
         }
@@ -425,7 +488,7 @@ public class GraphState implements GraphStep.Callback {
     /**
      * Finds all {@link GraphStep} instances in {@link #steps} which have the
      * given {@link GraphStep} argument in their {@link GraphStep#stack} which
-     * amounts to being a descedent. All such instances are set to null in
+     * amounts to being a descendant. All such instances are set to null in
      * {@link #steps} so that further processing cannot take place on them.
      */
     private void disableRelatedEntries(GraphStep parent) {

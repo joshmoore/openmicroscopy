@@ -132,6 +132,14 @@ OME.field_selection_changed = function(field) {
         .trigger("selection_change.ome", $(this).attr('id'));
 };
 
+// select all images from the specified fileset (if currently visible)
+OME.select_fileset_images = function(filesetId) {
+    var datatree = $.jstree._focused();
+    $("#dataTree li[data-fileset="+filesetId+"]").each(function(){
+        datatree.select_node(this);
+    });
+}
+
 // actually called when share is edited, to refresh right-hand panel
 OME.share_selection_changed = function(share_id) {
     $("body")
@@ -139,11 +147,16 @@ OME.share_selection_changed = function(share_id) {
         .trigger("selection_change.ome");
 };
 
+// Standard ids are in the form TYPE-ID, web extensions may add an
+// additional -SUFFIX
 OME.table_selection_changed = function($selected) {
     var selected_objs = [];
     if (typeof $selected != 'undefined') {
         $selected.each(function(i){
-            selected_objs.push( {"id":$(this).attr('id')} );
+            var id_split = this.id.split('-');
+            var id_obj = id_split.slice(0, 2).join('-');
+            var id_suffix = id_split.slice(2).join('-');
+            selected_objs.push( {"id":id_obj, "id_suffix":id_suffix} );
         });
     }
     $("body")

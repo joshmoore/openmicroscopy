@@ -108,7 +108,8 @@ public class ProcessCreator {
     protected ProcessContainer.Process newProcess(ManagedRepositoryI repo,
             FsFile relPath, FsFile basePath,
             List<FsFile> fsFiles, Ice.Current __current) throws ServerError {
-        return new ManagedImportProcessI(repo, namingValidator, relPath, basePath, fsFiles, __current);
+        return new ManagedImportProcessI(repo, repo.checksumAlgorithms,
+                namingValidator, relPath, basePath, fsFiles, __current);
     }
 
     /**

@@ -2,7 +2,7 @@
  * org.openmicroscopy.shoola.agents.fsimporter.view.ImporterUI 
  *
  *------------------------------------------------------------------------------
- *  Copyright (C) 2006-2008 University of Dundee. All rights reserved.
+ *  Copyright (C) 2006-2013 University of Dundee. All rights reserved.
  *
  *
  * 	This program is free software; you can redistribute it and/or modify
@@ -246,16 +246,16 @@ class ImporterUI extends TopWindow
 	private JPanel buildControls()
 	{
 		JPanel p = new JPanel();
+		p.add(new JButton(controller.getAction(ImporterControl.RETRY_BUTTON)));
+		p.add(Box.createHorizontalStrut(5));
+		p.add(new JButton(controller.getAction(ImporterControl.SEND_BUTTON)));
+		p.add(Box.createHorizontalStrut(5));
 		p.add(new JButton(controller.getAction(ImporterControl.CANCEL_BUTTON)));
 		p.add(Box.createHorizontalStrut(5));
 		if (!model.isMaster()) {
 			p.add(new JButton(controller.getAction(
 					ImporterControl.CLOSE_BUTTON)));
-			p.add(Box.createHorizontalStrut(5));
 		}
-		p.add(new JButton(controller.getAction(ImporterControl.RETRY_BUTTON)));
-		p.add(Box.createHorizontalStrut(5));
-		p.add(new JButton(controller.getAction(ImporterControl.SEND_BUTTON)));
 		return UIUtilities.buildComponentPanelRight(p);
 	}
 	
@@ -312,10 +312,10 @@ class ImporterUI extends TopWindow
 				controlsBar.setVisible(tabs.getSelectedIndex() != 0);
 				controller.getAction(
 						ImporterControl.RETRY_BUTTON).setEnabled(
-							hasFailuresToReimport());
+							hasFailuresToReupload());
 				controller.getAction(
 						ImporterControl.SEND_BUTTON).setEnabled(
-								hasSelectedFailuresToSend());
+								hasFailuresToSend());
 			}
 		});
 	}
@@ -399,6 +399,7 @@ class ImporterUI extends TopWindow
 		initComponents();
 		setJMenuBar(createMenuBar());
 		buildGUI();
+		setName("importer window");
 	}
 	
 	/**
@@ -470,7 +471,7 @@ class ImporterUI extends TopWindow
 		int n = tabs.getComponentCount();
 		String title = "Import #"+total;
 		ImporterUIElement element = new ImporterUIElement(controller, model,
-				uiElementID, n, title, object);
+				this, uiElementID, n, title, object);
 		tabs.insertTab(title, element.getImportIcon(), element, "", total);
 		total++;
 		uiElements.put(uiElementID, element);
@@ -579,7 +580,7 @@ class ImporterUI extends TopWindow
 		ImporterUIElement element;
 		while (i.hasNext()) {
 			element = i.next();
-			if (!element.isDone())
+			if (!element.hasStarted())
 				return element;
 		}
 		return null;
@@ -625,9 +626,10 @@ class ImporterUI extends TopWindow
 	 */
 	boolean hasFailuresToSend()
 	{
-		return hasSelectedFailuresToSend();
+		ImporterUIElement element = getSelectedPane();
+		if (element == null) return false;
+		return element.hasFailuresToSend();
 	}
-	
 	
     /**
      * Brings up the menu on top of the specified component at 
@@ -673,19 +675,6 @@ class ImporterUI extends TopWindow
 	}
     
     /**
-     * Returns <code>true</code> if the selected pane has failures to send,
-     * <code>false/code> otherwise.
-     * 
-     * @return See above.
-     */
-    boolean hasSelectedFailuresToSend()
-    {
-    	ImporterUIElement pane = getSelectedPane();
-    	if (pane == null) return false;
-    	return pane.hasFailuresToSend();
-    }
-    
-    /**
 	 * Returns the collection of files that could not be imported.
 	 * 
 	 * @return See above.
@@ -694,22 +683,22 @@ class ImporterUI extends TopWindow
 	{
 		ImporterUIElement pane = getSelectedPane();
     	if (pane == null) return null;
-    	return pane.getFilesToReimport();
+    	return pane.getFilesToReupload();
 	}
-	
+
 	/**
-	 * Returns <code>true</code> if file to re-import, <code>false</code>
+	 * Returns <code>true</code> if file to re-upload, <code>false</code>
 	 * otherwise.
 	 * 
 	 * @return See above.
 	 */
-	boolean hasFailuresToReimport()
+	boolean hasFailuresToReupload()
 	{
 		ImporterUIElement element = getSelectedPane();
 		if (element == null) return false;
-		return element.hasFailuresToReimport();
+		return element.hasFailuresToReupload();
 	}
-	
+
 	/** 
 	 * Overridden to the set the location of the {@link ImViewer}.
 	 * @see TopWindow#setOnScreen() 

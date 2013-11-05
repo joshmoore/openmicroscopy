@@ -352,4 +352,30 @@ public interface DataManagerView
 			List<ChannelData> channels, List<DataObject> objects,
 			AgentEventListener channelDataSaver);
 	
+	/**
+	 * Loads to the plate hosting the specified images.
+	 * 
+	 * @param ctx The security context.
+	 * @param ids The collection of image's ids.
+	 * @param observer Call-back handler.
+	 * @return A handle that can be used to cancel the call.
+	 */
+	public CallHandle loadPlateFromImage(SecurityContext ctx,
+		Collection<Long> ids, AgentEventListener observer);
+	
+	/**
+	 * Given a list of IDs of a given type. Determines the filesets that will be
+	 * split. Returns the a Map with fileset's ids as keys and the
+	 * values if the map:
+	 * Key = <code>True</code> value: List of image's ids that are contained.
+	 * Key = <code>False</code> value: List of image's ids that are missing
+	 * so the delete or change group cannot happen.
+	 * 
+	 * @param objects The objects to handle
+	 * @param observer Call-back handler.
+	 * @return A handle that can be used to cancel the call.
+	 */
+	public CallHandle getImagesBySplitFilesets(
+		Map<SecurityContext, List<DataObject>> objects,
+		AgentEventListener observer);
 }

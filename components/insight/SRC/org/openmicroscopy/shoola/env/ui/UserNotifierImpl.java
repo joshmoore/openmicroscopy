@@ -2,10 +2,10 @@
  * org.openmicroscopy.shoola.env.ui.UserNotifierImpl
  *
  *------------------------------------------------------------------------------
- *  Copyright (C) 2006 University of Dundee. All rights reserved.
+ *  Copyright (C) 2006-2013 University of Dundee. All rights reserved.
  *
  *
- * 	This program is free software; you can redistribute it and/or modify
+ *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
  *  the Free Software Foundation; either version 2 of the License, or
  *  (at your option) any later version.
@@ -35,6 +35,8 @@ import java.util.List;
 import javax.swing.Icon;
 import javax.swing.JFrame;
 
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.StringUtils;
 import org.openmicroscopy.shoola.env.Container;
 import org.openmicroscopy.shoola.env.data.model.AnalysisActivityParam;
 import org.openmicroscopy.shoola.env.data.model.ApplicationData;
@@ -187,7 +189,7 @@ public class UserNotifierImpl implements UserNotifier, PropertyChangeListener {
 			e = new Exception(summary);
 		} else
 			e = new Exception(detail);
-		if (title == null || title.length() == 0)
+		if (StringUtils.isEmpty(title))
 			title = DEFAULT_ERROR_TITLE;
 		MessengerDialog d = new MessengerDialog(SHARED_FRAME, title,
 				getEmail(email), e);
@@ -242,7 +244,7 @@ public class UserNotifierImpl implements UserNotifier, PropertyChangeListener {
 	 * @see UserNotifier#notifyError(String, String)
 	 */
 	public void notifyError(String title, String summary) {
-		if (title == null || title.length() == 0)
+		if (StringUtils.isEmpty(title))
 			title = DEFAULT_ERROR_TITLE;
 		showNotificationDialog(title, summary,
 				IconManager.getDefaultErrorIcon());
@@ -265,16 +267,18 @@ public class UserNotifierImpl implements UserNotifier, PropertyChangeListener {
 	 */
 	public void notifyError(String title, String summary, String email,
 			List<ImportErrorObject> toSubmit, PropertyChangeListener listener) {
-		if (title == null || title.length() == 0)
-			title = DEFAULT_ERROR_TITLE;
-		if (email == null)
-			email = "";
+		if (StringUtils.isEmpty(title)) title = DEFAULT_ERROR_TITLE;
+		if (email == null) email = "";
 		MessengerDialog d = new MessengerDialog(SHARED_FRAME, title,
 				getEmail(email), toSubmit);
 		d.setServerVersion(manager.getServerVersion());
 		d.addPropertyChangeListener(manager);
 		if (listener != null)
 			d.addPropertyChangeListener(listener);
+		if (!CollectionUtils.isEmpty(toSubmit)) {
+			d.setModal(false);
+			d.setAlwaysOnTop(false);
+		}
 		UIUtilities.centerAndShow(d);
 	}
 
@@ -293,7 +297,7 @@ public class UserNotifierImpl implements UserNotifier, PropertyChangeListener {
 	 * @see UserNotifier#notifyWarning(String, String)
 	 */
 	public void notifyWarning(String title, String message) {
-		if (title == null || title.length() == 0)
+		if (StringUtils.isEmpty(title))
 			title = DEFAULT_WARNING_TITLE;
 		showNotificationDialog(title, message, IconManager.getDefaultWarnIcon());
 	}
@@ -304,7 +308,7 @@ public class UserNotifierImpl implements UserNotifier, PropertyChangeListener {
 	 * @see UserNotifier#notifyWarning(String, String, String)
 	 */
 	public void notifyWarning(String title, String summary, String detail) {
-		if (title == null || title.length() == 0)
+		if (StringUtils.isEmpty(title))
 			title = DEFAULT_WARNING_TITLE;
 		showErrorDialog(title, summary, detail, null);
 	}
@@ -325,7 +329,7 @@ public class UserNotifierImpl implements UserNotifier, PropertyChangeListener {
 	 * @see UserNotifier#notifyInfo(String, String)
 	 */
 	public void notifyInfo(String title, String message) {
-		if (title == null || title.length() == 0)
+		if (StringUtils.isEmpty(title))
 			title = DEFAULT_INFO_TITLE;
 		showNotificationDialog(title, message, IconManager.getDefaultInfoIcon());
 	}
@@ -336,7 +340,7 @@ public class UserNotifierImpl implements UserNotifier, PropertyChangeListener {
 	 * @see UserNotifier#notifyInfo(String, String, Icon)
 	 */
 	public void notifyInfo(String title, String message, Icon icon) {
-		if (title == null || title.length() == 0)
+		if (StringUtils.isEmpty(title))
 			title = DEFAULT_INFO_TITLE;
 		if (icon == null)
 			icon = IconManager.getDefaultInfoIcon();
@@ -381,7 +385,7 @@ public class UserNotifierImpl implements UserNotifier, PropertyChangeListener {
 					(DownloadAndLaunchActivityParam) activity;
 			comp = new DownloadAndLaunchActivity(this, manager.getRegistry(),
 					ctx, p);
-
+			uiRegister = p.isUIRegister();
 		} else if (activity instanceof DownloadActivityParam) {
 			DownloadActivityParam p = (DownloadActivityParam) activity;
 			File f = p.getFolder();

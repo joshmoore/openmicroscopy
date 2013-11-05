@@ -17,17 +17,22 @@
  */
 package ome.services.blitz.repo;
 
+import static omero.rtypes.rstring;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import loci.formats.FormatReader;
 import loci.formats.ImageReader;
+
 import ome.formats.importer.ImportConfig;
 import ome.services.blitz.impl.AbstractAmdServant;
+import ome.services.blitz.impl.AbstractCloseableAmdServant;
 import ome.services.blitz.impl.ServiceFactoryI;
 import ome.services.blitz.repo.PublicRepositoryI.AMD_submit;
 import ome.services.blitz.repo.path.FilePathNamingValidator;
@@ -37,6 +42,7 @@ import omero.ServerError;
 import omero.ValidationException;
 import omero.api.RawFileStorePrx;
 import omero.cmd.HandlePrx;
+import omero.constants.CLIENTUUID;
 import omero.grid.ImportLocation;
 import omero.grid.ImportProcessPrx;
 import omero.grid.ImportProcessPrxHelper;
@@ -62,10 +68,13 @@ import omero.model.ThumbnailGenerationJobI;
 import omero.model.UploadJob;
 import omero.model.UploadJobI;
 import omero.sys.EventContext;
+import omero.util.CloseableServant;
 import omero.util.IceMapper;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.collect.ImmutableList;
 
 import Ice.Current;
 
@@ -76,9 +85,9 @@ import Ice.Current;
  * @author Josh Moore, josh at glencoesoftware.com
  * @since 4.5
  */
-public class ManagedImportProcessI extends AbstractAmdServant
+public class ManagedImportProcessI extends AbstractCloseableAmdServant
     implements _ImportProcessOperations, ServiceFactoryAware,
-                ProcessContainer.Process {
+                ProcessContainer.Process, CloseableServant {
 
     private final static Logger log = LoggerFactory.getLogger(ManagedImportProcessI.class);
 
@@ -153,6 +162,9 @@ public class ManagedImportProcessI extends AbstractAmdServant
      * with the given restrictions (usually based on operating system).
      */
     private final FilePathNamingValidator filePathNamingValidator;
+
+    /* in descending order of preference */
+    protected final ImmutableList<ChecksumAlgorithm> checksumAlgorithms;
 
     /**
      * A proxy to this servant which can be given to clients to monitor the
@@ -230,7 +242,8 @@ public class ManagedImportProcessI extends AbstractAmdServant
      * @param __current
      */
     public ManagedImportProcessI(ManagedRepositoryI repo,
-            FilePathNamingValidator filePathNamingValidator,
+           ImmutableList<ChecksumAlgorithm> checksumAlgorithms,
+           FilePathNamingValidator filePathNamingValidator,
            FsFile relFile, FsFile baseFile, List<FsFile> fsFiles, Current __current)
                throws ServerError {
 
@@ -239,6 +252,7 @@ public class ManagedImportProcessI extends AbstractAmdServant
         this.relFile = relFile;
         this.baseFile = baseFile;
         this.userRequestedFsFiles = fsFiles;
+        this.checksumAlgorithms = checksumAlgorithms;
         this.filePathNamingValidator = filePathNamingValidator;
         // Note: initialization of
         //    Fileset fs, ImportLocation location, ImportSettings settings
@@ -371,7 +385,7 @@ public class ManagedImportProcessI extends AbstractAmdServant
         if (!failingChecksums.isEmpty()) {
             throw new omero.ChecksumValidationException(null,
                     omero.ChecksumValidationException.class.toString(),
-                    "A checksum mismatch has occured.",
+                    "A checksum mismatch has occurred.",
                     failingChecksums);
         }
 
@@ -391,6 +405,11 @@ public class ManagedImportProcessI extends AbstractAmdServant
 
         final FilesetState filesetState = targets.get(index);
 
+        if (settings.checksumAlgorithm == null) {
+            settings.checksumAlgorithm = this.checksumAlgorithms.get(0);
+            // TODO: throw new omero.ApiUsageException(null, null, "must specify checksum algorithm");
+        }
+        
         if (settings == null) {
             settings = new ImportSettings();
             settings.checksumAlgorithm = new ChecksumAlgorithmI();
@@ -421,6 +440,8 @@ public class ManagedImportProcessI extends AbstractAmdServant
                     settings.checksumAlgorithm, __current);
             checkedPaths.add(checked);
 
+            fs.setTemplatePrefix(rstring(relFile.toString() + FsFile.separatorChar));
+            
             final OriginalFile ofile = repo.findInDb(checked, "r", __current);
             entry.setOriginalFile(ofile);
             fs.addFilesetEntry(entry);
@@ -488,14 +509,19 @@ public class ManagedImportProcessI extends AbstractAmdServant
 
         // Now move on to the metadata import.
         link = fs.getFilesetJobLink(1);
+        CheckedPath checkedPath = ((ManagedImportLocationI) location).getLogFile();
+        omero.model.OriginalFile logFile =
+                repo.registerLogFile(repo.getRepoUuid(),  fs.getId().getValue(), checkedPath,__current);
 
         final String reqId = ImportRequest.ice_staticId();
         final ImportRequest req = (ImportRequest)
                 repo.getFactory(reqId, this.current).create(reqId);
+
         req.repoUuid = repo.getRepoUuid();
         req.activity = link;
         req.location = location;
         req.settings = state.settings;
+        req.logFile = logFile;
         final AMD_submit submit = repo.submitRequest(sf, req, this.current);
         this.handle = submit.ret;
         return submit.ret;
@@ -685,4 +711,19 @@ public class ManagedImportProcessI extends AbstractAmdServant
             }
         return commonParentDirsToRetain;
     }
+
+    //
+    // CLOSE LOGIC
+    //
+
+    @Override
+    protected void preClose(Current current) throws Throwable {
+        // no-op
+    }
+
+    @Override
+    protected void postClose(Current current) {
+        // no-op
+    }
+
 }
