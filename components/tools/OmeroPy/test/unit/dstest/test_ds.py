@@ -66,12 +66,13 @@ def test_files(filename):
     assert data["name"] == single.ds_name
     assert data["label"] == single.ds_label
     assert data["driver"] == single.ds_driver
-    assert data["required_fields"] == single.ds_required
-    for idx, field in enumerate(data["required_fields"]):
-        assert field["name"] == single.ds_required[idx].ds_name
-        assert field["label"] == single.ds_required[idx].ds_label
-        assert field["type"] == single.ds_required[idx].ds_type
-        assert field["default"] == single.ds_required[idx].ds_default
+    assert data["inputs"] == single.ds_inputs
+    for idx, field in enumerate(data["inputs"]):
+        assert field["name"] == single.ds_inputs[idx].ds_name
+        assert field["label"] == single.ds_inputs[idx].ds_label
+        assert field["type"] == single.ds_inputs[idx].ds_type
+        assert field["default"] == single.ds_inputs[idx].ds_default
+        assert field["required"] == single.ds_inputs[idx].ds_required
 
 
 @pytest.mark.parametrize("expected,example", [

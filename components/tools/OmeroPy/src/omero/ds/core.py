@@ -49,6 +49,7 @@ class DataField(DataDict):
         super(DataField, self).__init__(json_data)
         self.ds_type = json_data["type"]
         self.ds_default = json_data["default"]
+        self.ds_required = json_data["required"]
 
 
 class DataSource(DataDict):
@@ -95,7 +96,7 @@ class DataSourceType(DataDict):
         super(DataSourceType, self).__init__(json_data)
         self.ds_filename = filename
         self.ds_driver = json_data["driver"]
-        self.ds_required = [DataField(x) for x in json_data["required_fields"]]
+        self.ds_inputs = [DataField(x) for x in json_data["inputs"]]
 
 
 def load_source_type_files(dir_path):

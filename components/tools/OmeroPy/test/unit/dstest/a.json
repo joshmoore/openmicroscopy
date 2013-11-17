@@ -2,10 +2,11 @@
     "name": "org.openmicroscopy.test.a",
     "label": "An A Thing",
     "driver": "omero.data_drivers.yt_driver",
-    "required_fields": [{
+    "inputs": [{
         "name": "video_id",
         "label": "Video ID or URL",
         "type": "string",
-        "default": null
+        "default": null,
+        "required": true
     }]
 }
