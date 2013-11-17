@@ -52,15 +52,17 @@ location = os.path.dirname(__file__)
 json_files = glob.glob(os.path.join(location, "*.json"))
 
 
-@pytest.mark.parametrize("file", json_files)
-def test_files(file):
-    fhd = open(file, "r")
+@pytest.mark.parametrize("filename", json_files)
+def test_files(filename):
+    fhd = open(filename, "r")
     txt = fhd.read()
     fhd.close()
     data = json.loads(txt)
-    tuples = list_source_types(file)
+    tuples = list_source_types(filename)
     single = list(tuples)[0]
+    assert filename == single.ds_filename
     assert data == single
+    assert data["driver"] == single.ds_driver
     assert data["name"] == single.ds_name
     assert data["label"] == single.ds_label
     assert data["driver"] == single.ds_driver

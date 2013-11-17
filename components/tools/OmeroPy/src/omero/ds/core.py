@@ -53,19 +53,18 @@ class DataField(DataDict):
 
 class DataSource(DataDict):
 
-    SKELETON = """
-        {
-            "name": "unique_source#1",
-            "label": "Something readable",
-            "type": "org.openmicroscopy.type.example",
-            "inputs": [
-                {
-                    "name": "foo",
-                    "value": "bar"
-                }
-            ]
-        }
-    """
+    SKELETON = (
+        '{\n'
+        '   "name": "unique_source#1",\n'
+        '   "label": "Something readable",\n'
+        '   "type": "org.openmicroscopy.type.example",\n'
+        '   "inputs": [\n'
+        '       {\n'
+        '           "name": "foo",\n'
+        '           "value": "bar"\n'
+        '       }\n'
+        '   ]\n'
+        '}\n')
 
     def __init__(self, json_data):
         super(DataSource, self).__init__(json_data)
@@ -75,26 +74,26 @@ class DataSource(DataDict):
 
 class DataSourceType(DataDict):
 
-    SKELETON = """
-        {
-            "name": "unique_type_name#B",
-            "label": "Cool type",
-            "driver": "omero_data_drivers.some_driver",
-            "inputs": [
-                {
-                    "name": "foo",
-                    "value": "bar",
-                    "type": "string",
-                    "default": none
-                }
-            ],
-            "connection_info": [
-            ]
-        }
-    """
+    SKELETON = (
+        '{\n'
+        '   "name": "unique_type_name#B",\n'
+        '   "label": "Cool type",\n'
+        '   "driver": "omero_data_drivers.some_driver",\n'
+        '   "inputs": [\n'
+        '       {\n'
+        '           "name": "foo",\n'
+        '           "value": "bar",\n'
+        '           "type": "string",\n'
+        '           "default": null\n'
+        '       }\n'
+        '   ],\n'
+        '   "connection_info": [\n'
+        '   ]\n'
+        '}')
 
-    def __init__(self, json_data):
+    def __init__(self, filename, json_data):
         super(DataSourceType, self).__init__(json_data)
+        self.ds_filename = filename
         self.ds_driver = json_data["driver"]
         self.ds_required = [DataField(x) for x in json_data["required_fields"]]
 
@@ -104,16 +103,16 @@ def load_source_type_files(dir_path):
         yield dir_path  # Single-target
     else:
         for root, dirs, files in os.walk(dir_path):
-            for file in files:
-                target = os.path.join(root, file)
+            for filepath in files:
+                target = os.path.join(root, filepath)
                 if target.endswith(".json"):
                     yield target
 
 
 def list_source_types(dir_path):
-    for file in load_source_type_files(dir_path):
-        f = open(file, "r")
+    for filename in load_source_type_files(dir_path):
+        f = open(filename, "r")
         try:
-            yield DataSourceType(json.load(f))
+            yield DataSourceType(filename, json.load(f))
         finally:
             f.close()
