@@ -84,16 +84,17 @@ class DataControl(CmdControl):
         add_source.add_argument(
             "obj", type=GraphArg)
 
-    def get_ds_path(self, args):
-        ds_path = path.path(args.location)
-        if not ds_path.exists():
-            self.ctx.die(100, "Location does not exist: %s" % ds_path)
-        return ds_path
-
     def list_types(self, args):
+        from omero.util.text import TableBuilder
+        tb = TableBuilder("path", "name", "label", "driver", "inputs")
+
         ds_path = self.get_ds_path(args)
         for ds_type in list_source_types(ds_path):
-            print ds_type
+            ds_path = path.path(ds_type.ds_filename)
+            tb.row(
+                self.simplify_path(args, ds_path), ds_type.ds_name,
+                ds_type.ds_label, ds_type.ds_driver, ds_type.ds_inputs)
+        self.ctx.out(str(tb.build()))
 
     def add_type(self, args):
 
@@ -116,6 +117,20 @@ class DataControl(CmdControl):
 
     def add_source(self, args):
         client = self.ctx.conn(args)
+
+    # Helper methods
+
+    def get_ds_path(self, args):
+        ds_path = path.path(args.location)
+        if not ds_path.exists():
+            self.ctx.die(100, "Location does not exist: %s" % ds_path)
+        return ds_path
+
+    def simplify_path(self, args, ds_path):
+        levels = ds_path.parpath(args.location)
+        parts = ds_path.splitall()
+        return path.path("/".join(parts[-1*len(levels):]))
+
 
 try:
     register("ds", DataControl, DataControl.__doc__)
