@@ -39,6 +39,7 @@ from omero.ds.core import DataSource
 from omero.ds.core import DataSourceType
 from omero.ds.core import list_sources
 from omero.ds.core import list_source_types
+from omero.ds.core import source_to_string
 
 from omero.util import edit_path
 
@@ -101,7 +102,11 @@ class DataControl(CmdControl):
         for x in (add_source, list_sources):
             x.add_argument("obj", nargs="+")
 
-        for x in (list_types, add_type, add_source):
+        print_source = parser.add(
+            sub, self.print_source, "Prints a representation of the data source")
+        print_source.add_argument("id", help="Id as returned by list_sources")
+
+        for x in (list_types, add_type, add_source, print_source):
             x.add_argument(
                 "--location", type=DirectoryType(), help="Alternate location",
                 default=self.ctx.dir / "lib" / "data-sources")
@@ -216,6 +221,12 @@ class DataControl(CmdControl):
                 except:
                     tb.row(ann.id.val, "invalid")
             self.ctx.out(str(tb.build()))
+
+    def print_source(self, args):
+        client = self.ctx.conn(args)
+        source_id = long(args.id)
+        ds_path = self.get_ds_path(args)
+        self.ctx.out(source_to_string(ds_path, client, source_id))
 
     #
     # Helper methods

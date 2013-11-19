@@ -3,6 +3,17 @@
 import re
 import pytest
 
+class Driver(object):
+    pass
+
+class YouTube(Driver):
+
+    def to_string(self, source):
+        for input in source.ds_inputs:
+            if input["name"] == "ID":
+                value = input["value"]
+                return get_iframe(value)
+
 
 youtube_regex = re.compile(
     r'(https?://)?(www\.)?'

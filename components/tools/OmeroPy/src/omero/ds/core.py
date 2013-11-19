@@ -186,3 +186,23 @@ def list_source_types(dir_path):
             yield DataSourceType(filename, json.load(f))
         finally:
             f.close()
+
+
+def source_to_string(dir_path, client, source_id):
+    iQuery = client.sf.getQueryService()
+    annotation = iQuery.get("CommentAnnotation", source_id, {"omero.group": "-1"})
+    source = DataSource(json.loads(annotation.textValue.val))
+    for source_type in list_source_types(dir_path):
+        if source_type.ds_name == source.ds_type:
+            driver = load_driver(source_type.ds_driver)
+            return driver.to_string(source)
+
+
+def load_driver(dotted_driver):
+    parts = dotted_driver.split(".")
+    pkg = ".".join(parts[0:-2])
+    mod = str(parts[-2])
+    kls = parts[-1]
+    got = __import__(pkg, fromlist=[mod])
+    got = getattr(got, mod)
+    return getattr(got, kls)()
