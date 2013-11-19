@@ -32,8 +32,9 @@ from omero.cli import CmdControl
 from omero.cli import DirectoryType
 from omero.cli import ExceptionHandler
 from omero.cli import ExistingFile
-from omero.cli import GraphArg
 
+from omero.ds.core import attach_source
+from omero.ds.core import DataSource
 from omero.ds.core import DataSourceType
 from omero.ds.core import list_source_types
 
@@ -74,15 +75,31 @@ class DataControl(CmdControl):
         add_type.add_argument(
             "path", help="Relative path where the file should be stored")
 
-        for x in (list_types, add_type):
+        add_source = parser.add(
+            sub, self.add_source, "Add a data source to some OMERO object")
+        type_group = add_source.add_mutually_exclusive_group()
+        type_group.add_argument(
+            "-P", "--typepath",
+            help="Path to the data source type to use")
+        type_group.add_argument(
+            "-T", "--typename",
+            help="Unique name of the data source type to use")
+
+        add_source.add_argument(
+            "--name", help="Unique name for this source. "
+            "Will be defined by server if not provided")
+        add_source.add_argument(
+            "--label", help="User-readable label for this source.")
+        add_source.add_argument(
+            "-I", "--input", nargs="*",
+            help="Value to be set on the data source")
+        add_source.add_argument("obj", nargs="*")
+
+        for x in (list_types, add_type, add_source):
             x.add_argument(
                 "--location", type=DirectoryType(), help="Alternate location",
                 default=self.ctx.dir / "lib" / "data-sources")
 
-        add_source = parser.add(
-            sub, self.add_source, "Add a data source to some OMERO object")
-        add_source.add_argument(
-            "obj", type=GraphArg)
 
     def list_types(self, args):
         from omero.util.text import TableBuilder
@@ -110,15 +127,78 @@ class DataControl(CmdControl):
             try:
                 edit_path(temp_file, start_text)
             except RuntimeError, re:
-                self.ctx.die(200, "%s: Failed to edit %s" % (getattr(re, "pid", "Unknown"), temp_file))
+                self.ctx.die(200, "%s: Failed to edit %s" %
+                             (getattr(re, "pid", "Unknown"), temp_file))
             file_path.write_text(temp_file.text())
         finally:
             remove_path(temp_file)
 
     def add_source(self, args):
-        client = self.ctx.conn(args)
+        if args.typepath:
+            ds_path = self.get_ds_path(args) / args.typepath
+            if not ds_path.exists():
+                self.ctx.die(300, "%s: Does not exist" % ds_path)
+            elif ds_path.isdir():
+                self.ctx.die(301, "%s: Is a directory" % ds_path)
 
+            try:
+                source_type = list(list_source_types(ds_path))[0]
+            except Exception, e:
+                self.ctx.die(302, "Failed to load from path: %s" % e)
+
+        elif args.typename:
+            self.ctx.die(304, "NYI")
+
+        user_inputs = {}
+        if args.input:
+            for user_input in args.input:
+                if "=" in user_input:
+                    name, value = user_input.split("=", 1)
+                else:
+                    name, value = user_input, None
+                user_inputs[name] = value
+
+        for ds_input in source_type.ds_inputs:
+            name = ds_input.ds_name
+            label = ds_input.ds_label
+            default = ds_input.ds_default
+            type = ds_input.ds_type
+            required = ds_input.ds_required
+            entered = name in user_inputs
+
+            if not entered and required:
+                user_input = self.ctx.input(
+                    "Please enter a %s value for %s ('%s'): " %
+                    (type, name, label))
+                user_inputs[name] = user_input
+
+        import json
+        blank_data_source = json.loads(DataSource.SKELETON)
+        blank_data_source["type"] = source_type["name"]
+        blank_data_source["inputs"] = []
+        if args.name:
+            blank_data_source["name"] = args.name
+        else:
+            blank_data_source["name"] = ""
+        if args.label:
+            blank_data_source["label"] = args.label
+        else:
+            blank_data_source["label"] = ""
+
+        for name, value in user_inputs.items():
+            data_field = {"name": name, "value": value}
+            blank_data_source["inputs"].append(data_field)
+
+        data_source = DataSource(blank_data_source)
+        client = self.ctx.conn(args)
+        links = attach_source(client, data_source, args.obj)
+        for link in links:
+            self.ctx.out("Created link: %s:%s" %
+                         (link.__class__.__name__, link.id.val))
+
+    #
     # Helper methods
+    #
 
     def get_ds_path(self, args):
         ds_path = path.path(args.location)

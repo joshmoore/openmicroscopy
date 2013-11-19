@@ -31,9 +31,12 @@ Assuming gateway methods of:
     g.open_cursor(data_source, section=0)
 """
 
-import json
 import os
+import re
+import json
+import omero
 
+from omero.rtypes import rstring
 
 class DataDict(dict):
 
@@ -109,6 +112,42 @@ def load_source_type_files(dir_path):
                 target = os.path.join(root, filepath)
                 if target.endswith(".json"):
                     yield target
+
+def attach_source(client, data_source, object_specs):
+    """
+    'client' must be a connected omero.client object
+    'data_source' should be of type DataSource
+    'object_specs' should be one or more class name/id pairs
+    in the form "Image:1"
+    """
+
+    if not object_specs:
+        return
+
+    pattern = re.compile("(\w+)[:=](\d+)")
+    annotation = omero.model.CommentAnnotationI()
+    annotation.ns = rstring('org.openmicroscopy.data-source')
+    iUpdate = client.sf.getUpdateService()
+    links = []
+
+    for object_spec in object_specs:
+
+        match = pattern.match(object_spec)
+        if not match:
+            self.ctx.err("Unknown object: %s" % object_spec)
+
+        klass = match.group(1)
+        objid = long(match.group(2))
+
+        obj_type = "%sI" % klass
+        obj_class = getattr(omero.model, obj_type)
+        link_type = "%sAnnotationLinkI" % klass
+        link_class = getattr(omero.model, link_type)
+        link = link_class()
+        link.link(obj_class(objid, False), annotation)
+        links.append(link)
+
+    return iUpdate.saveAndReturnArray(links)
 
 
 def list_source_types(dir_path):
