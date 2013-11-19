@@ -12,7 +12,7 @@ class YouTube(Driver):
         for input in source.ds_inputs:
             if input["name"] == "ID":
                 value = input["value"]
-                return get_iframe(value)
+                return get_iframe(parse_video_id(value))
 
 
 youtube_regex = re.compile(
