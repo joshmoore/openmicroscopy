@@ -84,7 +84,6 @@ class DataSourceType(DataDict):
         '       {\n'
         '           "name": "foo",\n'
         '           "label": "My Foo",\n'
-        '           "value": "bar",\n'
         '           "type": "string",\n'
         '           "default": null,\n'
         '           "required": true\n'
