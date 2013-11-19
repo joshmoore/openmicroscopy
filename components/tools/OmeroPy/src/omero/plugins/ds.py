@@ -24,6 +24,7 @@ External data source plugin wrapping the omero.ds module.
 """
 
 
+import json
 import sys
 import path
 
@@ -36,6 +37,7 @@ from omero.cli import ExistingFile
 from omero.ds.core import attach_source
 from omero.ds.core import DataSource
 from omero.ds.core import DataSourceType
+from omero.ds.core import list_sources
 from omero.ds.core import list_source_types
 
 from omero.util import edit_path
@@ -93,13 +95,16 @@ class DataControl(CmdControl):
         add_source.add_argument(
             "-I", "--input", nargs="*",
             help="Value to be set on the data source")
-        add_source.add_argument("obj", nargs="*")
+
+        list_sources = parser.add(
+            sub, self.list_sources, "Add a data source to some OMERO object")
+        for x in (add_source, list_sources):
+            x.add_argument("obj", nargs="+")
 
         for x in (list_types, add_type, add_source):
             x.add_argument(
                 "--location", type=DirectoryType(), help="Alternate location",
                 default=self.ctx.dir / "lib" / "data-sources")
-
 
     def list_types(self, args):
         from omero.util.text import TableBuilder
@@ -195,6 +200,22 @@ class DataControl(CmdControl):
         for link in links:
             self.ctx.out("Created link: %s:%s" %
                          (link.__class__.__name__, link.id.val))
+
+    def list_sources(self, args):
+        client = self.ctx.conn(args)
+        if args.obj:
+
+            from omero.util.text import TableBuilder
+            tb = TableBuilder("id", "type")
+
+            annotations = list_sources(client, args.obj)
+            for ann in annotations:
+                try:
+                    source = DataSource(json.loads(ann.textValue.val))
+                    tb.row(ann.id.val, source.ds_type)
+                except:
+                    tb.row(ann.id.val, "invalid")
+            self.ctx.out(str(tb.build()))
 
     #
     # Helper methods

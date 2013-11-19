@@ -113,28 +113,17 @@ def load_source_type_files(dir_path):
                 if target.endswith(".json"):
                     yield target
 
-def attach_source(client, data_source, object_specs):
-    """
-    'client' must be a connected omero.client object
-    'data_source' should be of type DataSource
-    'object_specs' should be one or more class name/id pairs
-    in the form "Image:1"
-    """
+
+def parse_specs(object_specs):
 
     if not object_specs:
         return
 
     pattern = re.compile("(\w+)[:=](\d+)")
-    annotation = omero.model.CommentAnnotationI()
-    annotation.ns = rstring('org.openmicroscopy.data-source')
-    iUpdate = client.sf.getUpdateService()
-    links = []
-
     for object_spec in object_specs:
-
         match = pattern.match(object_spec)
         if not match:
-            self.ctx.err("Unknown object: %s" % object_spec)
+            raise Exception("Unknown object: %s" % object_spec)
 
         klass = match.group(1)
         objid = long(match.group(2))
@@ -144,10 +133,50 @@ def attach_source(client, data_source, object_specs):
         link_type = "%sAnnotationLinkI" % klass
         link_class = getattr(omero.model, link_type)
         link = link_class()
-        link.link(obj_class(objid, False), annotation)
+        link.setParent(obj_class(objid, False))
+        yield link
+
+def attach_source(client, data_source, object_specs):
+    """
+    'client' must be a connected omero.client object
+    'data_source' should be of type DataSource
+    'object_specs' should be one or more class name/id pairs
+    in the form "Image:1"
+    """
+
+    annotation = omero.model.CommentAnnotationI()
+    annotation.ns = rstring('org.openmicroscopy.data-source')
+    annotation.textValue = rstring(json.dumps(data_source))
+    iUpdate = client.sf.getUpdateService()
+    links = []
+
+    for link in parse_specs(object_specs):
+        link.setChild(annotation)
         links.append(link)
 
     return iUpdate.saveAndReturnArray(links)
+
+
+def list_sources(client, object_specs):
+    sources = {}
+    iQuery = client.sf.getQueryService()
+    params = omero.sys.ParametersI()
+    params.addString("ns", "org.openmicroscopy.data-source")
+    for link in parse_specs(object_specs):
+        klass = link.ice_id().split("::")[-1]
+        query = (
+            "select a from %s as l "
+            "join l.parent as p "
+            "join l.child as a "
+            "where p.id = :id and a.ns = :ns"
+        ) % klass
+        params.addId(link.parent.id.val)
+        annotations = iQuery.findAllByQuery(
+            query, params, {"omero.group": "-1"}
+        )
+        for annotation in annotations:
+            sources[annotation.id.val] = annotation
+    return sources.values()
 
 
 def list_source_types(dir_path):
