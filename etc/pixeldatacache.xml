@@ -1,0 +1,5 @@
+<ehcache maxBytesLocalHeap="256m" maxBytesLocalOffHeap="1g" maxBytesLocalDisk="20g" >
+    <diskStore path="pixeldatacache.dir"/>
+    <cache name="bytesCache" timeToIdleSeconds="600">
+    </cache>
+</ehcache>
