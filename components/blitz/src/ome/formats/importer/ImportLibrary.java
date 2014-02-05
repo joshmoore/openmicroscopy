@@ -22,7 +22,7 @@ package ome.formats.importer;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -65,19 +65,16 @@ import omero.grid.ManagedRepositoryPrx;
 import omero.grid.ManagedRepositoryPrxHelper;
 import omero.grid.RepositoryMap;
 import omero.grid.RepositoryPrx;
-import omero.model.Annotation;
 import omero.model.ChecksumAlgorithm;
 import omero.model.Dataset;
-import omero.model.FileAnnotation;
-import omero.model.FileAnnotationI;
 import omero.model.Fileset;
 import omero.model.FilesetI;
+import omero.model.IObject;
 import omero.model.OriginalFile;
 import omero.model.Pixels;
 import omero.model.Screen;
-import omero.sys.Parameters;
-import omero.sys.ParametersI;
 
+import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -91,7 +88,6 @@ import Ice.Current;
  * ImportHandler to support ImportFixture
  *
  * @author Josh Moore, josh.moore at gmx.de
- * @version $Revision: 1167 $, $Date: 2006-12-15 10:39:34 +0000 (Fri, 15 Dec 2006) $
  * @see FormatReader
  * @see OMEROMetadataStoreClient
  * @see ImportFixture
@@ -127,6 +123,14 @@ public class ImportLibrary implements IObservable
      * Method used for transferring files to the server.
      */
     private final FileTransfer transfer;
+
+    /**
+     * Minutes to wait for an import to take place. If 0 is set, then no waiting
+     * will take place and an empty list of objects will be returned. If negative,
+     * then the process will loop indefinitely (default). Otherwise, the given
+     * number of minutes will be waited until throwing a {@link LockTimeout}.
+     */
+    private final int minutesToWait;
 
     /**
      * Adapter for use with any callbacks created by the library.
@@ -179,6 +183,12 @@ public class ImportLibrary implements IObservable
     public ImportLibrary(OMEROMetadataStoreClient client, OMEROWrapper reader,
             FileTransfer transfer)
     {
+        this(client, reader, transfer, -1);
+    }
+
+    public ImportLibrary(OMEROMetadataStoreClient client, OMEROWrapper reader,
+            FileTransfer transfer, int minutesToWait)
+    {
         if (client == null || reader == null)
         {
             throw new NullPointerException(
@@ -187,6 +197,7 @@ public class ImportLibrary implements IObservable
 
         this.store = client;
         this.transfer = transfer;
+        this.minutesToWait = minutesToWait;
         repo = lookupManagedRepository();
         // Adapter which should be used for callbacks. This is more
         // complicated than it needs to be at the moment. We're only sure that
@@ -251,6 +262,10 @@ public class ImportLibrary implements IObservable
                             Screen.class, config.targetId.get()));
                 }
 
+                if (config.checksumAlgorithm.get() != null) {
+                    ic.setChecksumAlgorithm(config.checksumAlgorithm.get());
+                }
+
                 try {
                     importImage(ic,index,numDone,containers.size());
                     numDone++;
@@ -311,14 +326,19 @@ public class ImportLibrary implements IObservable
         final ClientFilePathTransformer sanitizer = new ClientFilePathTransformer(new MakePathComponentSafe(portableRequiredRules));
 
         final ImportSettings settings = new ImportSettings();
-        // TODO: here or on container.fillData, we need to
-        // check if the container object has ChecksumAlgorithm
-        // present and pass it into the settings object
         final Fileset fs = new FilesetI();
         container.fillData(new ImportConfig(), settings, fs, sanitizer, transfer);
-        settings.checksumAlgorithm = repo.suggestChecksumAlgorithm(availableChecksumAlgorithms);
-        if (settings.checksumAlgorithm == null) {
-            throw new RuntimeException("no supported checksum algorithm negotiated with server");
+
+        String caStr = container.getChecksumAlgorithm();
+        if (caStr != null) {
+            settings.checksumAlgorithm = ChecksumAlgorithmMapper.getChecksumAlgorithm(caStr);
+        } else {
+            // check if the container object has ChecksumAlgorithm
+            // present and pass it into the settings object
+            settings.checksumAlgorithm = repo.suggestChecksumAlgorithm(availableChecksumAlgorithms);
+            if (settings.checksumAlgorithm == null) {
+                throw new RuntimeException("no supported checksum algorithm negotiated with server");
+            }
         }
         return repo.importFileset(fs, settings);
     }
@@ -425,8 +445,8 @@ public class ImportLibrary implements IObservable
                                     int numDone, int total)
             throws FormatException, IOException, Throwable
     {
+        HandlePrx handle;
         final ImportProcessPrx proc = createImport(container);
-        final HandlePrx handle;
         final String[] srcFiles = container.getUsedFiles();
         final List<String> checksums = new ArrayList<String>();
         final byte[] buf = new byte[store.getDefaultBlockSize()];
@@ -458,7 +478,25 @@ public class ImportLibrary implements IObservable
         ImportCallback cb = null;
         try {
             cb = createCallback(proc, handle, container);
-            cb.loop(60*60, 1000); // Wait 1 hr per step.
+
+            if (minutesToWait == 0) {
+                log.info("Disconnecting from import process...");
+                cb.close(false);
+                cb = null;
+                handle = null;
+                return Collections.emptyList(); // EARLY EXIT
+            }
+
+            if (minutesToWait < 0) {
+                while (true) {
+                    if (cb.block(5000)) {
+                        break;
+                    }
+                }
+            } else {
+                cb.loop(minutesToWait * 30, 2000);
+            }
+
             final ImportResponse rsp = cb.getImportResponse();
             if (rsp == null) {
                 throw new Exception("Import failure");
@@ -504,29 +542,24 @@ public class ImportLibrary implements IObservable
             final ImportRequest req = (ImportRequest) handle.getRequest();
             final Long fsId = req.activity.getParent().getId().getValue();
             final IMetadataPrx metadataService = sf.getMetadataService();
-            final List<String> nsToInclude = new ArrayList<String>(
-                    Arrays.asList(omero.constants.namespaces.NSLOGFILE.value));
-            final List<String> nsToExclude = new ArrayList<String>();
-            final List<Long> rootIds = new ArrayList<Long>(Arrays.asList(fsId));
-            final Parameters param = new ParametersI();
-            Map<Long,List<Annotation>> annotationMap = new HashMap<Long,List<Annotation>>();
-            List<Annotation> annotations = new ArrayList<Annotation>();
-            Long ofId = null;
+            final List<Long> rootIds = Collections.singletonList(fsId);
             try {
-                annotationMap = metadataService.loadSpecifiedAnnotationsLinkedTo(
-                        FileAnnotation.class.getName(), nsToInclude, nsToExclude,
-                        Fileset.class.getName(), rootIds, param);
-                if (annotationMap.containsKey(fsId)) {
-                    annotations = annotationMap.get(fsId);
-                    if (annotations.size() != 0) {
-                        FileAnnotation fa = (FileAnnotationI) annotations.get(0);
-                        ofId = fa.getFile().getId().getValue();
+                final Map<Long, List<IObject>> logMap = metadataService.loadLogFiles(Fileset.class.getName(), rootIds);
+                final List<IObject> logs = logMap.get(fsId);
+                if (CollectionUtils.isNotEmpty(logs)) {
+                    for (final IObject log : logs) {
+                        if (log instanceof OriginalFile) {
+                            final Long ofId = log.getId().getValue();
+                            if (ofId != null) {
+                                return ofId;
+                            }
+                        }
                     }
                 }
             } catch (ServerError e) {
-                ofId = null;
+                log.debug("failed to load log file", e);
             }
-            return ofId;
+            return null;
         }
 
         @Override
