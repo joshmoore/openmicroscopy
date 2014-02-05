@@ -88,6 +88,7 @@ public final class ContainerConfigInit
 			for (int j = 0; j < values.length; j++) {
 				value = values[j];
 				if (value != null) value = value.trim();
+				if (l == null) continue;
 				for (int i = 0; i < l.length; i++) {
 					if (l[i].getName().equals(value)) {
 						count++;
@@ -96,6 +97,7 @@ public final class ContainerConfigInit
 			}
 
 		} catch (Exception e) {
+		    e.printStackTrace();
 			if (info.getId() == LookupNames.IMAGE_J && IJ.debugMode) {
 				String msg = "An error occurred while checking if " +
 						"the dependencies are installed."+e.toString();

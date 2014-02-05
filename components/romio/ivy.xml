@@ -12,6 +12,9 @@
     <artifact name="romio" type="jar"/>
   </publications>
   <dependencies defaultconfmapping="build,client,server->default">
+    <dependency org="net/sf/ehcache" name="ehcache-core" rev="${versions.ehcache}"/>
+    <dependency org="org.springframework" name="org.springframework.context.support" rev="${versions.spring}"/>
+    <dependency org="commons-lang" name="commons-lang" rev="${versions.commons-lang}"/>
     <!-- Internal -->
     <dependency name="common" rev="${omero.version}" changing="true" conf="build->build;server->server;client->client"/>
     <!-- Bioformats -->

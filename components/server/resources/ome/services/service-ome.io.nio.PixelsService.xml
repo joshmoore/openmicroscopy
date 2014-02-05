@@ -2,9 +2,9 @@
 <!DOCTYPE beans PUBLIC "-//SPRING//DTD BEAN//EN" "http://www.springframework.org/dtd/spring-beans.dtd">
 <!--
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# 
+#
 # $Id$
-# 
+#
 # Copyright 2006 University of Dundee. All rights reserved.
 # Use is subject to license terms supplied in LICENSE.txt
 #
@@ -17,7 +17,7 @@
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 -->
 
-<beans>	
+<beans>
 
   <bean id="omeroFilePathResolver" class="ome.services.OmeroFilePathResolver">
     <constructor-arg value="${omero.data.dir}"/>
@@ -29,6 +29,16 @@
     <constructor-arg value="${omero.pixeldata.memoizer_wait}"/>
   </bean>
 
+  <bean id="pixelDataCacheManager"
+    class="org.springframework.cache.ehcache.EhCacheManagerFactoryBean">
+    <property name="configLocation" value="file:///${user.dir}/etc/pixeldatacache.xml"/>
+  </bean>
+
+  <bean id="pixelDataBytesCache" class="org.springframework.cache.ehcache.EhCacheFactoryBean">
+    <property name="cacheManager" ref="pixelDataCacheManager"/>
+    <property name="cacheName" value="pixelDataBytesCache"/>
+  </bean>
+
   <bean name="/OMERO/Pixels" class="ome.io.nio.PixelsService"
         parent="filesystem">
     <!-- index=0 "path" comes from parent -->
@@ -36,6 +46,7 @@
     <constructor-arg ref="omeroFilePathResolver"/>
     <constructor-arg ref="backOff"/>
     <constructor-arg ref="tileSizes"/>
+    <property name="bytesCache" ref="pixelDataBytesCache"/>
   </bean>
 
   <bean id="backOff" class="${omero.pixeldata.backoff}">

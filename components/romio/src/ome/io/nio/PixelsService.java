@@ -24,11 +24,14 @@ import loci.formats.ImageReader;
 import loci.formats.Memoizer;
 import loci.formats.MinMaxCalculator;
 import loci.formats.meta.IMinMaxStore;
+import net.sf.ehcache.CacheManager;
+import net.sf.ehcache.Ehcache;
 import ome.conditions.LockTimeout;
 import ome.conditions.MissingPyramidException;
 import ome.conditions.ResourceError;
 import ome.io.bioformats.BfPixelBuffer;
 import ome.io.bioformats.BfPyramidPixelBuffer;
+import ome.io.bioformats.BytesCacher;
 import ome.io.messages.MissingPyramidMessage;
 import ome.io.messages.MissingStatsInfoMessage;
 import ome.model.core.Pixels;
@@ -39,6 +42,7 @@ import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.FatalBeanException;
+import org.springframework.cache.ehcache.EhCacheFactoryBean;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.ApplicationEventPublisherAware;
 
@@ -89,6 +93,14 @@ public class PixelsService extends AbstractFileSystemService
 	 * Time in ms. which setId must take before a file is memoized
 	 */
 	protected final long memoizerWait;
+
+	/**
+	 * Cache mechanism which is used for creating the {@link BytesCacher}
+	 * instances. If this instance is null, then no bytes caching will
+	 * take place. Use the property injector {@link #setBytesCache(Ehcache)}
+	 * to set it.
+	 */
+	protected /*final*/ Ehcache cache;
 
 	/** Null plane byte array. */
 	public static final byte[] nullPlane = new byte[] { -128, 127, -128, 127,
@@ -174,6 +186,11 @@ public class PixelsService extends AbstractFileSystemService
                      path + ", resolver=" + resolver + ", backoff=" + backOff +
                      ", sizes=" + sizes + ")");
         }
+    }
+
+    public void setBytesCache(Ehcache cache)
+    {
+        this.cache = cache;
     }
 
     public long getMemoizerWait() {
@@ -758,6 +775,7 @@ public class PixelsService extends AbstractFileSystemService
         reader = new ChannelFiller(reader);
         reader = new ChannelSeparator(reader);
         reader = new Memoizer(reader, getMemoizerWait(), getMemoizerDirectory());
+        reader = new BytesCacher(reader, cache);
         reader.setFlattenedResolutions(false);
         return reader;
     }

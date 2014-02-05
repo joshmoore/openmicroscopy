@@ -1,5 +1,15 @@
-<ehcache maxBytesLocalHeap="256m" maxBytesLocalOffHeap="1g" maxBytesLocalDisk="20g" >
-    <diskStore path="pixeldatacache.dir"/>
-    <cache name="bytesCache" timeToIdleSeconds="600">
-    </cache>
+<ehcache xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../config/ehcache.xsd">
+
+    <diskStore path="omero.pixeldatacache.dir"/>
+
+    <defaultCache
+            maxElementsInMemory="10"
+            eternal="false"
+            timeToIdleSeconds="120"
+            overflowToDisk="true"
+            maxElementsOnDisk="10000000"
+            diskPersistent="true"
+            diskExpiryThreadIntervalSeconds="120"
+            memoryStoreEvictionPolicy="LRU"
+            />
 </ehcache>
