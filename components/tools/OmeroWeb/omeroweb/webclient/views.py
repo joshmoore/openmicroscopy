@@ -78,6 +78,8 @@ from omeroweb.webclient.show import Show
 from omeroweb.connector import Connector
 from omeroweb.decorators import ConnCleaningHttpResponse
 
+import tree
+
 logger = logging.getLogger(__name__)
 
 logger.info("INIT '%s'" % os.getpid())
@@ -466,15 +468,6 @@ def load_data(request, o1_type=None, o1_id=None, o2_type=None, o2_id=None, o3_ty
     else:
         manager.listContainerHierarchy(filter_user_id)
         if view =='tree':
-            def parsePermsCss (perms, ownerid):
-                perms = omero.model.PermissionsI(perms)
-                permsCss = []
-                if perms.canEdit(): permsCss.append("canEdit")
-                if perms.canAnnotate(): permsCss.append("canAnnotate")
-                if perms.canLink(): permsCss.append("canLink")
-                if perms.canDelete(): permsCss.append("canDelete")
-                if ownerid == conn.getUserId(): permsCss.append("canChgrp")
-                return ' '.join(permsCss)
             projects = {}
             qs = conn.getQueryService()
             # Projects
@@ -497,7 +490,7 @@ def load_data(request, o1_type=None, o1_id=None, o2_type=None, o2_id=None, o3_ty
                 for e in qs.projection(q, None, conn.SERVICE_OPTS):
                     p = projects.setdefault(e[0].val, {'datasets': []})
                     if not p.has_key('permsCss'):
-                        p['permsCss'] = parsePermsCss(e[4].val, e[5].val)
+                        p['permsCss'] = tree.parsePermissionsCss(e[4].val, e[5].val, conn)
                     d = {}
                     d['id'] = e[1].val
                     d['name'] = e[2].val
@@ -527,7 +520,7 @@ def load_data(request, o1_type=None, o1_id=None, o2_type=None, o2_id=None, o3_ty
                     d['name'] = e[1].val
                     d['isOwned'] = e[3].val == conn.getUserId()
                     d['childCount'] = e[4].val
-                    d['permsCss'] = parsePermsCss(e[2].val, e[3].val)
+                    d['permsCss'] = tree.parsePermissionsCss(e[2].val, e[3].val, conn)
                     datasets.append(d)
             context['datasets'] = datasets
             # Screens
@@ -563,7 +556,7 @@ def load_data(request, o1_type=None, o1_id=None, o2_type=None, o2_id=None, o3_ty
                         s['plateids'].append(pid)
                         p = {}
                         s['plates'][pid] = p
-                        p['permsCss'] = parsePermsCss(e[4].val, e[3].val)
+                        p['permsCss'] = tree.parsePermissionsCss(e[4].val, e[3].val, conn)
                         p['isOwned'] = e[3].val == conn.getUserId()
                         p['id'] = e[1].val
                         p['name'] = e[2].val
@@ -578,7 +571,7 @@ def load_data(request, o1_type=None, o1_id=None, o2_type=None, o2_id=None, o3_ty
                                                       datetime.fromtimestamp(e[10].val/1000))
                         else:
                             pa['name'] = 'Run %d' % pa['id']
-                    pa['permsCss'] = parsePermsCss(e[8].val, e[7].val)
+                    pa['permsCss'] = tree.parsePermissionsCss(e[8].val, e[7].val, conn)
                     pa['isOwned'] = e[7].val == conn.getUserId()
                     p['plateacquisitions'].append(pa)
                 for s in screens.keys():
@@ -602,6 +595,7 @@ def load_data(request, o1_type=None, o1_id=None, o2_type=None, o2_id=None, o3_ty
                        pa.name,
                        pa.details.owner.id,
                        pa.details.permissions.perm1,
+                       pa.details.permissions.restrictions,
                        pa.startTime,
                        pa.endTime
                        from Plate plate
@@ -617,22 +611,23 @@ def load_data(request, o1_type=None, o1_id=None, o2_type=None, o2_id=None, o3_ty
                         plateids.append(pid)
                         p = {}
                         plates[pid] = p
-                        p['permsCss'] = parsePermsCss(e[3].val, e[2].val)
+                        p['permsCss'] = tree.parsePermissionsCss(e[3].val, e[2].val, conn)
                         p['isOwned'] = e[2].val == conn.getUserId()
                         p['id'] = pid
                         p['name'] = e[1].val
                         p['plateacquisitions'] = []
                     pa = {}
                     pa['id'] = e[4].val
+                    logger.debug(e[8])
                     if e[5] is not None:
                         pa['name'] = e[5].val
                     else:
-                        if e[8] is not None and e[9] is not None:
-                            pa['name'] = "%s - %s" % (datetime.fromtimestamp(e[8].val/1000),
-                                                      datetime.fromtimestamp(e[9].val/1000))
+                        if e[9] is not None and e[10] is not None:
+                            pa['name'] = "%s - %s" % (datetime.fromtimestamp(e[9].val/1000),
+                                                      datetime.fromtimestamp(e[10].val/1000))
                         else:
                             pa['name'] = 'Run %d' % pa['id']
-                    pa['permsCss'] = parsePermsCss(e[7].val, e[6].val)
+                    pa['permsCss'] = tree.parsePermissionsCss(e[7].val, e[6].val, conn)
                     pa['isOwned'] = e[6].val == conn.getUserId()
                     p['plateacquisitions'].append(pa)
                 # keeping plates ordered
