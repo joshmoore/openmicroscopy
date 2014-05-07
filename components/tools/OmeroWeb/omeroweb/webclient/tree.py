@@ -21,7 +21,10 @@
 
 import omero
 
-def parsePermissionsCss (permissions, ownerid, conn):
+import datetime
+
+
+def parse_permissions_css(permissions, ownerid, conn):
     ''' Parse numeric permissions into a string of space separated
         CSS classes.
 
@@ -34,14 +37,20 @@ def parsePermissionsCss (permissions, ownerid, conn):
     '''
     permissions = omero.model.PermissionsI(permissions)
     permissionsCss = []
-    if permissions.canEdit(): permissionsCss.append("canEdit")
-    if permissions.canAnnotate(): permissionsCss.append("canAnnotate")
-    if permissions.canLink(): permissionsCss.append("canLink")
-    if permissions.canDelete(): permissionsCss.append("canDelete")
-    if ownerid == conn.getUserId(): permissionsCss.append("canChgrp")
+    if permissions.canEdit():
+        permissionsCss.append("canEdit")
+    if permissions.canAnnotate():
+        permissionsCss.append("canAnnotate")
+    if permissions.canLink():
+        permissionsCss.append("canLink")
+    if permissions.canDelete():
+        permissionsCss.append("canDelete")
+    if ownerid == conn.getUserId():
+        permissionsCss.append("canChgrp")
     return ' '.join(permissionsCss)
 
-def marshal_datasets_for_projects (conn, project_ids):
+
+def marshal_datasets_for_projects(conn, project_ids):
     ''' Given a list of project ids, marshals the contained datasets, grouping
         by parent project.
 
@@ -71,8 +80,8 @@ def marshal_datasets_for_projects (conn, project_ids):
         """ % ','.join((str(x) for x in project_ids))
     for e in qs.projection(q, None, conn.SERVICE_OPTS):
         p = projects.setdefault(e[0].val, {'datasets': []})
-        if not p.has_key('permsCss'):
-            p['permsCss'] = parsePermissionsCss(e[4].val, e[5].val, conn)
+        if 'permsCss' not in p:
+            p['permsCss'] = parse_permissions_css(e[4].val, e[5].val, conn)
         d = {}
         d['id'] = e[1].val
         d['name'] = e[2].val
@@ -83,7 +92,8 @@ def marshal_datasets_for_projects (conn, project_ids):
         projects[p]['childCount'] = len(projects[p]['datasets'])
     return projects
 
-def marshal_datasets (conn, dataset_ids):
+
+def marshal_datasets(conn, dataset_ids):
     ''' Marshal datasets with ids matching dataset_ids.
 
         @param conn OMERO gateway.
@@ -100,7 +110,8 @@ def marshal_datasets (conn, dataset_ids):
                dataset.name,
                dataset.details.permissions.perm1,
                dataset.details.owner.id,
-               (select count(id) from DatasetImageLink dil where dil.parent=dataset.id)
+               (select count(id) from DatasetImageLink dil
+                 where dil.parent=dataset.id)
                from Dataset dataset
         where dataset.id in (%s)
         order by dataset.name
@@ -111,11 +122,12 @@ def marshal_datasets (conn, dataset_ids):
         d['name'] = e[1].val
         d['isOwned'] = e[3].val == conn.getUserId()
         d['childCount'] = e[4].val
-        d['permsCss'] = parsePermissionsCss(e[2].val, e[3].val, conn)
+        d['permsCss'] = parse_permissions_css(e[2].val, e[3].val, conn)
         datasets.append(d)
     return datasets
 
-def marshal_plates_for_screens (conn, screen_ids):
+
+def marshal_plates_for_screens(conn, screen_ids):
     ''' Given a list of screen ids, marshals the contained plates, grouping
         by parent screen.
 
@@ -127,7 +139,6 @@ def marshal_plates_for_screens (conn, screen_ids):
     if len(screen_ids) == 0:
         return {}
     screens = {}
-    plates = {}
     qs = conn.getQueryService()
     q = """
         select screen.id,
@@ -157,7 +168,7 @@ def marshal_plates_for_screens (conn, screen_ids):
             s['plateids'].append(pid)
             p = {}
             s['plates'][pid] = p
-            p['permsCss'] = parsePermissionsCss(e[4].val, e[3].val, conn)
+            p['permsCss'] = parse_permissions_css(e[4].val, e[3].val, conn)
             p['isOwned'] = e[3].val == conn.getUserId()
             p['id'] = e[1].val
             p['name'] = e[2].val
@@ -168,22 +179,25 @@ def marshal_plates_for_screens (conn, screen_ids):
             pa['name'] = e[6].val
         else:
             if e[9] is not None and e[10] is not None:
-                pa['name'] = "%s - %s" % (datetime.fromtimestamp(e[9].val/1000),
-                                          datetime.fromtimestamp(e[10].val/1000))
+                pa['name'] = "%s - %s" % \
+                    (datetime.fromtimestamp(e[9].val/1000),
+                     datetime.fromtimestamp(e[10].val/1000))
             else:
                 pa['name'] = 'Run %d' % pa['id']
-        pa['permsCss'] = parsePermissionsCss(e[8].val, e[7].val, conn)
+        pa['permsCss'] = parse_permissions_css(e[8].val, e[7].val, conn)
         pa['isOwned'] = e[7].val == conn.getUserId()
         p['plateacquisitions'].append(pa)
     for s in screens.keys():
         screens[s]['childCount'] = len(screens[s]['plates'])
         # keeping plates ordered
-        screens[s]['plates'] = [screens[s]['plates'][x] for x in screens[s]['plateids']]
+        screens[s]['plates'] = [screens[s]['plates'][x]
+                                for x in screens[s]['plateids']]
         for p in screens[s]['plates']:
             p['plateAcquisitionsCount'] = len(p['plateacquisitions'])
     return screens
 
-def marshal_plates (conn, plate_ids):
+
+def marshal_plates(conn, plate_ids):
     ''' Marshal plates with ids matching plate_ids.
 
         @param conn OMERO gateway.
@@ -220,7 +234,7 @@ def marshal_plates (conn, plate_ids):
             plateids.append(pid)
             p = {}
             plates[pid] = p
-            p['permsCss'] = parsePermissionsCss(e[3].val, e[2].val, conn)
+            p['permsCss'] = parse_permissions_css(e[3].val, e[2].val, conn)
             p['isOwned'] = e[2].val == conn.getUserId()
             p['id'] = pid
             p['name'] = e[1].val
@@ -231,11 +245,12 @@ def marshal_plates (conn, plate_ids):
             pa['name'] = e[5].val
         else:
             if e[8] is not None and e[9] is not None:
-                pa['name'] = "%s - %s" % (datetime.fromtimestamp(e[8].val/1000),
-                                          datetime.fromtimestamp(e[9].val/1000))
+                pa['name'] = "%s - %s" % \
+                    (datetime.fromtimestamp(e[8].val/1000),
+                     datetime.fromtimestamp(e[9].val/1000))
             else:
                 pa['name'] = 'Run %d' % pa['id']
-        pa['permsCss'] = parsePermissionsCss(e[7].val, e[6].val, conn)
+        pa['permsCss'] = parse_permissions_css(e[7].val, e[6].val, conn)
         pa['isOwned'] = e[6].val == conn.getUserId()
         p['plateacquisitions'].append(pa)
     # keeping plates ordered
