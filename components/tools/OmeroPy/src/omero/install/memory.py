@@ -207,8 +207,11 @@ class PercentStrategy(Strategy):
     def __init__(self, name, settings=None):
         super(PercentStrategy, self).__init__(name, settings)
         self.defaults = dict(self.PERCENT_DEFAULTS)
+
+    def get_heap_size(self):
         self.settings.overwrite("heap_size",
                                 "%sm" % self.calculate_heap_size())
+        return super(PercentStrategy, self).get_heap_size()
 
     def get_percent(self):
         other = self.defaults.get("other", "1")
@@ -319,6 +322,26 @@ class AdaptiveStrategy(PercentStrategy):
         ("other", 1),
     )
 
+    # Total memory : Memory used by OMERO, interpolated
+    MAX_TOTALS = (
+        (0, 0),
+        (1000, 1000),
+        (4000, 3000),
+        (8000, 4000),
+        (16000, 8000),
+        (24000, 8000),
+        (48000, 16000),
+        # Extrapolation: 1/3 total
+    )
+
+    # Total memory : perm gen, step-wise
+    PERM_GEN = (
+        (0, 128),
+        (2001, 256),
+        (4001, 512),
+        (8001, 1024),
+    )
+
     def __init__(self, name, settings=None):
         super(AdaptiveStrategy, self).__init__(name, settings)
         available, active, total = self.system_memory_mb()
@@ -326,22 +349,23 @@ class AdaptiveStrategy(PercentStrategy):
         if settings is None:
             settings = Settings()
 
-        calc = None
-        if total <= 4000:
-            if total >= 2000:
-                settings.overwrite("perm_gen", "256m")
-            settings.overwrite("max_total", .75 * total)
-        elif total <= 8000:
-            settings.overwrite("perm_gen", "512m")
-            calc = (4000, 8000, .75 * 4000, .5 * 8000)
-        else:
-            settings.overwrite("perm_gen", "1g")
-            calc = (8000, 24000, .5 * 8000, .33 * 24000)
+        x0, y0 = self.MAX_TOTALS[0]
+        x1, y1 = self.MAX_TOTALS[0]
 
-        if calc is not None:
-            x0, x1, y0, y1 = calc
-            new_total = y0 + (y1 - y0) * (total - x0) / (x1 - x0)
-            settings.overwrite("max_total", new_total)
+        for n in xrange(1, len(self.MAX_TOTALS)):
+            if total >= self.MAX_TOTALS[n - 1][0]:
+                x0, y0 = self.MAX_TOTALS[n - 1]
+                x1, y1 = self.MAX_TOTALS[n]
+            else:
+                break
+
+        new_total = y0 + (y1 - y0) * (total - x0) / (x1 - x0)
+        settings.overwrite("max_total", new_total)
+
+        for pgx, pgy in self.PERM_GEN:
+            if total >= pgx:
+                perm_gen = pgy
+        settings.overwrite("perm_gen", "%dm" % perm_gen)
 
 
 STRATEGY_REGISTRY["manual"] = ManualStrategy
