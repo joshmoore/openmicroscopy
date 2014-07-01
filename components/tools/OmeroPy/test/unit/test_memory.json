@@ -107,29 +107,41 @@
         }
     },
     {
-        "name": "global-adaptive-24G",
+        "name": "global-adaptive-16G",
         "input": {
             "omero.mem.strategy": "adaptive",
-            "omero.mem.use_total": "24000"
+            "omero.mem.use_total": "16000"
         },
         "output": {
             "blitz" : [
-                "-Xmx3168m",
-                "-XX:MaxPermSize=1g"
+                "-Xmx3200m",
+                "-XX:MaxPermSize=1024m"
             ]
         }
     },
     {
-        "name": "global-adaptive-24G-max-24G",
+        "name": "global-adaptive-48G",
         "input": {
             "omero.mem.strategy": "adaptive",
-            "omero.mem.use_total": "24000",
-            "omero.mem.max_total": "24000"
+            "omero.mem.use_total": "48000"
         },
         "output": {
             "blitz" : [
-                "-Xmx9600m",
-                "-XX:MaxPermSize=1g"
+                "-Xmx6400m",
+                "-XX:MaxPermSize=1024m"
+            ]
+        }
+    },
+    {
+        "name": "global-adaptive-96G",
+        "input": {
+            "omero.mem.strategy": "adaptive",
+            "omero.mem.use_total": "96000"
+        },
+        "output": {
+            "blitz" : [
+                "-Xmx12800m",
+                "-XX:MaxPermSize=1024m"
             ]
         }
     },
