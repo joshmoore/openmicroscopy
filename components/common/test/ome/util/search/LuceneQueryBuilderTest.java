@@ -17,7 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-package org.openmicroscopy.shoola.env.data;
+package ome.util.search;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -26,20 +26,16 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 
-import org.openmicroscopy.shoola.util.ui.search.InvalidQueryException;
-import org.openmicroscopy.shoola.util.ui.search.LuceneQueryBuilder;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import edu.emory.mathcs.backport.java.util.Collections;
+import junit.framework.TestCase;
 
-@Test(testName = "LuceneQueryBuilderTest", enabled=false)
-public class LuceneQueryBuilderTest {
+public class LuceneQueryBuilderTest extends TestCase{
 
     SimpleDateFormat df = new SimpleDateFormat("yyyyMMdd");
     
-    @Test(testName="buildQueryString")
-    void testBuildQueryString() throws InvalidQueryException, ParseException {
+    @Test
+    public void test_buildLuceneQuery() throws InvalidQueryException, ParseException {
         
         String raw, expected;
         List<String> fields = new ArrayList<String>();
@@ -150,7 +146,7 @@ public class LuceneQueryBuilderTest {
         checkQuery(fields, raw, expected);
         
         // date search
-        // Note: Lucence date range's "to" is exclusive, so there has to be added an extra day to it
+        // Note: Lucence date range's "to" is exclusive, so there has to be an extra day added to it
         Date from = df.parse("20140701");
         Date to = df.parse("20140702");
         String dateType = LuceneQueryBuilder.DATE_ACQUISITION;
@@ -184,11 +180,11 @@ public class LuceneQueryBuilderTest {
     
     private void checkQuery(List<String> fields, String raw, String expected) throws InvalidQueryException {
         String processed = LuceneQueryBuilder.buildLuceneQuery(fields, raw);
-        Assert.assertEquals(processed, expected, "Failed on query: "+raw);
+        assertEquals("Failed on query: "+raw, expected, processed);
     }
     
     private void checkQuery(List<String> fields, Date from, Date to, String dateType, String raw, String expected) throws InvalidQueryException {
         String processed = LuceneQueryBuilder.buildLuceneQuery(fields, from, to, dateType, raw);
-        Assert.assertEquals(processed, expected, "Failed on query: "+raw);
+        assertEquals("Failed on query: "+raw, expected, processed);
     }
 }

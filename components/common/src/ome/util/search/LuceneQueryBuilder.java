@@ -17,7 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-package org.openmicroscopy.shoola.util.ui.search;
+package ome.util.search;
 
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -28,9 +28,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang.StringUtils;
 
 /**
  * Utility class for building lucene queries<br>
@@ -48,6 +45,8 @@ import org.apache.commons.lang.StringUtils;
  *         href="mailto:d.lindner@dundee.ac.uk">d.lindner@dundee.ac.uk</a>
  * 
  * @since 5.0
+ * 
+ * TODO: For versions > 5.0 this class can be moved from commons to the server
  */
 public class LuceneQueryBuilder {
 
@@ -84,7 +83,7 @@ public class LuceneQueryBuilder {
         if (from == null && to == null)
             return basicQuery;
 
-        if (!StringUtils.isEmpty(basicQuery))
+        if (basicQuery!=null && basicQuery.trim().length()>0)
             result.append("(" + basicQuery + ")");
         else
             result.append(basicQuery);
@@ -123,7 +122,7 @@ public class LuceneQueryBuilder {
 
         List<String> terms = split(input);
 
-        if (!CollectionUtils.isEmpty(fields)) {
+        if (fields!=null && !fields.isEmpty()) {
             terms = attachFields(fields, terms);
         }
 
@@ -215,7 +214,7 @@ public class LuceneQueryBuilder {
             throws InvalidQueryException {
         List<String> result = new ArrayList<String>();
 
-        if (CollectionUtils.isEmpty(terms))
+        if (terms==null || terms.isEmpty())
             return Collections.emptyList();
 
         if (terms.size() == 1) {

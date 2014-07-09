@@ -17,7 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-package org.openmicroscopy.shoola.util.ui.search;
+package ome.util.search;
 
 /**
  * Exception to indicate that the query string was invalid
