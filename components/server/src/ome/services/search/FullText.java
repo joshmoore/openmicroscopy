@@ -136,9 +136,7 @@ public class FullText extends SearchAction {
         try {
             this.queryStr = LuceneQueryBuilder.buildLuceneQuery(fieldsArray, dFrom,
                     dTo, dateType, query);
-            if (log.isDebugEnabled()) {
-                log.debug("Generated Lucene query: "+this.queryStr);
-            }
+            log.info("Generated Lucene query: "+this.queryStr);
         } catch (InvalidQueryException e1) {
             throw new ApiUsageException(
                     "Invalid query: "+e1.getMessage());
