@@ -36,6 +36,7 @@ import traceback
 import time
 import array
 import math
+import re
 from decimal import Decimal
 
 from gettext import gettext as _
@@ -2481,6 +2482,51 @@ class _BlitzGateway (object):
         rep_serv = self.getRepositoryInfoService()
         return rep_serv.getFreeSpaceInKilobytes() * 1024
 
+    def getFilesetFilesInfo (self, imageIds):
+        """
+        Gets summary of Original Files that are part of the FS Fileset linked to images
+        Returns a dict of files 'count' and sum of 'size'
+
+        @param imageIds:    Image IDs list
+        @return:            Dict of files 'count' and 'size'
+        """
+
+        params = omero.sys.ParametersI()
+        params.addIds(imageIds)
+        query = "select distinct(fse) from FilesetEntry as fse "\
+                "left outer join fse.fileset as fs "\
+                "left outer join fetch fse.originalFile as f "\
+                "left outer join fs.images as image where image.id in (:ids)"
+        queryService = self.getQueryService()
+        fsinfo = queryService.findAllByQuery(query, params, self.SERVICE_OPTS)
+        fsCount = len(fsinfo)
+        fsSize = sum([f.originalFile.getSize().val for f in fsinfo])
+        filesetFileInfo = {'count': fsCount, 'size': fsSize}
+        return filesetFileInfo
+
+    def getArchivedFilesInfo (self, imageIds):
+        """
+        Gets summary of Original Files that are archived from OMERO 4 imports
+        Returns a dict of files 'count' and sum of 'size'
+
+        @param imageIds:    Image IDs list
+        @return:            Dict of files 'count' and 'size'
+        """
+
+        params = omero.sys.ParametersI()
+        params.addIds(imageIds)
+        query = "select distinct(link) from PixelsOriginalFileMap as link "\
+                "left outer join fetch link.parent as f "\
+                "left outer join link.child as pixels "\
+                "where pixels.image.id in (:ids)"
+        queryService = self.getQueryService()
+        fsinfo = queryService.findAllByQuery(query, params, self.SERVICE_OPTS)
+        fsCount = len(fsinfo)
+        fsSize = sum([f.parent.getSize().val for f in fsinfo])
+        filesetFileInfo = {'count': fsCount, 'size': fsSize}
+        return filesetFileInfo
+
+
     ############################
     # Timeline service getters #
 
@@ -3443,7 +3489,55 @@ class _BlitzGateway (object):
     ###################
     # Searching stuff #
 
-    def searchObjects(self, obj_types, text, created=None):
+    def buildSearchQuery(self, text, fields=()):
+
+        fields = [str(f) for f in fields]
+        # # for each phrase or token, we strip out all non alpha-numeric
+        # except when inside double quotes. 
+        # To preserve quoted phrases we split by "
+        phrases = text.split('"')
+        tokens = []
+        leadingWc = False
+        for i, p in enumerate(phrases):
+            if len(p) == 0:
+                continue
+            if i%2 == 0:    # even: outside quotes - strip everything
+                tks = re.findall(r"[\w\*\?]+", p)
+                for t in tks:
+                    # remove single wildcards
+                    if t in ("*", "?"):
+                        continue
+                    # Need to enable wildcards for leading * or ? not in quotes
+                    if t[0] in ("*","?"):
+                        leadingWc = True
+                    tokens.append(t)
+            else:
+                tokens.append('"%s"' % p)   # wrap back into "double quotes"
+
+        if len(tokens) == 0:
+            return "", False
+
+        # if we have fields, prepend each token with field:token
+        if fields:
+            fieldqueries = []
+            for f in fields:
+                fieldTokens = []
+                for t in tokens:
+                    if len(t) > 0:
+                        if t not in ("AND", "OR"):
+                            fieldTokens.append('%s:%s' % (f, t))
+                        else:
+                            fieldTokens.append(t)
+                fieldqueries.append("(%s)" % " ".join(fieldTokens))
+            # E.g. (name:CSFV AND name:dv) OR (description:CSFV AND description:dv)
+            text = " OR ".join(fieldqueries)
+        else:
+            text = " ".join(tokens)
+
+        return text, leadingWc
+
+
+    def searchObjects(self, obj_types, text, created=None, fields=(), batchSize=1000, page=0, searchGroup=None, ownedBy=None):
         """
         Search objects of type "Project", "Dataset", "Image", "Screen", "Plate"
         Returns a list of results
@@ -3466,21 +3560,50 @@ class _BlitzGateway (object):
                 return KNOWN_WRAPPERS.get(obj_type.lower(), None)
             types = [getWrapper(o) for o in obj_types]
         search = self.createSearchService()
+
+        ctx = self.SERVICE_OPTS.copy()
+        if searchGroup is not None:
+            ctx.setOmeroGroup(searchGroup)
+
+        search.setBatchSize(batchSize, ctx)
+        if ownedBy is not None:
+            ownedBy = long(ownedBy)
+            if ownedBy >= 0:
+                details = omero.model.DetailsI()
+                details.setOwner(omero.model.ExperimenterI(ownedBy, False))
+                search.onlyOwnedBy(details, ctx)
+
+        text, leadingWc = self.buildSearchQuery(text, fields)
+        if leadingWc:
+            search.setAllowLeadingWildcard(True, ctx)
+
+        if len(text) == 0:
+            return []
+
+        logger.debug("Searching for: '%s'" % text);
+
         try:
             if created:
-                search.onlyCreatedBetween(created[0], created[1]);
-            if text[0] in ('?','*'):
-                search.setAllowLeadingWildcard(True)
+                search.onlyCreatedBetween(created[0], created[1], ctx);
             rv = []
             for t in types:
                 def actualSearch ():
-                    search.onlyType(t().OMERO_CLASS, self.SERVICE_OPTS)
-                    search.byFullText(text, self.SERVICE_OPTS)
+                    search.onlyType(t().OMERO_CLASS, ctx)
+                    # search.bySomeMustNone(some, [], [])
+                    search.byFullText(text, ctx)
                 timeit(actualSearch)()
-                if search.hasNext(self.SERVICE_OPTS):
-                    def searchProcessing ():
-                        rv.extend(map(lambda x: t(self, x), search.results()))
-                    timeit(searchProcessing)()
+                # get results
+                def searchProcessing ():
+                    return search.results(ctx)
+                p = 0
+                # we do pagination by loading until the required page
+                while search.hasNext(ctx):
+                    results = timeit(searchProcessing)()
+                    if p == page:
+                        rv.extend(map(lambda x: t(self, x), results))
+                        break;
+                    p += 1
+
         finally:
             search.close()
         return rv
@@ -5845,6 +5968,7 @@ class _ImageWrapper (BlitzObjectWrapper):
     _pixels = None
     _archivedFileCount = None
     _filesetFileCount = None
+    _importedFilesInfo = None
 
     _pr = None # projection
     _prStart = None
@@ -7588,26 +7712,30 @@ class _ImageWrapper (BlitzObjectWrapper):
         Used by L{self.countImportedImageFiles} which also handles FS files.
         """
         if self._archivedFileCount == None:
-            pid = self.getPixelsId()
-            params = omero.sys.Parameters()
-            params.map = {"pid": rlong(pid)}
-            query = "select count(link.id) from PixelsOriginalFileMap as link where link.child.id=:pid"
-            count = self._conn.getQueryService().projection(query, params, self._conn.SERVICE_OPTS)
-            self._archivedFileCount = count[0][0]._val
+            info = self._conn.getArchivedFilesInfo([self.getId()])
+            self._archivedFileCount = info['count']
         return self._archivedFileCount
 
     def countFilesetFiles (self):
         """ Counts the Original Files that are part of the FS Fileset linked to this image """
 
         if self._filesetFileCount == None:
-            params = omero.sys.Parameters()
-            params.map = {'imageId': rlong(self.getId())}
-            query = "select count(fse.id) from FilesetEntry as fse join fse.fileset as fs "\
-                    "left outer join fs.images as image where image.id=:imageId"
-            queryService = self._conn.getQueryService()
-            fscount = queryService.projection(query, params, self._conn.SERVICE_OPTS)
-            self._filesetFileCount = fscount[0][0]._val
+            info = self._conn.getFilesetFilesInfo([self.getId()])
+            self._filesetFileCount = info['count']
         return self._filesetFileCount
+
+    def getImportedFilesInfo(self):
+        """
+        Returns a dict of 'count' and 'size' of the Fileset files (OMERO 5) or
+        the Original Archived files (OMERO 4)
+
+        @return:        A dict of 'count' and sum 'size' of the files.
+        """
+        if self._importedFilesInfo == None:
+            self._importedFilesInfo = self._conn.getArchivedFilesInfo([self.getId()])
+            if (self._importedFilesInfo['count'] == 0):
+                self._importedFilesInfo = self._conn.getFilesetFilesInfo([self.getId()])
+        return self._importedFilesInfo
 
     def countImportedImageFiles (self):
         """

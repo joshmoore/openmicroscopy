@@ -289,6 +289,10 @@ class EditorComponent
 		model.setRootObject(refObject);
 		view.setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
 		view.setRootObject(oldObject);
+		
+		// have to load the filesets immediately to determine if the
+		// show file path button in the toolbar should be activated or not
+		loadFileset(-1);
 	}
 
 	/** 
@@ -506,7 +510,7 @@ class EditorComponent
     }
 
     public void handleFileAnnotationRemoveCheck(final FileAnnotationCheckResult result) {
-        if (!result.getSingleParentAnnotations().isEmpty()) {
+        if (!result.getDeleteCandidates().isEmpty()) {
             
             JFrame f = MetadataViewerAgent.getRegistry().getTaskBar()
                     .getFrame();
@@ -516,8 +520,8 @@ class EditorComponent
                 
                 @Override
                 public void propertyChange(PropertyChangeEvent arg0) {
-                    if(arg0.getPropertyName().equals(FileAttachmentWarningDialog.DELETE_PROPERTY)) {
-                        for (FileAnnotationData fd : result.getSingleParentAnnotations()) {
+                    if (arg0.getPropertyName().equals(FileAttachmentWarningDialog.DELETE_PROPERTY)) {
+                        for (FileAnnotationData fd : result.getDeleteCandidates()) {
                           view.deleteAnnotation(fd);
                         }
                         for (FileAnnotationData fd : result.getAllAnnotations()) {
@@ -649,6 +653,10 @@ class EditorComponent
 	public void setPlaneInfo(Collection result, long pixelsID, int channel)
 	{
 		Object ref = model.getRefObject();
+		if (ref instanceof WellSampleData) {
+		    WellSampleData ws = (WellSampleData) ref;
+		    ref = ws.getImage();
+		}
 		if (!(ref instanceof ImageData)) return;
 		ImageData img = (ImageData) ref;
 		if (pixelsID != img.getDefaultPixels().getId()) return;
@@ -701,6 +709,8 @@ class EditorComponent
 			if (d.getDialogType() == FigureDialog.ROI_MOVIE)
 				model.firePlaneInfoLoading(EditorModel.DEFAULT_CHANNEL, 0);
 		}
+		// load other users' rendering settings
+		model.getRenderer().retrieveRelatedSettings();
 	}
 
 	/** 

@@ -50,13 +50,13 @@ import javax.swing.SwingUtilities;
 import org.apache.commons.collections.CollectionUtils;
 //Third-party libraries
 import org.jdesktop.swingx.JXTaskPane;
+import org.apache.commons.collections.CollectionUtils;
 
 //Application-internal dependencies
 import org.openmicroscopy.shoola.agents.events.editor.ShowEditorEvent;
 import org.openmicroscopy.shoola.agents.metadata.MetadataViewerAgent;
 import org.openmicroscopy.shoola.agents.metadata.util.AnalysisResultsItem;
 import org.openmicroscopy.shoola.agents.metadata.util.DataToSave;
-import org.openmicroscopy.shoola.agents.metadata.util.FilesetInfoDialog;
 import org.openmicroscopy.shoola.agents.metadata.view.MetadataViewer;
 import org.openmicroscopy.shoola.agents.util.ui.PermissionMenu;
 import org.openmicroscopy.shoola.env.data.model.AdminObject;
@@ -1098,16 +1098,23 @@ class EditorUI
 	 * or {@link EditorControl#FILE_PATH_INPLACE_ICON}
 	 * */
 	void displayFileset(int trigger) { 
-            switch (trigger) {
-                case EditorControl.FILE_PATH_TOOLBAR:
-                    toolBar.displayFileset();
-                    break;
-                case EditorControl.FILE_PATH_INPLACE_ICON:
-                    generalPane.getPropertiesUI().displayFileset();
-                    break;
-                default:
-                    return;
-            }
+	    if (CollectionUtils.isEmpty(model.getFileset())) {
+	        toolBar.enableFilePathButton(false);
+	    }
+	    else {
+	        toolBar.enableFilePathButton(true);
+	        // show the filepaths if this was triggered by the user
+	        switch (trigger) {
+	                case EditorControl.FILE_PATH_TOOLBAR:
+	                    toolBar.displayFileset();
+	                    break;
+	                case EditorControl.FILE_PATH_INPLACE_ICON:
+	                    generalPane.getPropertiesUI().displayFileset();
+	                    break;
+	                default:
+	                    return;
+	            }
+	    }
 	}
 	
 	/**

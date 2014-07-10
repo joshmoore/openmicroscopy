@@ -99,12 +99,14 @@ def getIntOrDefault(request, name, default):
 
 def login(request):
     """
-    Webclient Login - Also can be used by other Apps to log in to OMERO.
-    Uses the 'server' id from request to lookup the server-id (index), host and port from settings. E.g. "localhost", 4064.
-    Stores these details, along with username, password etc in the request.session.
-    Resets other data parameters in the request.session.
-    Tries to get connection to OMERO and if this works, then we are redirected to the 'index' page or url specified in REQUEST.
-    If we can't connect, the login page is returned with appropriate error messages.
+    Webclient Login - Also can be used by other Apps to log in to OMERO. Uses
+    the 'server' id from request to lookup the server-id (index), host and
+    port from settings. E.g. "localhost", 4064. Stores these details, along
+    with username, password etc in the request.session. Resets other data
+    parameters in the request.session. Tries to get connection to OMERO and
+    if this works, then we are redirected to the 'index' page or url
+    specified in REQUEST. If we can't connect, the login page is returned
+    with appropriate error messages.
     """
 
     request.session.modified = True
@@ -557,17 +559,10 @@ def load_searching(request, form=None, conn=None, **kwargs):
         query_search = request.REQUEST.get('query').replace("+", " ")
         template = "webclient/search/search_details.html"
 
-        onlyTypes = list()
-        if request.REQUEST.get('projects') is not None and request.REQUEST.get('projects') == 'on':
-            onlyTypes.append('projects')
-        if request.REQUEST.get('datasets') is not None and request.REQUEST.get('datasets') == 'on':
-            onlyTypes.append('datasets')
-        if request.REQUEST.get('images') is not None and request.REQUEST.get('images') == 'on':
-            onlyTypes.append('images')
-        if request.REQUEST.get('plates') is not None and request.REQUEST.get('plates') == 'on':
-            onlyTypes.append('plates')
-        if request.REQUEST.get('screens') is not None and request.REQUEST.get('screens') == 'on':
-            onlyTypes.append('screens')
+        onlyTypes = request.REQUEST.getlist("datatype")
+        fields = request.REQUEST.getlist("field")
+        searchGroup = request.REQUEST.get('searchGroup', None)
+        ownedBy = request.REQUEST.get('ownedBy', None)
 
         startdate = request.REQUEST.get('startdateinput', None)
         startdate = startdate is not None and smart_str(startdate) or None
@@ -576,20 +571,21 @@ def load_searching(request, form=None, conn=None, **kwargs):
         date = None
         if startdate is not None:
             if enddate is None:
-                enddate = startdate
+                n = datetime.datetime.now()
+                enddate = "%s-%02d-%02d" % (n.year, n.month, n.day)
             date = "%s_%s" % (startdate, enddate)
 
         # by default, if user has not specified any types:
         if len(onlyTypes) == 0:
-            onlyTypes = ['images']
+            onlyTypes = ['image']
 
         # search is carried out and results are stored in manager.containers.images etc.
-        manager.search(query_search, onlyTypes, date)
+        manager.search(query_search, onlyTypes, fields, searchGroup, ownedBy, date)
 
         try:
             searchById = long(query_search)
+            conn.SERVICE_OPTS.setOmeroGroup(-1)
             for t in onlyTypes:
-                t = t[0:-1] # remove 's'
                 if t in ('project', 'dataset', 'image', 'screen', 'plate'):
                     obj = conn.getObject(t, searchById)
                     if obj is not None:
@@ -601,15 +597,6 @@ def load_searching(request, form=None, conn=None, **kwargs):
         # simply display the search home page.
         template = "webclient/search/search.html"
 
-    # batch query for searching wells in plates
-    batch_query = request.REQUEST.get('batch_query')
-    if batch_query is not None:
-        delimiter = request.REQUEST.get('delimiter')
-        delimiter = delimiter.decode("string_escape")
-        batch_query = batch_query.split("\n")
-        batch_query = [query.split(delimiter) for query in batch_query]
-        template = "webclient/search/search_details.html"
-        manager.batch_search(batch_query)
 
     context = {'manager':manager, 'foundById': foundById}
     context['template'] = template
@@ -1095,6 +1082,13 @@ def batch_annotate(request, conn=None, **kwargs):
     manager = BaseContainer(conn)
     batchAnns = manager.loadBatchAnnotations(objs)
     figScripts = manager.listFigureScripts(objs)
+    filesetInfo = None
+    if 'image' in objs and len(objs['image']) > 0:
+        iids = [i.getId() for i in objs['image']]
+        filesetInfo = conn.getFilesetFilesInfo(iids)
+        archivedInfo = conn.getArchivedFilesInfo(iids)
+        filesetInfo['count'] += archivedInfo['count']
+        filesetInfo['size'] += archivedInfo['size']
 
     obj_ids = []
     obj_labels = []
@@ -1107,7 +1101,7 @@ def batch_annotate(request, conn=None, **kwargs):
 
     context = {'form_comment':form_comment, 'obj_string':obj_string, 'link_string': link_string,
             'obj_labels': obj_labels, 'batchAnns': batchAnns, 'batch_ann':True, 'index': index,
-            'figScripts':figScripts}
+            'figScripts':figScripts, 'filesetInfo': filesetInfo}
     context['template'] = "webclient/annotations/batch_annotate.html"
     context['webclient_path'] = request.build_absolute_uri(reverse('webindex'))
     return context
@@ -1237,7 +1231,7 @@ def annotate_comment(request, conn=None, **kwargs):
         return HttpResponse(str(form_multi.errors))      # TODO: handle invalid form error
 
 
-@login_required(setGroupContext=True)
+@login_required()
 @render_response()
 def annotate_tags(request, conn=None, **kwargs):
     """ This handles creation AND submission of Tags form, adding new AND/OR existing tags to one or more objects """
@@ -1255,6 +1249,8 @@ def annotate_tags(request, conn=None, **kwargs):
             if len(selected[t]) > 0:
                 o_type = t[:-1]         # "images" -> "image"
                 o_id = selected[t][0]
+                objWrapper = oids[o_type][0]
+                conn.SERVICE_OPTS.setOmeroGroup(objWrapper.getDetails().group.id.val)
                 break
         if o_type in ("dataset", "project", "image", "screen", "plate", "acquisition", "well","comment", "file", "tag", "tagset"):
             if o_type == 'tagset': o_type = 'tag' # TODO: this should be handled by the BaseContainer
@@ -1280,6 +1276,11 @@ def annotate_tags(request, conn=None, **kwargs):
     else:
         manager = BaseContainer(conn)
         selected_tags = []
+        # Use the first object we find to set context (assume all objects are in same group!)
+        for obs in oids.values():
+            if len(obs) > 0:
+                conn.SERVICE_OPTS.setOmeroGroup(obs[0].getDetails().group.id.val)
+                break
 
     initial = {'selected':selected, 'images':oids['image'], 'datasets': oids['dataset'], 'projects':oids['project'],
             'screens':oids['screen'], 'plates':oids['plate'], 'acquisitions':oids['acquisition'], 'wells':oids['well']}
@@ -1850,6 +1851,37 @@ def download_orig_metadata(request, imageId, conn=None, **kwargs):
     rsp['Content-Length'] = len(rspText)
     rsp['Content-Disposition'] = 'attachment; filename=Original_Metadata.txt'
     return rsp
+
+
+@render_response()
+def download_placeholder(request):
+    """
+    Page displays a simple "Preparing download..." message and redirects to the 'url'.
+    We construct the url and query string from request: 'url' and 'ids'.
+    """
+
+    format = request.REQUEST.get('format', None)
+    if format is not None:
+        download_url = reverse('download_as')
+        zipName = 'SaveAs_%s' % format
+    else:
+        download_url = reverse('archived_files')
+        zipName = 'OriginalFileDownload'
+    targetIds = request.REQUEST.get('ids')      # E.g. image-1|image-2
+    defaultName = request.REQUEST.get('name', zipName) # default zip name
+    defaultName = os.path.basename(defaultName)         # remove path
+
+    query = "&".join([i.replace("-", "=") for i in targetIds.split("|")])
+    download_url = download_url + "?" + query
+    if format is not None:
+        download_url = download_url + "&format=%s" % format
+
+    context = {
+            'template': "webclient/annotations/download_placeholder.html",
+            'url': download_url,
+            'defaultName': defaultName
+            }
+    return context
 
 
 @login_required()

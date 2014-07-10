@@ -325,6 +325,7 @@ class TestTables(lib.TestCase):
         assert not storage.uptodate(table.stamp)
         table.cleanup()
 
+    @pytest.mark.xfail(reason="See ticket #12372")
     def testTableAddData(self, newfile=True, cleanup=True):
         mocktable = self.testTables(newfile)
         table = mocktable.table
@@ -341,6 +342,7 @@ class TestTables(lib.TestCase):
             table.cleanup()
         return table
 
+    @pytest.mark.xfail(reason="See ticket #12372")
     def testTableSearch(self):
         table = self.testTableAddData(True, False)
         rv = list(table.getWhereList('(a==1)', None, None, None, None, None))
@@ -366,6 +368,7 @@ class TestTables(lib.TestCase):
         pytest.raises(omero.ValidationException, tables.getTable, of, self.sf,
                       self.current)
 
+    @pytest.mark.xfail(reason="See ticket #12372")
     def testErrorInGet(self):
         self.repofile(self.sf.db_uuid)
         f = omero.model.OriginalFileI(1, True)
