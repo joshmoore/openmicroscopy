@@ -50,7 +50,7 @@
 		<!-- Note: Session is not in model-->
 		<properties>
 			<!-- Type & Group are not really optional. Needed to bootstrap.
-                 Constraints are added later -->
+			     Constraints are added later -->
 			<manyone name="node" type="ome.model.meta.Node"/>
 			<required name="uuid" type="string" unique="true"/>
 			<required name="owner" type="ome.model.meta.Experimenter"/>
@@ -98,7 +98,7 @@
 			<required name="experimenterGroup" type="ome.model.meta.ExperimenterGroup"/>
 			<required name="type" type="ome.model.enums.EventType"/>
 			<optional name="containingEvent" type="ome.model.meta.Event"/>
-            <onemany name="logs" type="ome.model.meta.EventLog" inverse="event"/>
+			<onemany name="logs" type="ome.model.meta.EventLog" inverse="event"/>
 			<manyone name="session" type="ome.model.meta.Session"/>
 		</properties>
 	</type>
@@ -151,20 +151,20 @@
 		<!-- Note: Namespace is not in model-->
 		<properties>
 
-                        <!-- Depending on the use of the name space,
-                        keywords are the valid string values -->
+			<!-- Depending on the use of the name space,
+			     keywords are the valid string values -->
 			<optional name="keywords" type="string[]"/>
 
-                        <!-- Whether multiple keywords are supported.
-                        If a user adds multiple keywords to a type
-                        which does not support multiple, then the
-                        first value MAY be taken by clients -->
+ 			<!-- Whether multiple keywords are supported.
+ 			     If a user adds multiple keywords to a type
+ 			     which does not support multiple, then the
+ 			     first value MAY be taken by clients -->
 			<optional name="multivalued" type="boolean"/>
 
-                        <!-- Whether or not objects using this
-                        namespace are intended for display. Null
-                        values or false will lead to many clients
-                        hiding the objects -->
+ 			<!-- Whether or not objects using this
+ 			     namespace are intended for display. Null
+ 			     values or false will lead to many clients
+ 			     hiding the objects -->
 			<optional name="display" type="boolean"/>
 
 		</properties>
