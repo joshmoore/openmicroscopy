@@ -20,6 +20,7 @@ import ome.model.annotations.DoubleAnnotation;
 import ome.model.annotations.LongAnnotation;
 import ome.model.internal.Permissions;
 import ome.model.meta.ExperimenterGroup;
+import ome.server.utests.MockEventContext;
 import ome.services.chgrp.ChgrpStepFactory;
 import ome.services.graphs.GraphOpts.Op;
 import ome.system.EventContext;
@@ -382,78 +383,4 @@ public class GraphSpecUnitTest extends MockGraphTest {
 
     }
 
-}
-
-class MockEventContext implements EventContext {
-
-    @Override
-    public Long getCurrentEventId() {
-        return -1l;
-    }
-
-    @Override
-    public String getCurrentEventType() {
-        return "test";
-    }
-
-    @Override
-    public Long getCurrentGroupId() {
-        return -1l;
-    }
-
-    @Override
-    public String getCurrentGroupName() {
-        return "foo";
-    }
-
-    @Override
-    public Permissions getCurrentGroupPermissions() {
-        return Permissions.READ_ONLY;
-    }
-
-    @Override
-    public Long getCurrentSessionId() {
-        return -1l;
-    }
-
-    @Override
-    public String getCurrentSessionUuid() {
-        return "Fake-uuid";
-    }
-
-    @Override
-    public Long getCurrentShareId() {
-        return null;
-    }
-
-    @Override
-    public Long getCurrentUserId() {
-        return -1l;
-    }
-
-    @Override
-    public String getCurrentUserName() {
-        return "bar";
-    }
-
-    @Override
-    public List<Long> getLeaderOfGroupsList() {
-        return new ArrayList<Long>();
-    }
-
-    @Override
-    public List<Long> getMemberOfGroupsList() {
-        return new ArrayList<Long>();
-    }
-
-    @Override
-    public boolean isCurrentUserAdmin() {
-        return false;
-    }
-
-    @Override
-    public boolean isReadOnly() {
-        return false;
-    }
-    
 }
