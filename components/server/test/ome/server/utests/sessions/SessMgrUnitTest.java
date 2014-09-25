@@ -9,8 +9,6 @@ package ome.server.utests.sessions;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CyclicBarrier;
-import java.util.concurrent.TimeUnit;
 
 import net.sf.ehcache.CacheManager;
 import ome.api.local.LocalAdmin;
@@ -32,15 +30,15 @@ import ome.model.meta.Node;
 import ome.model.meta.Session;
 import ome.security.basic.CurrentDetails;
 import ome.server.utests.DummyExecutor;
+import ome.server.utests.MockEventContext;
 import ome.services.sessions.SessionContext;
 import ome.services.sessions.SessionContextImpl;
 import ome.services.sessions.SessionManagerImpl;
-import ome.services.sessions.events.UserGroupUpdateEvent;
 import ome.services.sessions.state.SessionCache;
-import ome.services.sessions.state.SessionCache.StaleCacheListener;
 import ome.services.sessions.stats.CounterFactory;
 import ome.services.sessions.stats.SessionStats;
 import ome.services.util.Executor;
+import ome.system.EventContext;
 import ome.system.OmeroContext;
 import ome.system.Principal;
 import ome.system.Roles;
@@ -78,7 +76,7 @@ public class SessMgrUnitTest extends MockObjectTestCase {
     private final class TestManager extends SessionManagerImpl {
         Session doDefine() {
             Session s = new Session();
-            define(s, "uuid", "message", System.currentTimeMillis(),
+            define(s, ec.uuid, "message", System.currentTimeMillis(),
                     defaultTimeToIdle, defaultTimeToLive, "Test",
                     "Test", "127.0.0.1");
 
@@ -87,6 +85,11 @@ public class SessMgrUnitTest extends MockObjectTestCase {
             s.getDetails().setGroup(group);
 
             return s;
+        }
+
+        //@Override
+        protected EventContext currentContext() {
+            return caller;
         }
     }
 
@@ -99,15 +102,19 @@ public class SessMgrUnitTest extends MockObjectTestCase {
     private Mock sMock;
 
     // State
+    final MockEventContext caller = MockEventContext.admin();
+    final MockEventContext ec = new MockEventContext();
+
     final Long TTL = 300 * 1000L;
     final Long TTI = 100 * 1000L;
     Session session = new Session();
-    Principal principal = new Principal("u", "g", "Test");
+    Principal principal = new Principal(ec.getCurrentUserName(),
+            ec.getCurrentGroupName(), ec.getCurrentEventType());
     String credentials = "password";
-    Experimenter user = new Experimenter(1L, true);
-    ExperimenterGroup group = new ExperimenterGroup(1L, true);
-    List<Long> m_ids = Collections.singletonList(1L);
-    List<Long> l_ids = Collections.singletonList(1L);
+    Experimenter user = new Experimenter(ec.getCurrentUserId(), true);
+    ExperimenterGroup group = new ExperimenterGroup(ec.getCurrentGroupId(), true);
+    List<Long> m_ids = Collections.singletonList(ec.getCurrentGroupId());
+    List<Long> l_ids = Collections.singletonList(ec.getCurrentGroupId());
     List<String> userRoles = Collections.singletonList("single");
 
     @BeforeTest
@@ -116,6 +123,10 @@ public class SessMgrUnitTest extends MockObjectTestCase {
         ctx = new OmeroContext("classpath:ome/services/messaging.xml");
         multicaster = (ApplicationEventMulticaster) ctx
                 .getBean("applicationEventMulticaster");
+    }
+
+    @BeforeMethod
+    public void setup() {
 
         sf.mockAdmin = mock(LocalAdmin.class);
         sf.mockUpdate = mock(LocalUpdate.class);
@@ -123,10 +134,7 @@ public class SessMgrUnitTest extends MockObjectTestCase {
 
         sMock = mock(org.hibernate.Session.class);
         s = (org.hibernate.Session) sMock.proxy();
-    }
 
-    @BeforeMethod
-    public void setup() {
         cache = new SessionCache();
         cache.setCacheManager(CacheManager.getInstance());
         cache.setApplicationContext(ctx);
@@ -334,8 +342,9 @@ public class SessMgrUnitTest extends MockObjectTestCase {
         prepareForCreateSession();
         sf.mockAdmin.expects(atLeastOnce()).method("getDefaultGroup")
             .will(returnValue(group));
-        Session session = mgr.createWithAgent(new Principal("fake", null, null),
-                credentials, "Test", "127.0.0.1");
+        Session session = mgr.createWithAgent(new Principal(
+                ec.getCurrentUserName(), null, null),
+                credentials, ec.getCurrentEventType(), "127.0.0.1");
         assertNotNull(session.getDefaultEventType());
         assertNotNull(session.getDetails().getGroup());
     }
@@ -353,13 +362,18 @@ public class SessMgrUnitTest extends MockObjectTestCase {
                 returnValue(userRoles));
         sf.mockAdmin.expects(once()).method("checkPassword").will(
                 returnValue(true));
+        sf.mockAdmin.expects(once()).method("lookupGroup").with(eq("foo")).will(
+                returnValue(group));
+        sf.mockAdmin.expects(once()).method("getDefaultGroup").will(
+                returnValue(group));
+
         // execute lookup user
         sf.mockQuery.expects(once()).method("projection").will(
                 returnValue(Arrays.asList((Object)new Object[]{123L})));
 
 
         EventType test = new EventType(0L, true);
-        test.setValue("test");
+        test.setValue(ec.getCurrentEventType());
         sf.mockTypes.expects(atLeastOnce()).method("getEnumeration").will(
                 returnValue(test));
 
@@ -401,7 +415,8 @@ public class SessMgrUnitTest extends MockObjectTestCase {
                 returnValue(group));
         sf.mockQuery.expects(once()).method("findAllByQuery").will(
                 returnValue(Collections.EMPTY_LIST));
-        mgr.createWithAgent(new Principal("user", "user", "User"), "user", "Test", "127.0.0.1");
+        mgr.createWithAgent(new Principal("user", "user", "User"),
+                "user", "Test", "127.0.0.1");
     }
 
     @Test

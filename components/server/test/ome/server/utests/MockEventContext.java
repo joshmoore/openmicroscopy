@@ -2,80 +2,109 @@ package ome.server.utests;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import ome.model.internal.Permissions;
 import ome.system.EventContext;
 
-class MockEventContext implements EventContext {
+/**
+ * Simple {@link EventContext} implementation which returns default values.
+ */
+public class MockEventContext implements EventContext {
+
+    public static MockEventContext admin() {
+        MockEventContext ec = new MockEventContext();
+        ec.gname = "system";
+        ec.gid = 0L;
+        ec.uid = 0L;
+        ec.uname = "root";
+        ec.admin = true;
+        return ec;
+    }
+
+    public Long eid = 100L;
+    public String etype = "test";
+    public Long gid = 100L;
+    public String gname = "my-group";
+    public Permissions perms = Permissions.READ_ONLY;
+    public Long sid = 100L;
+    public String uuid = UUID.randomUUID().toString();
+    public Long share = null;
+    public Long uid = 100L;
+    public String uname = "my-user";
+    public List<Long> leader = new ArrayList<Long>();
+    public List<Long> member = new ArrayList<Long>();
+    public boolean admin = false;
+    public boolean readOnly = true;
 
     @Override
     public Long getCurrentEventId() {
-        return -1l;
+        return eid;
     }
 
     @Override
     public String getCurrentEventType() {
-        return "test";
+        return etype;
     }
 
     @Override
     public Long getCurrentGroupId() {
-        return -1l;
+        return gid;
     }
 
     @Override
     public String getCurrentGroupName() {
-        return "foo";
+        return gname;
     }
 
     @Override
     public Permissions getCurrentGroupPermissions() {
-        return Permissions.READ_ONLY;
+        return perms;
     }
 
     @Override
     public Long getCurrentSessionId() {
-        return -1l;
+        return sid;
     }
 
     @Override
     public String getCurrentSessionUuid() {
-        return "Fake-uuid";
+        return uuid;
     }
 
     @Override
     public Long getCurrentShareId() {
-        return null;
+        return share;
     }
 
     @Override
     public Long getCurrentUserId() {
-        return -1l;
+        return uid;
     }
 
     @Override
     public String getCurrentUserName() {
-        return "bar";
+        return uname;
     }
 
     @Override
     public List<Long> getLeaderOfGroupsList() {
-        return new ArrayList<Long>();
+        return leader;
     }
 
     @Override
     public List<Long> getMemberOfGroupsList() {
-        return new ArrayList<Long>();
+        return member;
     }
 
     @Override
     public boolean isCurrentUserAdmin() {
-        return false;
+        return admin;
     }
 
     @Override
     public boolean isReadOnly() {
-        return false;
+        return readOnly;
     }
     
 }
