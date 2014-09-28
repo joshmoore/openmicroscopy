@@ -87,7 +87,7 @@ public class SessMgrUnitTest extends MockObjectTestCase {
             return s;
         }
 
-        //@Override
+        @Override
         protected EventContext currentContext() {
             return caller;
         }

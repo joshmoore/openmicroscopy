@@ -41,13 +41,16 @@ public interface SessionManager {
      * passed.
      */
     public static class CreationRequest {
+        public final EventContext context;
         public Principal principal;
         public String credentials;
         public String agent;
         public String ip;
-        public List<Long> groupsLed;
         public Long timeToLive;
         public Long timeToIdle;
+        public CreationRequest(EventContext context) {
+            this.context = context;
+        }
     }
 
     Session createFromRequest(CreationRequest request);

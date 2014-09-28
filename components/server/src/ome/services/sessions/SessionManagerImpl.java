@@ -207,19 +207,7 @@ public class SessionManagerImpl implements SessionManager, SessionCache.StaleCac
             CreationRequest req) {
         Long idle = req.timeToIdle == null ? defaultTimeToIdle : req.timeToIdle;
         Long live = req.timeToLive == null ? defaultTimeToLive : req.timeToLive;
-        if (req.groupsLed != null) {
-            CommentAnnotation ca = new CommentAnnotation();
-            ca.setNs(GROUP_SUDO_NS);
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < req.groupsLed.size(); i++) {
-                if (i > 0) {
-                    sb.append(",");
-                }
-                sb.append(req.groupsLed.get(i));
-            }
-            ca.setTextValue(sb.toString());
-            s.linkAnnotation(ca);
-        }
+        storeRequestLimitations(s, req);
         define(s, uuid, message, started, idle, live,
                 req.principal.getEventType(), req.agent, req.ip);
     }
@@ -236,6 +224,69 @@ public class SessionManagerImpl implements SessionManager, SessionCache.StaleCac
         s.setUserAgent(agent);
         s.setUserIP(ip);
     }
+
+    // ~ Handling non-admin session creation
+    // =========================================================================
+
+    private void storeRequestLimitations(Session s, CreationRequest req) {
+
+        if (req.context.isCurrentUserAdmin()) {
+            return; // 
+        }
+
+        List<Long> groupsLed = req.context.getLeaderOfGroupsList();
+        CommentAnnotation ca = new CommentAnnotation();
+        ca.setNs(GROUP_SUDO_NS);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < groupsLed.size(); i++) {
+            if (i > 0) {
+                sb.append(",");
+            }
+            sb.append(groupsLed.get(i));
+        }
+        ca.setTextValue(sb.toString());
+        s.linkAnnotation(ca);
+
+    }
+
+    private void checkRequestLimitations(ServiceFactory sf, CreationRequest req, String group) {
+
+        if (req.context.isCurrentUserAdmin()) {
+            return;
+        }
+
+        StringBuilder sb = new StringBuilder();
+
+        // Now we have a valid, non-"user" group, we can attempt to check
+        // if the current context (e.g. group-sudo) is permitted to create
+        // such a session.
+        List<Long> groupsLed = req.context.getLeaderOfGroupsList();
+        long gid = sf.getAdminService().lookupGroup(group).getId();
+        if (groupsLed.contains(gid)) {
+            log.info("Group-sudo for " + gid);
+            return;
+        }
+
+        sb.append(String.format(
+                "The current user is not an owner of group %s (gid=%s)",
+                group, gid));
+
+        // If group-admin isn't an option, then we try to check for
+        // additional privileges for the current group.
+        for (Long gid2 : req.context.getMemberOfGroupsList()) {
+            ExperimenterGroup g2 = sf.getAdminService().getGroup(gid2);
+            if (g2.getPrivileges().getImporting()) {
+                log.info("Import-sudo as member of group " +g2.getId());
+                return ;
+            }
+        }
+        sb.append(" nor a member of an import-enabled group");
+
+        if (sb.length() > 0) {
+            throw new SecurityViolation(sb.toString());
+        }
+    }
+
 
     // ~ Session management
     // =========================================================================
@@ -272,11 +323,12 @@ public class SessionManagerImpl implements SessionManager, SessionCache.StaleCac
         return createSession(request, session);
     }
 
-    /*k
+    /*
      * Is given trustable values by the {@link SessionBean}
      */
+    @Deprecated
     public Session createWithAgent(final Principal _principal, final String credentials, String agent, String ip) {
-        final CreationRequest req = new CreationRequest();
+        final CreationRequest req = new CreationRequest(currentContext());
         req.principal = _principal;
         req.credentials = credentials;
         req.agent = agent;
@@ -284,8 +336,9 @@ public class SessionManagerImpl implements SessionManager, SessionCache.StaleCac
         return createFromRequest(req);
     }
 
+    @Deprecated
     public Session createWithAgent(Principal principal, String agent, String ip) {
-        final CreationRequest req = new CreationRequest();
+        final CreationRequest req = new CreationRequest(currentContext());
         req.principal = principal;
         req.agent = agent;
         req.ip = ip;
@@ -303,7 +356,7 @@ public class SessionManagerImpl implements SessionManager, SessionCache.StaleCac
         share.setActive(enabled);
         share.setData(new byte[] {});
         share.setItemCount(0L);
-        CreationRequest req = new CreationRequest();
+        CreationRequest req = new CreationRequest(currentContext()); // FIXME
         req.principal = principal;
         return (Share) createSession(req, share);
     }
@@ -336,12 +389,12 @@ public class SessionManagerImpl implements SessionManager, SessionCache.StaleCac
                 @Transactional(readOnly = true)
                 public Object doWork(org.hibernate.Session __s,
                         ServiceFactory sf) {
-                    Principal p = validateSessionInputs(sf, req);
-                    executeLookupUser(sf, p);
+                    validateSessionInputs(sf, req);
+                    executeLookupUser(sf, req.principal);
                     // Not performed! Session s = executeUpdate(sf, oldsession,
                     // userId);
                     Session s = oldsession;
-                    return executeSessionContextLookup(sf, p, s);
+                    return executeSessionContextLookup(sf, req, s);
                 }
             });
         } else {
@@ -351,11 +404,11 @@ public class SessionManagerImpl implements SessionManager, SessionCache.StaleCac
                 @Transactional(readOnly = false)
                 public Object doWork(org.hibernate.Session __s,
                         ServiceFactory sf) {
-                    Principal p = validateSessionInputs(sf, req);
-                    oldsession.setDefaultEventType(p.getEventType());
-                    long userId = executeLookupUser(sf, p);
+                    validateSessionInputs(sf, req);
+                    oldsession.setDefaultEventType(req.principal.getEventType());
+                    long userId = executeLookupUser(sf, req.principal);
                     Session s = executeUpdate(sf, oldsession, userId);
-                    return executeSessionContextLookup(sf, p, s);
+                    return executeSessionContextLookup(sf, req, s);
                 }
 
             });
@@ -443,9 +496,9 @@ public class SessionManagerImpl implements SessionManager, SessionCache.StaleCac
 
                 Principal principal = new Principal(ctx.getCurrentUserName(),
                         defaultGroup, ctx.getCurrentEventType());
-                CreationRequest req = new CreationRequest();
+                CreationRequest req = new CreationRequest(currentContext()); // FIXME
                 req.principal = principal;
-                principal = validateSessionInputs(sf, req);
+                validateSessionInputs(sf, req);
 
                 // Unconditionally settable; these are open to the user for
                 // change
@@ -457,7 +510,7 @@ public class SessionManagerImpl implements SessionManager, SessionCache.StaleCac
                         .getTimeToIdle(), orig, trusted);
 
                 // TODO Need to handle notifications
-                return executeSessionContextLookup(sf, principal, orig);
+                return executeSessionContextLookup(sf, req, orig);
 
             }
         });
@@ -793,7 +846,7 @@ public class SessionManagerImpl implements SessionManager, SessionCache.StaleCac
      * Checks the validity of the given {@link Principal}, and in the case of an
      * error attempts to correct the problem by returning a new Principal.
      */
-    private Principal validateSessionInputs(
+    private void validateSessionInputs(
             final ServiceFactory sf,
             final CreationRequest req) {
 
@@ -825,24 +878,13 @@ public class SessionManagerImpl implements SessionManager, SessionCache.StaleCac
             group = g.getName();
         }
 
-        // Now we have a valid, non-"user" group, we can attempt to check
-        // if the current context (e.g. group-sudo) is permitted to create
-        // such a session.
-        if (req.groupsLed != null) {
-            long gid = sf.getAdminService().lookupGroup(group).getId();
-            if (!req.groupsLed.contains(gid)) {
-                throw new SecurityViolation(String.format(
-                        "Group sudo is not permitted for group %s (gid=%s)",
-                        group, gid));
-            }
-        }
+        checkRequestLimitations(sf, req, group);
 
         // Also checking event type. Throws if missing (and at least a NPE)
         type = sf.getTypesService().getEnumeration(EventType.class, type)
                 .getValue();
 
-        Principal copy = new Principal(p.getName(), group, type);
-        return copy;
+        req.principal = new Principal(p.getName(), group, type);
     }
 
     private void parseAndSetDefaultType(String type, Session session) {
@@ -957,7 +999,7 @@ public class SessionManagerImpl implements SessionManager, SessionCache.StaleCac
             @Transactional(readOnly = true)
             public Object doWork(org.hibernate.Session session,
                     ServiceFactory sf) {
-                return executeSessionContextLookup(sf, p, ctx.getSession());
+                return executeSessionContextLookup(sf, req, ctx.getSession());
             }
         });
         if (list == null) {
@@ -1322,7 +1364,9 @@ public class SessionManagerImpl implements SessionManager, SessionCache.StaleCac
      * Work will set our transaction to rollback only.
      */
     private List<Object> executeSessionContextLookup(ServiceFactory sf,
-            Principal principal, Session session) {
+            CreationRequest req, Session session) {
+
+        final Principal principal = req.principal;
         try {
             List<Object> list = new ArrayList<Object>();
             LocalAdmin admin = (LocalAdmin) sf.getAdminService();
@@ -1339,6 +1383,7 @@ public class SessionManagerImpl implements SessionManager, SessionCache.StaleCac
             list.add(userRoles);
             list.add(principal);
             list.add(session);
+            list.add(session);
             return list;
         } catch (Exception e) {
             log.info("No info for " + principal.getName(), e);
@@ -1350,5 +1395,16 @@ public class SessionManagerImpl implements SessionManager, SessionCache.StaleCac
         Share share = new Share();
         share.putAt("#2733", "ALLOW");
         return share;
+    }
+
+    /**
+     * Method copied from {@link SessionBean} in order to temporarily support
+     * the deprecated createSession methods.
+     *
+     * "protected" for overriding by tests.
+     */
+    protected EventContext currentContext() {
+        String user = principalHolder.getLast().getName();
+        return getEventContext(new Principal(user));
     }
 }

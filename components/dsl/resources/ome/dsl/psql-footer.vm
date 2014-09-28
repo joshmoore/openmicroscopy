@@ -417,6 +417,7 @@ insert into event (id,permissions,time,status,experimenter,session) values (0,0,
 --
 -- Default group permissions (ticket:1783)
 -- * "system" is private, so that administrators do not share by accident
+-- * "powerusers" is the same, but has additional "capabilities" set.
 -- * "user" is public by default since its purpose is to share objects (ticket:1794)
 -- * "guest" is private by default so that it doesn't show up on any lists,
 --    though nothing should be created there.
@@ -427,6 +428,8 @@ insert into experimentergroup (id,permissions,version,name)
         values (ome_nextval('seq_experimentergroup'),-52,0,'user');
 insert into experimentergroup (id,permissions,version,name)
         values (ome_nextval('seq_experimentergroup'),-120,0,'guest');
+insert into experimentergroup (id,permissions,version,name)
+        values (ome_nextval('seq_experimentergroup'),-120,0,'powerusers');
 
 insert into eventtype (id,permissions,value) values
         (0,-52,'Bootstrap');
@@ -678,6 +681,13 @@ $_fs_log_delete$ LANGUAGE plpgsql;
 create trigger _fs_log_delete
 after delete on originalfile
     for each row execute procedure _fs_log_delete();
+
+
+-- Create privileges for the experimentergroups
+update privileges set importing = true where value in ('poweruser', 'importer');
+update privileges set scripting = true where value in ('poweruser', 'developer');
+update experimentergroup set privileges = (select id from privileges where value = 'poweruser')
+                   where name = 'powerusers';
 
 
 -- Here we have finished initializing this database.

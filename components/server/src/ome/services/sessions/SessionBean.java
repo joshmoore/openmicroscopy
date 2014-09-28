@@ -80,9 +80,16 @@ public class SessionBean implements ISession {
         if (user == null) {
             throw new SecurityViolation("No current user");
         }
-        
+
+        final Principal principal = principal(defaultGroup, user);
+        final EventContext context = currentContext();
+        final SessionManager.CreationRequest req
+            = new SessionManager.CreationRequest(context);
+        req.principal = principal;
+        req.agent = "createSession";
+        req.timeToIdle = timeToIdleMs;
+
         try {
-            final Principal principal = principal(defaultGroup, user);
             Future<Session> future = ex.submit(new Callable<Session>(){
                 public Session call() throws Exception {
                     Session session = mgr.createWithAgent(principal, "createSession", null);
@@ -108,18 +115,16 @@ public class SessionBean implements ISession {
             final long timeToLiveMilliseconds, final long timeToIdleMilliseconds) {
 
         final EventContext context = currentContext();
-        final List<Long> groupsLed = context.isCurrentUserAdmin() ? null :
-            context.getLeaderOfGroupsList();
+        final SessionManager.CreationRequest req
+            = new SessionManager.CreationRequest(context);
+        req.principal = principal;
+        req.agent = "createSession";
+        req.timeToIdle = timeToIdleMilliseconds;
+        req.timeToLive = timeToLiveMilliseconds;
 
         try {
             Future<Session> future = ex.submit(new Callable<Session>(){
                 public Session call() throws Exception {
-                    SessionManager.CreationRequest req = new SessionManager.CreationRequest();
-                    req.principal = principal;
-                    req.agent = "createSession";
-                    req.groupsLed = groupsLed;
-                    req.timeToIdle = timeToIdleMilliseconds;
-                    req.timeToLive = timeToLiveMilliseconds;
                     return mgr.createFromRequest(req);
                 }});
             return ex.get(future);
@@ -133,9 +138,16 @@ public class SessionBean implements ISession {
     public Session createSession(@NotNull Principal principal,
             @Hidden String credentials) {
 
+        final EventContext context = currentContext();
+        final SessionManager.CreationRequest req
+            = new SessionManager.CreationRequest(context);
+        req.principal = principal;
+        req.credentials = credentials;
+        req.agent = "createSession";
+
         Session session = null;
         try {
-            session = mgr.createWithAgent(principal, credentials, "createSession", null);
+            session = mgr.createFromRequest(req);
         } catch (Exception e) {
             throw creationExceptionHandler(e);
         }
