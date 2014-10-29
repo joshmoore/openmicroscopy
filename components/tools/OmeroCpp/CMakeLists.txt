@@ -45,7 +45,6 @@ include_directories("${PROJECT_SOURCE_DIR}/components/blitz/generated"
                     "${Ice_INCLUDE_DIRS}")
 
 option(debug-ice-generation "Dump results of generated Ice source globbing" OFF)
-option(fatal-warnings "Make all warnings fatal" OFF)
 
 # Find all static Ice slice definitions.
 file(GLOB_RECURSE ICE_API_STATIC_SOURCES RELATIVE    "${PROJECT_SOURCE_DIR}"
@@ -426,10 +425,6 @@ add_subdirectory(utils)
 string(REPLACE " " ";" ICE_FLAG_LIST "${CMAKE_CXX_FLAGS}")
 list(REMOVE_ITEM ICE_FLAG_LIST -Wswitch-default -Wredundant-decls -Woverloaded-virtual -Wold-style-cast -Wdeprecated-declarations)
 string(REPLACE ";" " " ICE_FLAGS "${ICE_FLAG_LIST}")
-
-if(fatal-warnings)
-  add_definitions("-Werror")
-endif(fatal-warnings)
 
 set_source_files_properties(
     ${OMERO_ICE_SOURCES}
