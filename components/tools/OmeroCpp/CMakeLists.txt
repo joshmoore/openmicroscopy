@@ -422,9 +422,14 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/omero-client-config.cmake
 add_subdirectory(test)
 add_subdirectory(utils)
 
-string(REPLACE " " ";" ICE_FLAG_LIST "${CMAKE_CXX_FLAGS}")
-list(REMOVE_ITEM ICE_FLAG_LIST -Wswitch-default -Wredundant-decls -Woverloaded-virtual -Wold-style-cast -Wdeprecated-declarations)
-string(REPLACE ";" " " ICE_FLAGS "${ICE_FLAG_LIST}")
+foreach(flag -Wno-switch-default -Wno-redundant-decls -Wno-overloaded-virtual -Wno-old-style-cast -Wno-deprecated-declarations)
+  string(REPLACE "/" "_" flag_var "${flag}")
+  set(test_cxx_flag "CXX_FLAG${flag_var}")
+  CHECK_CXX_COMPILER_FLAG(${flag} "${test_cxx_flag}")
+  if (${test_cxx_flag})
+     set(ICE_FLAGS "${ICE_FLAGS} ${flag}")
+  endif (${test_cxx_flag})
+endforeach(flag ${test_flags})
 
 set_source_files_properties(
     ${OMERO_ICE_SOURCES}
