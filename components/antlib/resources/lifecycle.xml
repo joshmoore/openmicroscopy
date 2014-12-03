@@ -474,7 +474,7 @@ omero.version=${omero.version}
             <mapping conf="*" scope="compile"/>
             <dependency group="ome" artifact="bio-formats" version="${omero.version}" optional="true"/>
         </ivy:makepom>
-        <publishArtifact/>
+        <publishArtifact haltonmissing="false"/>
     </target>
 
     <!-- Previously dependend on integration, but that may need special controls.
