@@ -96,12 +96,9 @@ def make_slice(command):
     return slice
 
 def slice_java(env, where, dir):
+    command  = [slice2java, "--tie"] + common()
     actions = []
     for basename, filename in basenames(where, dir):
-        if "model" not in filename:
-            command  = [slice2java, "--tie"] + common()
-        else:
-            command  = [slice2java] + common()
         c = env.Command(
             jdep(env["DEPMAP"], filename + '.java' ),             # target
             filename + '.ice',                                    # source
