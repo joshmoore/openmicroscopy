@@ -1,10 +1,58 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+#
+# Copyright (C) <year> University of Dundee & Open Microscopy Environment.
+# All rights reserved.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+"""
+Launcher both for instances of the omero-proc container in order to run
+arbitrary scripts as well as running arbitrary containers *as* scripts.
+
+Configuration
+-------------
+
+Launching scripts
+-----------------
+
+If the DockerProcessor has been configured for 'python' scripts, then this
+script (etc/run.docker) will be run with an ICE_CONFIG file set in order to
+fill all of the necessary configuration files. The current directory with the
+script to be run and the config file will be mapped to "/omero-process" for
+execution to continue. If the configuration options provided in etc/omero.properties
+are not sufficient, this file can be modifed under etc/ of your distribution
+for easier docker integration.
+
+Launching images
+----------------
+
+If a copy of this script is added to OMERO via bin/omero script upload or by
+copying it into lib/scripts, then the processor for 'docker' scripts will
+invoke this file as is. Users should configure which image to run etc. in the
+.docker file itself before uploading.
+
+If the base etc/run.docker file used for launching scripts is modified, it is
+likely that all of the lib/scripts/**/*.docker files will need to be updated.
+
+"""
 
 import sys
+import Ice
 import docker
-
-# DOCKER_CERT_PATH=/Users/jamoore/.boot2docker/certs/boot2docker-vm
-# DOCKER_HOST=tcp://192.bit_length168.59.103:2376
-# DOCKER_TLS_VERIFY=1
 
 certs = '/Users/jamoore/.boot2docker/certs/boot2docker-vm/'
 ca = certs + 'ca.pem'
