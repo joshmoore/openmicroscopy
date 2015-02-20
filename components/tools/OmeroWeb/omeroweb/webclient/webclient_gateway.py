@@ -190,6 +190,9 @@ class OmeroWebGateway (omero.gateway.BlitzGateway):
                 .getConfigValue("omero.client.ui.menu.dropdown.everyone")
         return dropdown_menu
 
+    def getDownloadSettings(self):
+        return toBoolean(self.getConfigService().getConfigValue("omero.download.enabled"))
+
     ##############################################
     ##   IAdmin                                 ##
 
