@@ -18,6 +18,7 @@ import ome.util.TableIdGenerator;
 import org.aopalliance.intercept.MethodInterceptor;
 import org.aopalliance.intercept.MethodInvocation;
 import org.hibernate.Session;
+import org.hibernate.engine.SessionImplementor;
 import org.hibernate.id.IdentifierGenerator;
 import org.hibernate.impl.SessionFactoryImpl;
 import org.springframework.aop.framework.ProxyFactory;
@@ -57,8 +58,16 @@ public class SessionFactory implements MethodInterceptor {
 
     private final org.hibernate.SessionFactory factory;
 
+    private final boolean wrap;
+
     public SessionFactory(org.hibernate.SessionFactory factory, SqlAction isolatedSqlAction) {
+        this(factory, isolatedSqlAction, true);
+    }
+
+    public SessionFactory(org.hibernate.SessionFactory factory, SqlAction isolatedSqlAction,
+            boolean wrap) {
         this.factory = factory;
+        this.wrap = wrap;
         for (Object k : this.factory.getAllClassMetadata().keySet()) {
             IdentifierGenerator ig =
                 ((SessionFactoryImpl) factory).getIdentifierGenerator((String)k);
@@ -66,7 +75,6 @@ public class SessionFactory implements MethodInterceptor {
                 ((TableIdGenerator) ig).setSqlAction(isolatedSqlAction);
             }
         }
-
     }
 
     /**
@@ -77,10 +85,14 @@ public class SessionFactory implements MethodInterceptor {
     public Session getSession() {
 
         Session unwrapped = SessionFactoryUtils.getSession(factory, false);
+        if (!wrap) {
+            return unwrapped; // #7
+        }
 
         ProxyFactory proxyFactory = new ProxyFactory();
         proxyFactory.setInterfaces(new Class[]{
             Session.class,
+            SessionImplementor.class, // #6
             org.hibernate.classic.Session.class,
             org.hibernate.event.EventSource.class});
         proxyFactory.setTarget(unwrapped);

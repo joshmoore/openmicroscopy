@@ -189,7 +189,7 @@ public class FullTextIndexer extends SimpleWork implements ApplicationContextAwa
      * Runs {@link #doIndexing(FullTextSession)} within a Lucene transaction.
      * {@link #doIndexing(FullTextSession)} will also be called
      */
-    @Transactional(readOnly = false, isolation = Isolation.SERIALIZABLE)
+    @Transactional(readOnly = false) // #3
     public Object doWork(Session session, ServiceFactory sf) {
         int count = 1;
         int perbatch = 0;
@@ -212,10 +212,12 @@ public class FullTextIndexer extends SimpleWork implements ApplicationContextAwa
 
                     FullTextSession fullTextSession = Search
                             .getFullTextSession(session);
-                    fullTextSession.setFlushMode(FlushMode.MANUAL);
-                    fullTextSession.setCacheMode(CacheMode.IGNORE);
+                    //fullTextSession.setFlushMode(FlushMode.MANUAL); // #2
+                    fullTextSession.setCacheMode(CacheMode.IGNORE); // #4 backon
                     perbatch = doIndexingWithWorldRead(sf, fullTextSession);
+                    fullTextSession.flush(); // #1
             } finally {
+                // session.flush(); // #1, #5 backoff
                 timer.stop();
                 count++;
             }
@@ -272,7 +274,6 @@ public class FullTextIndexer extends SimpleWork implements ApplicationContextAwa
                 handleEventLog(session, eventLog);
                 count++;
             }
-            session.flush();
             parserSession.closeParsedFiles();
 
         }

@@ -48,6 +48,7 @@
         <value>classpath:ome/services/datalayer.xml</value>
         <value>classpath*:ome/services/db-*.xml</value>
         <value>classpath:ome/services/sec-primitives.xml</value>
+        <value>classpath:ome/services/properties-main.xml</value>
         <value>classpath:ome/services/hibernate.xml</value>
         <value>classpath:ome/services/services.xml</value>
         <value>classpath*:ome/services/service-*.xml</value>
@@ -75,6 +76,7 @@
         <value>classpath:ome/services/datalayer.xml</value>
         <value>classpath*:ome/services/db-*.xml</value>
         <value>classpath:ome/services/sec-primitives.xml</value>
+        <value>classpath:ome/services/properties-background.xml</value>
         <value>classpath:ome/services/hibernate.xml</value>
         <value>classpath:ome/services/services.xml</value>
         <!-- If we could disable shares here, then it would be possible
@@ -115,6 +117,7 @@
         <value>classpath:ome/services/datalayer.xml</value>
         <value>classpath*:ome/services/db-*.xml</value>
         <value>classpath:ome/services/sec-primitives.xml</value>
+        <value>classpath:ome/services/properties-background.xml</value>
         <value>classpath:ome/services/hibernate.xml</value>
         <value>classpath:ome/services/services.xml</value>
         <!-- If we could disable shares here, then it would be possible
