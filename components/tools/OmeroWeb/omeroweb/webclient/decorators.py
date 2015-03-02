@@ -116,6 +116,7 @@ class render_response(omeroweb.decorators.render_response):
         # UI server preferences
         if request.session.get('server_settings'):
             context['ome']['email'] =  request.session.get('server_settings').get('email', False)
+            context['ome']['download'] =  request.session.get('server_settings').get('download', False)
             if request.session.get('server_settings').get('ui'):
                 context.setdefault('ui', {})   # don't overwrite existing ui
                 context['ui']['orphans_name'] = request.session.get('server_settings').get('ui').get('orphans_name')

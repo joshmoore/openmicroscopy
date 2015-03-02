@@ -255,6 +255,8 @@ class login_required(object):
                 conn.getDropdownMenuSettings()
             request.session['server_settings']['email'] = \
                 conn.getEmailSettings()
+            request.session['server_settings']['download'] = \
+                conn.getDownloadSettings()
 
     def get_public_user_connector(self):
         """
