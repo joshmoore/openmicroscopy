@@ -11,9 +11,31 @@ Use is subject to license terms supplied in LICENSE.txt.
 import sys
 import path
 import pytest
+import locale
+import random
 
 # Magically creates the setdefaultencoding method
 reload(sys)
+
+
+def locale_supported(loc):
+    old = locale.getlocale()
+    try:
+        locale.setlocale(locale.LC_ALL, loc)
+        return True
+    except:
+        return False
+    finally:
+        locale.setlocale(locale.LC_ALL, old)
+
+
+LOCALES = locale.locale_alias.values()
+LOCALES = filter(locale_supported, LOCALES)
+random.shuffle(LOCALES)
+LOCALES = LOCALES[0:min(10, len(LOCALES))]
+LOCALES.append(locale.getlocale())
+LOCALES.append(locale.getdefaultlocale())
+LOCALES.extend([None, "", "C"])
 
 
 class TestPath(object):
@@ -30,15 +52,21 @@ class TestPath(object):
         assert len(b.parpath(root)) == 2
         assert len(root.parpath(b)) == 0
 
+    @pytest.mark.parametrize("loc", LOCALES)
     @pytest.mark.parametrize("enc", ("utf-8", "ascii"))
-    def test_encoding(self, enc, tmpdir):
-        old = sys.getdefaultencoding()
+    def test_encoding(self, loc, enc, tmpdir):
+        old_enc = sys.getdefaultencoding()
+        old_loc = locale.getlocale()
         try:
             sys.setdefaultencoding(enc)
+            try:
+                locale.setlocale(locale.LC_ALL, loc)
+            except locale.Error:
+                pytest.skip(loc)
             t = "Fahrvergnügen"
-            d = tmpdir.join(t)
+            d = tmpdir.join(t);
             d.mkdir()
-            f = tmpdir.join(t, t)
+            f = d.join(t)
             f.write("")
 
             # Using LocalPath.strpath here
@@ -70,4 +98,5 @@ class TestPath(object):
             assert len(unis) == 1
 
         finally:
-            sys.setdefaultencoding(old)
+            sys.setdefaultencoding(old_enc)
+            locale.setlocale(locale.LC_ALL, old_loc)
