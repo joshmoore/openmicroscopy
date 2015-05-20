@@ -56,6 +56,7 @@ import functools
 import operator
 import re
 import contextlib
+import unicodedata
 
 try:
     import win32security
@@ -184,6 +185,26 @@ class path(unicode):
         if other is None:
             raise TypeError("Invalid initial value for path: None")
 
+    def __new__(cls, *args, **kwargs):
+        if args:
+            args = (cls._always_unicode(args[0]),)
+        return super(path, cls).__new__(cls, *args, **kwargs)
+
+    def __str__(self):
+        if isinstance(self, unicode):
+            return self.encode(sys.getfilesystemencoding(), 'surrogateescape')
+        return super(path, self).__str__()
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            lhs = unicodedata.normalize("NFC", self)
+            rhs = unicodedata.normalize("NFC", other)
+            return unicode(lhs) == unicode(rhs)
+        return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
     @classmethod
     @simple_cache
     def using_module(cls, module):
@@ -207,8 +228,11 @@ class path(unicode):
         is a proper Unicode string.
         """
         if PY3 or isinstance(path, unicode):
-            return path
-        return path.decode(sys.getfilesystemencoding(), 'surrogateescape')
+            return unicodedata.normalize("NFC", path)
+        elif isinstance(path, str):
+            return path.decode(sys.getfilesystemencoding(), 'surrogateescape')
+        else:
+            return str(path)  # This needs encoding
 
     # --- Special Python methods.
 
