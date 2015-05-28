@@ -62,6 +62,8 @@
 	<classpathentry kind="src" output="target/eclipse-server" path="components/server/src"/>
 	<classpathentry kind="src" output="target/eclipse-server" path="components/server/test"/>
 	<classpathentry kind="src" path="components/tools/OmeroJava/test"/>
+	<classpathentry kind="src" path="components/tests/ldap/src"/>"
+	<classpathentry kind="src" path="components/tests/ldap/test"/>"
 	<classpathentry exported="true" kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
 	<classpathentry kind="output" path="target/eclipse-bin"/>
 </classpath>
