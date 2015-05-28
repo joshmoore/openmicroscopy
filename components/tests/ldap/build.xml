@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<project name="ldap-tests" default="install" basedir="." xmlns:ivy="antlib:org.apache.ivy.ant">
+<project name="ldap-test" default="install" basedir="." xmlns:ivy="antlib:org.apache.ivy.ant">
 <!--
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #
@@ -17,5 +17,7 @@
     <import file="${import.dir}/global.xml"/>
     <import file="${import.dir}/version.xml"/>
     <import file="${import.dir}/lifecycle.xml"/>
+
+    <target name="tests-dist"/>
 
 </project>

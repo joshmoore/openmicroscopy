@@ -1,0 +1,21 @@
+<!DOCTYPE suite SYSTEM "http://beust.com/testng/testng-1.0.dtd" >
+  
+<suite name="ldap-test.integration" time-out="200" parallel="true" thread-count="5">
+  
+  <test name="ldap-test.integration.active" time-out="500">
+    <groups>
+      <run>
+        <exclude name="broken"/>
+        <exclude name="ignore"/>
+        <exclude name="client"/>
+        <exclude name="blitz"/>
+        <exclude name="manual"/>
+        <exclude name="longrunning"/>
+      </run>
+    </groups>
+    <packages>
+      <package name="ome.services.*"/>
+    </packages>
+  </test>
+
+</suite>

@@ -1,7 +1,7 @@
 <ivy-module version="1.0" xmlns:m="http://ant.apache.org/ivy/maven">
   <info
       organisation="omero"
-      module="ldap-tests"
+      module="ldap-test"
       status="integration"/>
   <configurations>
     <conf name="build"/>
@@ -9,10 +9,10 @@
     <conf name="server"/>
   </configurations>
   <publications>
-    <artifact name="ldap-tests" type="jar"/>
-    <artifact name="ldap-tests" type="pom"/>
-    <artifact name="ldap-tests" type="source" ext="jar" m:classifier="sources"/>
-    <artifact name="ldap-tests" type="javadoc" ext="jar" m:classifier="javadoc"/>
+    <artifact name="ldap-test" type="jar"/>
+    <artifact name="ldap-test" type="pom"/>
+    <artifact name="ldap-test" type="source" ext="jar" m:classifier="sources"/>
+    <artifact name="ldap-test" type="javadoc" ext="jar" m:classifier="javadoc"/>
   </publications>
   <dependencies defaultconfmapping="build,server->default">
     <!-- Internal -->
