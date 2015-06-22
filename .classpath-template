@@ -14,7 +14,7 @@
 	<classpathentry kind="src" output="target/eclipse-bioformats" path="components/bioformats/components/forks/poi/src" />
 	<classpathentry kind="src" output="target/eclipse-bioformats" path="components/bioformats/components/forks/turbojpeg/src" />
 	<classpathentry kind="src" output="target/eclipse-bioformats" path="components/bioformats/components/formats-api/src" />
-	<classpathentry kind="src" output="target/eclipse-bioformats" path="components/bioformats/components/formats-bsd/src" />
+	<classpathentry kind="src" excluding="loci/formats/gui/**" output="target/eclipse-bioformats" path="components/bioformats/components/formats-bsd/src" />
 	<classpathentry kind="src" output="target/eclipse-bioformats" path="components/bioformats/components/formats-bsd/test" />
 	<classpathentry kind="src" output="target/eclipse-bioformats" path="components/bioformats/components/formats-common/src" />
 	<classpathentry kind="src" output="target/eclipse-bioformats" path="components/bioformats/components/formats-common/test" />

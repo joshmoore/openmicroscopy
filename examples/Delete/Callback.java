@@ -1,8 +1,15 @@
+import java.util.List;
+
 import omero.LockTimeout;
 import omero.ServerError;
 import omero.api.ServiceFactoryPrx;
+import omero.cmd.CmdCallbackI;
+import omero.cmd.Delete2;
+import omero.cmd.HandlePrx;
 import Glacier2.CannotCreateSessionException;
 import Glacier2.PermissionDeniedException;
+
+import com.google.common.collect.ImmutableListMultimap;
 
 /**
  * Uses the default {@link DeleteCallbackI} instance.
@@ -16,11 +23,13 @@ public class Callback {
         ServiceFactoryPrx s = c.createSession();
 
         try {
-            IDeletePrx deleteServicePrx = s.getDeleteService();
-            DeleteCommand dc = new DeleteCommand("/Image", 1, null);
-            DeleteHandlePrx deleteHandlePrx = deleteServicePrx
-                    .queueDelete(new DeleteCommand[] { dc });
-            DeleteCallbackI cb = new DeleteCallbackI(c, deleteHandlePrx);
+            Map<String, List<Long>> 
+            Delete2 dc = new Delete2(
+                    new ImmutableListMultimap.Builder<String, Long>()
+                        .put("Image", 1l).build().asMap(), null, false /* non-dry-run */);
+            // TODO: refactor to c.submitAndWait()
+            HandlePrx deleteHandlePrx = c.getSession().submit(dc);
+            CmdCallbackI cb = new CmdCallbackI(c, deleteHandlePrx);
             try {
 
                 cb.loop(10, 500);
@@ -37,7 +46,7 @@ public class Callback {
                     System.out.println("ERROR: Failed to cancel");
                 }
             } finally {
-                cb.close();
+                cb.close(True); // close handle
             }
 
         } finally {
