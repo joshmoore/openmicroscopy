@@ -710,29 +710,9 @@ class DockerProcessI(ProcessI):
         secure = dict(self.secure_props)
         secure["working.dir"] = self.dir
         self.script_path.rename("%s.run" % self.script_path)
-        self.script_path.write_text(
-            """if True:
 
-            import sys
-            import docker
-
-            client = docker.Client(
-                base_url='%(omero.process.docker.url)s',
-                version='%(omero.process.docker.version)s')
-
-            container = client.create_container(
-                '%(omero.process.docker.image)s',
-                volumes=['/omero-process'], detach=False)
-
-            client.start(container,
-                binds={'%(working.dir)s': '/omero-process'})
-
-            rc = client.wait(container)
-
-            print >>sys.stdout, client.logs(container, stderr=False, stdout=True),
-            print >>sys.stderr, client.logs(container, stderr=True, stdout=False),
-
-            sys.exit(rc)""" % secure)
+        run_docker = self.omero_home / "etc" / "run.docker"  # TODO: config?
+        self.script_path.write_text(run_docker.text())
         return ProcessI.command(self)
 
 

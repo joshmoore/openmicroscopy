@@ -50,6 +50,7 @@ likely that all of the lib/scripts/**/*.docker files will need to be updated.
 
 """
 
+import os
 import sys
 import Ice
 import docker
@@ -72,14 +73,15 @@ client = docker.Client(
     tls=tls_config,
     version='1.3.1')
 
+# Only periodically? Only if image isn't present?
 for line in client.pull(image, stream=True):
-    print line
+    print line  # Better formatting
 
 container = client.create_container(image,
     volumes=['/omero-process'], detach=False)
 
 client.start(container,
-    binds={'/tmp/test': '/omero-process'})
+    binds={os.getcwd(): '/omero-process'})
 
 rc = client.wait(container)
 

@@ -38,7 +38,7 @@
         <bean class="ome.services.blitz.impl.RoiI">
             <constructor-arg ref="throttlingStrategy"/>
             <constructor-arg ref="geomTool"/>
-		<constructor-arg ref="simpleSqlAction"/>
+            <constructor-arg ref="simpleSqlAction"/>
         </bean>
     </constructor-arg>
   </bean>
@@ -78,6 +78,12 @@
       <constructor-arg index="1" value="text/x-python"/>
       <constructor-arg index="2" value="${omero.launcher.python}"/>
       <constructor-arg index="3" value="${omero.process.python}"/>
+  </bean>
+  <bean id="DockerScripts" class="ome.services.scripts.ScriptFileType">
+      <constructor-arg index="0" value="*.docker"/>
+      <constructor-arg index="1" value="text/x-docker"/>
+      <constructor-arg index="2" value="${omero.launcher.docker}"/>
+      <constructor-arg index="3" value="${omero.process.docker}"/>
   </bean>
   <bean id="JythonScripts" class="ome.services.scripts.ScriptFileType">
       <constructor-arg index="0" value="*.jy"/>
