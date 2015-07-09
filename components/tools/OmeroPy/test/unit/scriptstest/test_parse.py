@@ -20,7 +20,7 @@ from omero.scripts import String, List, Bool, Long, MissingInputs, ParseExit
 from omero.scripts import client, parse_inputs, validate_inputs, parse_text
 from omero.scripts import parse_file, group_params, rlong, rint, wrap, unwrap
 
-SCRIPTS = path(".") / "scripts" / "omero"
+SCRIPTS = path("..") / "target" / "lib" / "scripts" / "omero"
 
 
 class TestParse(object):
