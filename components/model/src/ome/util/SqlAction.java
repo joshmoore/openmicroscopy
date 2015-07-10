@@ -144,6 +144,14 @@ public interface SqlAction {
      */
     String scriptRepo(long fileId, Set<String> mimetypes);
 
+    /**
+     * Remove all store script parameters. This is typically only needed after
+     * a change in the definition of the scripts.
+     *
+     * @return the number of scripts removed.
+     */
+    int deleteScriptParams();
+
     int synchronizeJobs(List<Long> ids);
 
     /**
@@ -971,6 +979,11 @@ public interface SqlAction {
             } catch (EmptyResultDataAccessException erdae) {
                 return null;
             }
+        }
+
+        @Override
+        public int deleteScriptParams() {
+            return _jdbc().update(_lookup("repo_params_delete"));
         }
 
         //

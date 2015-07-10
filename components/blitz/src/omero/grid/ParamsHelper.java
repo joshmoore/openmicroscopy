@@ -130,6 +130,17 @@ public class ParamsHelper {
         return job;
     }
 
+    void deleteParseJob(final ome.model.jobs.ParseJob job, final Ice.Current current) {
+        ex.execute(current.ctx, p,
+                new Executor.SimpleWork(this, "deleteParseJob", job) {
+                    @Transactional(readOnly = false)
+                    public Object doWork(Session session, ServiceFactory sf) {
+                        sf.getUpdateService().deleteObject(job);
+                        return null;
+                    }
+                });
+    }
+
     JobParams generateScriptParams(long id, Ice.Current __current)
             throws ServerError {
 
