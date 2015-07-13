@@ -1,0 +1,1 @@
+docker run --name logstash -it --rm $(pwd)/etc:/tmp/etc logstash -f /tmp/etc/logstash.conf

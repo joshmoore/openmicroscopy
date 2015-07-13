@@ -55,6 +55,12 @@
     </filter>
   </appender>
 
+  <appender name="STASH" class="net.logstash.logback.appender.LogstashTcpSocketAppender">
+      <remoteHost>127.0.0.1</remoteHost>
+      <port>4560</port>
+      <encoder class="net.logstash.logback.encoder.LogstashEncoder" />
+  </appender>
+
   <!-- PERF4J ///////////////////////////////////////////////////////////////// -->
   <appender name="Perf4jJmxAppender" class="org.perf4j.logback.JmxAttributeStatisticsAppender">
     <param name="TagNamesToExpose" value="omero.call.success,omero.call.exception,omero.session"/>
@@ -189,6 +195,7 @@
 
   <root level="OFF">
     <appender-ref ref="FILE"/>
+    <appender-ref ref="STASH" />
   </root>
 
 </configuration>
