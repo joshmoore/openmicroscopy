@@ -44,6 +44,18 @@
         </constructor-arg>
     </bean>
 
+    <bean id="indexingStatelessInterceptors" class="java.util.ArrayList">
+        <constructor-arg>
+            <list>
+                <value>serviceHandler</value>
+                <value>proxyHandler</value>
+                <value>indexingTransactionHandler</value>
+                <value>hibernateHandler</value>
+                <value>eventHandler</value>
+            </list>
+        </constructor-arg>
+    </bean>
+
 
     <bean id="statefulInterceptors" class="java.util.ArrayList">
         <constructor-arg>
@@ -149,6 +161,14 @@
     <constructor-arg ref="currentDetails"/>
     <constructor-arg ref="omeroSessionFactory"/>
     <constructor-arg ref="statelessInterceptors"/>
+    <constructor-arg ref="simpleSqlAction"/>
+    <constructor-arg ref="taskExecutor"/>
+  </bean>
+
+  <bean id="indexingExecutor" class="ome.services.util.Executor$Impl">
+    <constructor-arg ref="currentDetails"/>
+    <constructor-arg ref="omeroSessionFactory"/>
+    <constructor-arg ref="indexingStatelessInterceptors"/>
     <constructor-arg ref="simpleSqlAction"/>
     <constructor-arg ref="taskExecutor"/>
   </bean>

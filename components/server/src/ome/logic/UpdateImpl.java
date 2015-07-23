@@ -50,7 +50,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * implementation of the IUpdate service interface
- * 
+ *
  * @author Josh Moore, <a href="mailto:josh.moore@gmx.de">josh.moore@gmx.de</a>
  * @version 1.0 <small> (<b>Internal version:</b> $Rev$ $Date$) </small>
  * @since OMERO 3.0
@@ -62,7 +62,7 @@ public class UpdateImpl extends AbstractLevel1Service implements LocalUpdate {
 
     protected transient LocalQuery localQuery;
 
-    protected transient Executor executor;
+    protected transient Executor executor, indexingExecutor;
 
     protected transient SessionManager sessionManager;
 
@@ -76,6 +76,11 @@ public class UpdateImpl extends AbstractLevel1Service implements LocalUpdate {
     public void setExecutor(Executor executor) {
         getBeanHelper().throwIfAlreadySet(this.executor, executor);
         this.executor = executor;
+    }
+
+    public void setIndexingExecutor(Executor executor) {
+        getBeanHelper().throwIfAlreadySet(this.indexingExecutor, indexingExecutor);
+        this.indexingExecutor = executor;
     }
 
     public void setSessionManager(SessionManager sessionManager) {
@@ -206,8 +211,8 @@ public class UpdateImpl extends AbstractLevel1Service implements LocalUpdate {
             });
         } catch (InvalidDataAccessApiUsageException idaaue) {
             throw new ApiUsageException("Cannot delete " + row + "\n" +
-			"Original message: " + idaaue.getMessage() + "\n" +
-			"Consider using IDelete instead.");
+                "Original message: " + idaaue.getMessage() + "\n" +
+                "Consider using IDelete instead.");
         }
     }
 
@@ -220,12 +225,13 @@ public class UpdateImpl extends AbstractLevel1Service implements LocalUpdate {
 
         CreationLogLoader logs = new CreationLogLoader(localQuery, row);
         FullTextIndexer fti = new FullTextIndexer(logs);
-        fti.setApplicationContext(this.executor.getContext());
+        fti.setApplicationContext(this.indexingExecutor.getContext());
 
-        final FullTextThread ftt = new FullTextThread(sessionManager, executor,
+        final FullTextThread ftt = new FullTextThread(sessionManager,
+                indexingExecutor,
                 fti, this.fullTextBridge, true);
-        Future<Object> future = executor.submit(Executors.callable(ftt));
-        executor.get(future);
+        Future<Object> future = indexingExecutor.submit(Executors.callable(ftt));
+        indexingExecutor.get(future);
     }
 
     // ~ Internals

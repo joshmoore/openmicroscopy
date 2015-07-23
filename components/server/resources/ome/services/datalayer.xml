@@ -90,6 +90,15 @@
     <property name="transactionAttributeSource" ref="transactionAttributeSource"/>
   </bean>
 
+  <bean id="indexingTransactionHandler"
+        class="org.springframework.transaction.interceptor.TransactionInterceptor">
+    <description>
+      Scope: private - for use only in indexing in the main thread.
+    </description>
+    <property name="transactionManager" ref="hibTransactionManager"/>
+    <property name="transactionAttributeSource" ref="transactionAttributeSource"/>
+  </bean>
+
   <alias alias="transactionManager" name="${omero.db.transactionManager}"/>
 
   <bean id="dsTransactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">

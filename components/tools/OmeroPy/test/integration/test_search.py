@@ -282,6 +282,8 @@ class TestSearch(lib.ITest):
         fa.file = ofile.proxy()
         self.link(image, fa, client=client)
         self.root.sf.getUpdateService().indexObject(image)
+        # Just in case...
+        self.root.sf.getUpdateService().indexObject(image)
         return image
 
     def test_csv_attachment(self, tmpdir):
@@ -292,18 +294,21 @@ class TestSearch(lib.ITest):
         csv.write("Header1,Header2\nGFP\n100.0\n")
         image = self.attached_image(
             uuid, client, str(csv), "text/csv")
+        print "Image:",image.id.val,"GFP"
 
-        search = client.sf.createSearchService()
+        ctx = {"omero.group": "-1"}
+        search = self.root.sf.createSearchService(ctx)
         try:
-            search.onlyType("Image")
-            search.byFullText("GFP")
-            assert search.hasNext()
+            search.onlyType("Image", ctx)
+            search.byFullText("GFP", ctx)
+            assert search.hasNext(ctx)
             assert [image.id.val] == \
-                [x.id.val for x in search.results()]
+                [x.id.val for x in search.results(ctx)]
         finally:
             search.close()
 
-    def test_txt_attachment(self, tmpdir):
+    @pytest.mark.parametrize("who", ("root", "owner"))
+    def test_txt_attachment(self, tmpdir, who):
         uuid = self.simple_uuid()
         client = self.new_client()
         filename = "weird attachment.txt"
@@ -312,15 +317,21 @@ class TestSearch(lib.ITest):
         image = self.attached_image(
             uuid, client, str(txt), "text/plain")
 
-        search = client.sf.createSearchService()
+        if who == "root":
+            sf = self.root.sf
+        else:
+            sf = client.sf
+
+        ctx = {"omero.group": "-1"}
+        search = sf.createSearchService(ctx)
         try:
             for t in ("Image", "Annotation"):
-                search.onlyType("Image")
+                search.onlyType("Image", ctx)
                 for x in ("crazy", "weird"):
-                    search.byFullText(x)
-                    assert search.hasNext()
-                    assert [image.id.val] == \
-                           [x.id.val for x in search.results()]
+                    search.byFullText(x, ctx)
+                    assert search.hasNext(ctx)
+                    assert image.id.val in \
+                           [x.id.val for x in search.results(ctx)]
         finally:
             search.close()
 

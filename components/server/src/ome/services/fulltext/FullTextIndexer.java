@@ -236,7 +236,12 @@ public class FullTextIndexer extends SimpleWork implements ApplicationContextAwa
                         ((PersistentEventLogLoader) loader).getKey());
                     completeSlow.update((int) perc);
                 } else {
-                    perc = 100.0 * ((float) currId) / ((float) lastId);
+                    if (currId == lastId) {
+                        which = "";
+                        perc = 100.0;
+                    } else {
+                        perc = 100.0 * ((float) currId) / ((float) lastId);
+                    }
                     completeFast.update((int) perc);
                 }
 
