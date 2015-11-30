@@ -37,4 +37,50 @@
 			<to_child type="ome.model.core.Image"/>
 		</properties>
 	</link>
+	<type id="ome.model.containers.Folder" annotated="true">
+		<properties>
+			<optional name="ns" type="string"/>
+			<optional name="name" type="string"/>
+			<optional name="description" type="text"/>
+			<optional name="parent" type="ome.model.containers.Folder"/>
+			<map name="config" type="string"/>
+		</properties>
+	</type>
+	<!-- links to top-level objects *other than*: project, dataset, screen -->
+	<link id="ome.model.annotations.FolderAnnotationLink">
+		<properties>
+			<from_parent type="ome.model.containers.Folder"/>
+			<to_child type="ome.model.annotations.Annotation"/>
+		</properties>
+	</link>
+	<link id="ome.model.annotations.FolderExperimentLink">
+		<properties>
+			<from_parent type="ome.model.containers.Folder"/>
+			<to_child type="ome.model.experiment.Experiment"/>
+		</properties>
+	</link>
+	<link id="ome.model.annotations.FolderImageLink">
+		<properties>
+			<from_parent type="ome.model.containers.Folder"/>
+			<to_child type="ome.model.core.Image"/>
+		</properties>
+	</link>
+	<link id="ome.model.annotations.FolderInstrumentLink">
+		<properties>
+			<from_parent type="ome.model.containers.Folder"/>
+			<to_child type="ome.model.acquisition.Instrument"/>
+		</properties>
+	</link>
+	<link id="ome.model.annotations.FolderPlateLink">
+		<properties>
+			<from_parent type="ome.model.containers.Folder"/>
+			<to_child type="ome.model.screen.Plate"/>
+		</properties>
+	</link>
+	<link id="ome.model.annotations.FolderRoiLink">
+		<properties>
+			<from_parent type="ome.model.containers.Folder"/>
+			<to_child type="ome.model.roi.Roi"/>
+		</properties>
+	</link>
 </types>
