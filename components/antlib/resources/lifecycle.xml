@@ -186,6 +186,7 @@ omero.version=${omero.version}
         <taskdef name="testng" classname="org.testng.TestNGAntTask" classpathref="omero.test.classpath"/>
         <presetdef name="nomemorytestng">
             <testng outputDir="${testreports.dir}"
+                parallel="${testng.threads}"
                 haltonfailure="${test.with.fail}"
                 haltonskipped="${test.with.fail}"
                 verbose="${testng.verbose}"

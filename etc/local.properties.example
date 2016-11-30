@@ -64,8 +64,9 @@ jarsign.validity=1000
 # Prevents test failures from stopping the build
 test.with.fail=false
 # Output verbosity from testng
-testng.verbose=2
-testng.useDefaultListeners=false
+testng.verbose=4
+testng.threads=1
+testng.useDefaultListeners=true
 
 # Determines which Ivy resolver to use for
 # finding the loci libraries. Look in
