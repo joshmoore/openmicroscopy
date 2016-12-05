@@ -25,13 +25,62 @@
         </then>
         <else>
             <antcall target="icegen" inheritRefs="true" inheritAll="true"/>
-            <myjavac>
-                <src path="${src.dir}"/>
-                <src path="${src.dest}"/>
-                <src path="${basedir}/generated"/>
-            </myjavac>
+            <antcall target="_compile2" inheritRefs="true" inheritAll="true"/>
         </else>
         </if>
+    </target>
+
+    <target name="_compile2" description="Internal develop target which only compiles" depends="prepare">
+
+        <myjavac>
+            <src path="${basedir}/generated"/>
+            <include name="omero/sys/**.java"/>
+            <include name="omero/RBool.java"/>
+            <include name="omero/RInt.java"/>
+            <include name="omero/RTime.java"/>
+            <include name="omero/api/BoolArrayHelper.java"/>
+            <include name="omero/model/Permissions.java"/>
+        </myjavac>
+
+        <!-- Ice model, rtypes, sys & exceptions -->
+        <myjavac>
+            <src path="${basedir}/generated"/>
+            <include name="omero/*.java"/>
+            <include name="omero/model/**.java"/>
+            <include name="omero/model/enums/**.java"/>
+            <include name="omero/sys/**.java"/>
+            <exclude name="omero/model/**I.java"/>
+            <exclude name="omero/model/enums/**I.java"/>
+        </myjavac>
+
+        <!-- OMERO model -->
+        <myjavac>
+            <src path="${basedir}/generated"/>
+            <include name="omero/model/**I.java"/>
+            <include name="omero/model/enums/**I.java"/>
+        </myjavac>
+
+        <!--
+        <myjavac>
+            <src path="${src.dir}"/>
+            <src path="${src.dest}"/>
+            <src path="${basedir}/generated"/>
+            <include name="omero/**"/>
+            <include name="omero/model/**"/>
+            <include name="ome/services/blitz/impl/CloseableServant.java"/>
+            <include name="ome/services/blitz/util/ConvertToBlitzExceptionMessage.java"/>
+            <include name="ome/services/blitz/util/ObjectFactoryRegistry.java"/>
+            <include name="ome/formats/model/UnitsFactory.java"/>
+        </myjavac>
+
+        <myjavac>
+            <src path="${src.dir}"/>
+            <src path="${src.dest}"/>
+            <src path="${basedir}/generated"/>
+            <exclude name="omero/**"/>
+            <exclude name="omero/model/**"/>
+        </myjavac>
+        -->
     </target>
 
     <!-- = = = = = = = = = = = = = = = = =
