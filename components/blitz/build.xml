@@ -34,30 +34,30 @@
 
         <myjavac>
             <src path="${basedir}/generated"/>
-            <include name="omero/sys/**.java"/>
-            <include name="omero/RBool.java"/>
-            <include name="omero/RInt.java"/>
-            <include name="omero/RTime.java"/>
-            <include name="omero/api/BoolArrayHelper.java"/>
-            <include name="omero/model/Permissions.java"/>
+            <exclude name="omero/model/_*Tie.java"/>
+            <exclude name="omero/model/*I.java"/>
+            <exclude name="omero/model/enums/*I.java"/>
+            <exclude name="omero/util/IceMap.java"/>
+            <exclude name="omero/util/ModelObjectFactoryRegistry.java"/>
         </myjavac>
 
-        <!-- Ice model, rtypes, sys & exceptions -->
         <myjavac>
             <src path="${basedir}/generated"/>
-            <include name="omero/*.java"/>
-            <include name="omero/model/**.java"/>
-            <include name="omero/model/enums/**.java"/>
-            <include name="omero/sys/**.java"/>
-            <exclude name="omero/model/**I.java"/>
-            <exclude name="omero/model/enums/**I.java"/>
+            <include name="omero/model/_*Tie.java"/>
+            <include name="omero/model/*I.java"/>
+            <include name="omero/model/enums/*I.java"/>
+            <include name="omero/util/IceMap.java"/>
+            <exclude name="omero/util/ModelObjectFactoryRegistry.java"/>
         </myjavac>
 
-        <!-- OMERO model -->
         <myjavac>
+            <src path="${src.dir}"/>
+        </myjavac>
+
+        <myjavac>
+            <!-- requires omero.client -->
             <src path="${basedir}/generated"/>
-            <include name="omero/model/**I.java"/>
-            <include name="omero/model/enums/**I.java"/>
+            <include name="omero/util/ModelObjectFactoryRegistry.java"/>
         </myjavac>
 
         <!--
