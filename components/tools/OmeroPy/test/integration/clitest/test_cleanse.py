@@ -180,6 +180,7 @@ class TestCleanseRestrictedAdmin(CLITest):
         output_end = "SecurityViolation: Admin restrictions: ReadSession\n"
         assert err.endswith(output_end)
 
+
 class TestFixPyramids(CLITest):
 
     def setup_method(self, method):
@@ -196,6 +197,7 @@ class TestFixPyramids(CLITest):
             self.cli.invoke(self.args, strict=True)
         out, err = capsys.readouterr()
         assert err.endswith("SecurityViolation: Admins only!\n")
+
 
 class TestFixPyramidsRestrictedAdmin(CLITest):
 
