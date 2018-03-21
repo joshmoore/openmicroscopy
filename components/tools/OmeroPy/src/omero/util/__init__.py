@@ -10,6 +10,7 @@
 import os
 import sys
 import Ice
+import gzip
 import path
 import shlex
 import omero
@@ -30,8 +31,9 @@ LOGDIR = os.path.join("var", "log")
 LOGFORMAT = "%(asctime)s %(levelname)-5.5s [%(name)40s] " \
             "(%(threadName)-10s) %(message)s"
 LOGLEVEL = logging.INFO
-LOGSIZE = 500000000
-LOGNUM = 9
+LOGENDING = os.environ.get("OMERO_LOG_ENDING", ".gz")
+LOGSIZE = int(os.environ.get("OMERO_LOG_SIZE", 500000000))
+LOGNUM = int(os.environ.get("OMERO_LOG_COUNT", 9))
 LOGMODE = "a"
 
 orig_stdout = sys.stdout
@@ -47,19 +49,51 @@ def make_logname(self):
     return log_name
 
 
+def __compress_logfile(logfile):
+
+    if LOGENDING is None:
+        return
+
+    blocksize = 1 << 16
+    with open(logfile, 'rb') as f_in:
+        f_out = gzip.open(logfile+".gz", 'wb')  # TODO: level
+        while True:
+            block = f_in.read(blocksize)
+            if block == '':
+                break
+            f_out.write(block)
+        f_out.close()
+
+
+class __CompressedTimedRotatingFileHandler(
+        logging.handlers.TimedRotatingFileHandler):
+    pass  # TODO
+
+
+class __CompressedRotatingFileHandler(
+        logging.handlers.RotatingFileHandler):
+
+    def doRollover(self):
+        logging.handlers.RotatingFileHandler.doRollover(self)
+        dfn = self.baseFilename + ".1"
+        if os.path.exists(dfn):
+            __compress_logfile(dfn)
+
+
 def configure_logging(logdir=None, logfile=None, loglevel=LOGLEVEL,
                       format=LOGFORMAT, filemode=LOGMODE, maxBytes=LOGSIZE,
-                      backupCount=LOGNUM, time_rollover=False):
+                      backupCount=LOGNUM, time_rollover=False, encoding=None):
 
     if logdir is None or logfile is None:
         handler = logging.StreamHandler()
     elif not time_rollover:
-        handler = logging.handlers.RotatingFileHandler(
+        handler = __CompressedRotatingFileHandler(
             os.path.join(logdir, logfile), maxBytes=maxBytes,
-            backupCount=backupCount)
+            backupCount=backupCount, encoding=encoding)
     else:
-        handler = logging.handlers.TimedRotatingFileHandler(
-            os.path.join(logdir, logfile), 'midnight', 1)
+        handler = __CompressedTimedRotatingFileHandler(
+            os.path.join(logdir, logfile), 'midnight', 1,
+            encoding=encoding)
         # Windows will not allow renaming (or deleting) a file that's open.
         # There's nothing the logging package can do about that.
         try:

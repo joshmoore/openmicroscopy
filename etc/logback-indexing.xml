@@ -1,18 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration scan="true" debug="false">
 
+  <property name="LOG_COUNT" value="${OMERO_LOG_COUNT:-9}" />
+  <property name="LOG_ENDING" value="${OMERO_LOG_ENDING:-.gz}" />
+  <property name="LOG_SIZE" value="${OMERO_LOG_SIZE:-5000000000}" />
+
   <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
 
     <file>${omero.logfile}</file>
 
     <rollingPolicy class="ch.qos.logback.core.rolling.FixedWindowRollingPolicy">
-      <fileNamePattern>${omero.logfile}.%i</fileNamePattern>
+        <fileNamePattern>${omero.logfile}.%i${LOG_ENDING}</fileNamePattern>
       <minIndex>1</minIndex>
-      <maxIndex>9</maxIndex>
+      <maxIndex>${LOG_COUNT}</maxIndex>
     </rollingPolicy>
 
     <triggeringPolicy class="ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy">
-      <maxFileSize>500MB</maxFileSize>
+      <maxFileSize>${LOG_SIZE}</maxFileSize>
     </triggeringPolicy>
 
     <encoder>
