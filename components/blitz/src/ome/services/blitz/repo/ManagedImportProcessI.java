@@ -24,6 +24,8 @@ import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 
+import org.perf4j.StopWatch;
+import org.perf4j.slf4j.Slf4JStopWatch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.aop.framework.Advised;
@@ -220,6 +222,7 @@ public class ManagedImportProcessI extends AbstractCloseableAmdServant
         final Callable<UploadState> rfsOpener = new Callable<UploadState>() {
             @Override
             public UploadState call() throws ServerError {
+                final StopWatch sw = new Slf4JStopWatch();
                 final String path = location.sharedPath + FsFile.separatorChar + location.usedFiles.get(i);
                 final RawFileStorePrx prx = repo.file(path, applicableMode, ManagedImportProcessI.this.current);
                 try {
@@ -231,6 +234,8 @@ public class ManagedImportProcessI extends AbstractCloseableAmdServant
                         log.error("Failed to close RawFileStorePrx", e);
                     }
                     throw re;
+                } finally {
+                    sw.stop("omero.import.process.opener")
                 }
                 return new UploadState(prx);
             }
