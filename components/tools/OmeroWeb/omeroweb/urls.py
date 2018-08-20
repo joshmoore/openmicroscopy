@@ -23,8 +23,6 @@
 # Version: 1.0
 #
 
-import logging
-import django
 from django.conf import settings
 from django.apps import AppConfig
 from django.conf.urls import url, patterns, include
@@ -35,8 +33,6 @@ from django.core.urlresolvers import reverse
 from django.utils.functional import lazy
 from django.views.generic import RedirectView
 from django.views.decorators.cache import never_cache
-
-logger = logging.getLogger(__name__)
 
 # error handler
 handler404 = "omeroweb.feedback.views.handler404"
