@@ -42,8 +42,9 @@ from omero.rtypes import rlong
 from omero.rtypes import unwrap
 from omero.util import get_user
 from omero.util.sessions import SessionsStore
-from omero.cli import BaseControl, CLI
+from omero.cli import UserGroupControl, CLI, admin_only
 from omero_ext.argparse import SUPPRESS
+from omero.model.enums import AdminPrivilegeSudo
 
 HELP = """Control and create user sessions
 
@@ -155,7 +156,7 @@ can be considered "online".
 """
 
 
-class SessionsControl(BaseControl):
+class SessionsControl(UserGroupControl):
 
     FACTORY = SessionsStore
 
@@ -247,6 +248,18 @@ class SessionsControl(BaseControl):
         for x in (file, key, logout, keepalive, list, clear, group):
             self._configure_dir(x)
 
+        open = parser.add(sub, self.open, "Create a session for "
+                                          "the given user and group")
+        self.add_single_user_argument(open)
+        self.add_single_group_argument(open, required=False)
+        open.add_argument("--timeout", nargs="?", type=int, default=0,
+                          help="Timeout in seconds (optional; default: "
+                               "maximum possible)")
+
+        close = parser.add(sub, self.close, "Close the session with "
+                                            "the given session ID")
+        close.add_argument("sessionId", nargs="?", help="The session ID")
+
     def _configure_login(self, login):
         login.add_login_arguments()
         login.add_argument(
@@ -263,6 +276,52 @@ class SessionsControl(BaseControl):
 
     def help(self, args):
         self.ctx.out(LONGHELP % {"prog": args.prog})
+
+    @admin_only(AdminPrivilegeSudo)
+    def open(self, args):
+        client = self.ctx.conn(args)
+        admin = client.sf.getAdminService()
+
+        user, group = self.get_single_user_group(args, admin)
+        if not user:
+            self.ctx.die(156, "No user found")
+        username = user.omeName.val
+        groupname = None
+        if group:
+            groupname = group.name.val
+
+        p = omero.sys.Principal()
+        p.name = username
+        if group:
+            p.group = groupname
+        p.eventType = "User"
+        svc = client.sf.getSessionService()
+        sess = svc.createSessionWithTimeout(p, (int(args.timeout)
+                                                * 1000))
+        sessId = sess.getUuid().val
+        tti = sess.getTimeToIdle().val / 1000
+        ttl = sess.getTimeToLive().val / 1000
+
+        msg = "Session created for user %s" % username
+        if groupname:
+            msg += " in group %s" % groupname
+        msg += " (timeToIdle: %d sec, timeToLive: %d sec)" % (tti, ttl)
+
+        self.ctx.err(msg)
+        self.ctx.out(sessId)  # Ok, must share
+
+    def close(self, args):
+        client = self.ctx.conn(args)
+        svc = client.sf.getSessionService()
+        session = None
+        try:
+            session = svc.getSession(args.sessionId)
+        except Exception:
+            self.ctx.err("No session with the given ID found.")
+
+        if session:
+            client.destroySession(args.sessionId)
+            self.ctx.out("Session %s closed." % args.sessionId)
 
     def login(self, args):
         ("Login to a given server, and store session key locally.\n\n"
@@ -376,9 +435,10 @@ class SessionsControl(BaseControl):
                             else:
                                 rv = store.attach(*previous[:-1])
                                 return self.handle(rv, "Using")
-                        self.ctx.out("Previously logged in to %s:%s as %s"
-                                     % (previous[0], previous[3],
-                                        previous[1]))
+                        if not self.ctx.isquiet:
+                            self.ctx.out("Previously logged in to %s:%s as %s"
+                                         % (previous[0], previous[3],
+                                            previous[1]))
                     except Exception, e:
                         self.ctx.out("Previous session expired for %s on"
                                      " %s:%s" % (previous[1], previous[0],
@@ -447,10 +507,17 @@ class SessionsControl(BaseControl):
                 action = "Reconnected to"
 
         if not rv:
+
+            if not pasw:
+                pasw = os.getenv("OMERO_PASSWORD")
+
             tries = 3
             while True:
                 try:
                     if not pasw:
+                        # Handle absent and incorrect passwords in
+                        # non-interactive mode
+                        self._require_tty("cannot request password")
                         if args.sudo:
                             prompt = "Password for %s:" % args.sudo
                         else:
@@ -542,8 +609,8 @@ class SessionsControl(BaseControl):
         host = client.getProperty("omero.host")
         port = client.getProperty("omero.port")
 
-        msg = "%s session %s (%s@%s:%s)." \
-            % (action, uuid, ec.userName, host, port)
+        msg = "%s session for %s@%s:%s." \
+            % (action, ec.userName, host, port)
         msg += self._parse_timeout(idle, " Idle timeout: ")
         msg += self._parse_timeout(live, " Expires in : ")
 
@@ -648,10 +715,6 @@ class SessionsControl(BaseControl):
         s = store.contents()
         previous = store.get_current()
 
-        # fmt = "%-16.16s\t%-12.12s\t%-12.12s\t%-40.40s\t%-30.30s\t%s"
-        # self.ctx.out(fmt % ("Server","User","Group", "Session","Active",
-        # "Started"))
-        # self.ctx.out("-"*136)
         headers = ("Server", "User", "Group", "Session", "Active", "Started")
         results = dict([(x, []) for x in headers])
         for server, names in s.items():
@@ -812,6 +875,7 @@ class SessionsControl(BaseControl):
                         return
         t = T()
         t.client = self.ctx.conn(args)
+        t.err = self.ctx.err
         t.event = get_event(name="keepalive")
         t.start()
         try:
@@ -880,7 +944,8 @@ class SessionsControl(BaseControl):
     def _get_server(self, store, name, port):
         defserver = store.last_host()
         if not port:
-            port = str(omero.constants.GLACIER2PORT)
+            port = store.last_port()
+        self._require_tty("cannot request server")
         rv = self.ctx.input("Server: [%s:%s]" % (defserver, port))
         if not rv:
             return defserver, name, port
@@ -890,11 +955,17 @@ class SessionsControl(BaseControl):
     def _get_username(self, defuser):
         if defuser is None:
             defuser = get_user("root")
+        self._require_tty("cannot request username")
         rv = self.ctx.input("Username: [%s]" % defuser)
         if not rv:
             return defuser
         else:
             return rv
+
+    def _require_tty(self, msg):
+        if sys.stdin.isatty():
+            return
+        self.ctx.die(564, "stdin is not a terminal: %s" % msg)
 
 
 try:

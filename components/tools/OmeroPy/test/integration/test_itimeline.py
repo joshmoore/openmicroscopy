@@ -11,13 +11,13 @@
 """
 import time
 import pytest
-import library as lib
+from omero.testlib import ITest
 import omero
 
 from omero.rtypes import rint, rlong, rstring, rtime
 
 
-class TestITimeline(lib.ITest):
+class TestITimeline(ITest):
 
     DEFAULT_PERMS = 'rwr---'
 
@@ -195,7 +195,7 @@ class TestITimeline(lib.ITest):
         assert len(res) > 0
 
     # This test relates to a ticket that has not yet been resolved
-    # http://trac.openmicroscopy.org/ome/ticket/1225
+    # https://trac.openmicroscopy.org/ome/ticket/1225
     # If the ticket is still valid then this test should presumably pass
     # after the ticket is closed but not before then. If the issue is not
     # to be addressed then this test should be removed.

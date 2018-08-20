@@ -3,7 +3,7 @@
 #
 #
 #
-# Copyright (c) 2008-2014 University of Dundee.
+# Copyright (c) 2008-2018 University of Dundee.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -40,6 +40,7 @@ from omero_version import omero_version
 
 from django.template import loader as template_loader
 from django.core.urlresolvers import reverse
+from django.views.decorators.debug import sensitive_post_parameters
 from django.http import HttpResponse, HttpResponseRedirect
 from django.template import RequestContext as Context
 from django.utils.translation import ugettext as _
@@ -385,8 +386,10 @@ def experimenters(request, conn=None, **kwargs):
     template = "webadmin/experimenters.html"
 
     experimenterList = list(conn.getObjects("Experimenter"))
+    can_modify_user = 'ModifyUser' in conn.getCurrentAdminPrivileges()
 
-    context = {'experimenterList': experimenterList}
+    context = {'experimenterList': experimenterList,
+               'can_modify_user': can_modify_user}
     context['template'] = template
     return context
 
@@ -399,11 +402,22 @@ def manage_experimenter(request, action, eid=None, conn=None, **kwargs):
     groups = list(conn.getObjects("ExperimenterGroup"))
     groups.sort(key=lambda x: x.getName().lower())
 
+    user_privileges = conn.get_privileges_for_form(
+        conn.getCurrentAdminPrivileges())
+    can_modify_user = 'ModifyUser' in user_privileges
+
     if action == 'new':
-        form = ExperimenterForm(initial={
-            'with_password': True, 'active': True,
-            'groups': otherGroupsInitialList(groups)})
-        context = {'form': form}
+        form = ExperimenterForm(
+            can_modify_user=can_modify_user,
+            user_privileges=user_privileges,
+            initial={'with_password': True,
+                     'active': True,
+                     'groups': otherGroupsInitialList(groups)})
+        admin_groups = [
+            conn.getAdminService().getSecurityRoles().systemGroupId]
+        context = {'form': form,
+                   'admin_groups': admin_groups,
+                   'can_modify_user': can_modify_user}
     elif action == 'create':
         if request.method != 'POST':
             return HttpResponseRedirect(
@@ -417,7 +431,11 @@ def manage_experimenter(request, action, eid=None, conn=None, **kwargs):
             initial = {'with_password': True,
                        'my_groups': my_groups,
                        'groups': otherGroupsInitialList(groups)}
+            # This form may be returned to user if invalid
+            # Needs user_privileges & can_modify_user for this
             form = ExperimenterForm(
+                can_modify_user=can_modify_user,
+                user_privileges=user_privileges,
                 initial=initial, data=request.POST.copy(),
                 name_check=name_check, email_check=email_check)
             if form.is_valid():
@@ -429,7 +447,8 @@ def manage_experimenter(request, action, eid=None, conn=None, **kwargs):
                 lastName = form.cleaned_data['last_name']
                 email = form.cleaned_data['email']
                 institution = form.cleaned_data['institution']
-                admin = form.cleaned_data['administrator']
+                role = form.cleaned_data['role']
+                admin = role in ('administrator', 'restricted_administrator')
                 active = form.cleaned_data['active']
                 defaultGroup = form.cleaned_data['default_group']
                 otherGroups = form.cleaned_data['other_groups']
@@ -439,27 +458,21 @@ def manage_experimenter(request, action, eid=None, conn=None, **kwargs):
                 # if default group was not selected take first from the list.
                 if defaultGroup is None:
                     defaultGroup = otherGroups[0]
-                for g in groups:
-                    if long(defaultGroup) == g.id:
-                        dGroup = g
-                        break
 
-                listOfOtherGroups = set()
-                # rest of groups
-                for g in groups:
-                    for og in otherGroups:
-                        # remove defaultGroup from otherGroups if contains
-                        if long(og) == long(dGroup.id):
-                            pass
-                        elif long(og) == g.id:
-                            listOfOtherGroups.add(g)
-
+                privileges = conn.get_privileges_from_form(form)
+                if privileges is not None:
+                    # Only process privileges that we have permission to set
+                    privileges = [p for p in privileges
+                                  if p in conn.getCurrentAdminPrivileges()]
+                # Create a User, Restricted-Admin or Admin, based on privileges
                 conn.createExperimenter(
                     omename, firstName, lastName, email, admin, active,
-                    dGroup, listOfOtherGroups, password, middleName,
-                    institution)
+                    defaultGroup, otherGroups, password,
+                    privileges, middleName, institution)
+
                 return HttpResponseRedirect(reverse("waexperimenters"))
-            context = {'form': form}
+            # Handle invalid form
+            context = {'form': form, 'can_modify_user': can_modify_user}
     elif action == 'edit':
         experimenter, defaultGroup, otherGroups, isLdapUser, hasAvatar = \
             prepare_experimenter(conn, eid)
@@ -475,27 +488,41 @@ def manage_experimenter(request, action, eid=None, conn=None, **kwargs):
             'last_name': experimenter.lastName,
             'email': experimenter.email,
             'institution': experimenter.institution,
-            'administrator': experimenter.isAdmin(),
             'active': experimenter.isActive(),
             'default_group': defaultGroupId,
             'my_groups': otherGroups,
             'other_groups': [g.id for g in otherGroups],
             'groups': otherGroupsInitialList(groups)}
-        system_users = [conn.getAdminService().getSecurityRoles().rootId,
-                        conn.getAdminService().getSecurityRoles().guestId]
-        experimenter_is_me_or_system = (
-            (conn.getEventContext().userId == long(eid)) or
-            (long(eid) in system_users))
+
+        # Load 'AdminPrivilege' roles for 'initial'
+        privileges = conn.getAdminPrivileges(experimenter.id)
+        for p in conn.get_privileges_for_form(privileges):
+            initial[p] = True
+
+        role = 'user'
+        if experimenter.isAdmin():
+            if 'ReadSession' in privileges:
+                role = 'administrator'
+            else:
+                role = 'restricted_administrator'
+        initial['role'] = role
+
+        root_id = conn.getAdminService().getSecurityRoles().rootId
+        user_id = conn.getUserId()
+        experimenter_root = long(eid) == root_id
+        experimenter_me = long(eid) == user_id
         form = ExperimenterForm(
-            experimenter_is_me_or_system=experimenter_is_me_or_system,
+            can_modify_user=can_modify_user,
+            user_privileges=user_privileges,
+            experimenter_me=experimenter_me,
+            experimenter_root=experimenter_root,
             initial=initial)
         password_form = ChangePassword()
 
-        admin_groups = (
-            experimenter_is_me_or_system and
-            [conn.getAdminService().getSecurityRoles().systemGroupId] or
-            list())
+        admin_groups = [
+            conn.getAdminService().getSecurityRoles().systemGroupId]
         context = {'form': form, 'eid': eid, 'ldapAuth': isLdapUser,
+                   'can_modify_user': can_modify_user,
                    'password_form': password_form,
                    'admin_groups': admin_groups}
     elif action == 'save':
@@ -515,7 +542,9 @@ def manage_experimenter(request, action, eid=None, conn=None, **kwargs):
                 request.POST.getlist('other_groups'))
             initial = {'my_groups': my_groups,
                        'groups': otherGroupsInitialList(groups)}
-            form = ExperimenterForm(initial=initial, data=request.POST.copy(),
+            form = ExperimenterForm(can_modify_user=can_modify_user,
+                                    user_privileges=user_privileges,
+                                    initial=initial, data=request.POST.copy(),
                                     name_check=name_check,
                                     email_check=email_check)
 
@@ -528,7 +557,8 @@ def manage_experimenter(request, action, eid=None, conn=None, **kwargs):
                 lastName = form.cleaned_data['last_name']
                 email = form.cleaned_data['email']
                 institution = form.cleaned_data['institution']
-                admin = form.cleaned_data['administrator']
+                role = form.cleaned_data['role']
+                admin = role in ('administrator', 'restricted_administrator')
                 active = form.cleaned_data['active']
                 rootId = conn.getAdminService().getSecurityRoles().rootId
                 # User can't disable themselves or 'root'
@@ -557,15 +587,29 @@ def manage_experimenter(request, action, eid=None, conn=None, **kwargs):
                         elif long(og) == g.id:
                             listOfOtherGroups.add(g)
 
+                # Update 'AdminPrivilege' config roles for user
+                privileges = conn.get_privileges_from_form(form)
+                to_add = []
+                to_remove = []
+                # privileges may be None if disabled in form
+                if privileges is not None:
+                    # Only update privileges that we have permission to set
+                    # (prevents privilege escalation)
+                    for p in conn.getCurrentAdminPrivileges():
+                        if p in privileges:
+                            to_add.append(p)
+                        else:
+                            to_remove.append(p)
+                    conn.updateAdminPrivileges(experimenter.id,
+                                               to_add, to_remove)
+
                 conn.updateExperimenter(
                     experimenter, omename, firstName, lastName, email, admin,
                     active, dGroup, listOfOtherGroups, middleName,
                     institution)
                 return HttpResponseRedirect(reverse("waexperimenters"))
-            context = {'form': form, 'eid': eid, 'ldapAuth': isLdapUser}
-    # elif action == "delete":
-    #    conn.deleteExperimenter()
-    #    return HttpResponseRedirect(reverse("waexperimenters"))
+            context = {'form': form, 'eid': eid, 'ldapAuth': isLdapUser,
+                       'can_modify_user': can_modify_user}
     else:
         return HttpResponseRedirect(reverse("waexperimenters"))
 
@@ -573,6 +617,8 @@ def manage_experimenter(request, action, eid=None, conn=None, **kwargs):
     return context
 
 
+@sensitive_post_parameters('old_password', 'password',
+                           'confirmation', 'csrfmiddlewaretoken')
 @login_required()
 @render_response_admin()
 def manage_password(request, eid, conn=None, **kwargs):
@@ -614,8 +660,12 @@ def groups(request, conn=None, **kwargs):
     template = "webadmin/groups.html"
 
     groups = conn.getObjects("ExperimenterGroup")
+    can_modify_group = 'ModifyGroup' in conn.getCurrentAdminPrivileges()
+    can_add_member = 'ModifyGroupMembership' in \
+        conn.getCurrentAdminPrivileges()
 
-    context = {'groups': groups}
+    context = {'groups': groups, 'can_modify_group': can_modify_group,
+               'can_add_member': can_add_member}
     context['template'] = template
     return context
 
@@ -626,131 +676,138 @@ def manage_group(request, action, gid=None, conn=None, **kwargs):
     template = "webadmin/group_form.html"
     msgs = []
 
+    user_privileges = conn.getCurrentAdminPrivileges()
+    can_modify_group = 'ModifyGroup' in user_privileges
+    can_add_member = 'ModifyGroupMembership' in user_privileges
+
     experimenters = list(conn.getObjects("Experimenter"))
     experimenters.sort(key=lambda x: x.getLastName().lower())
 
-    def getEditFormContext():
-        group = conn.getObject("ExperimenterGroup", gid)
-        ownerIds = [e.id for e in group.getOwners()]
-        memberIds = [m.id for m in group.getMembers()]
-        permissions = getActualPermissions(group)
-        system_groups = [
-            conn.getAdminService().getSecurityRoles().systemGroupId,
-            conn.getAdminService().getSecurityRoles().userGroupId,
-            conn.getAdminService().getSecurityRoles().guestGroupId]
-        group_is_current_or_system = (
-            (conn.getEventContext().groupId == long(gid)) or
-            (long(gid) in system_groups))
-        form = GroupForm(initial={
-            'name': group.name,
-            'description': group.description,
-            'permissions': permissions,
-            'owners': ownerIds,
-            'members': memberIds,
-            'experimenters': experimenters},
-            group_is_current_or_system=group_is_current_or_system)
-        admins = [conn.getAdminService().getSecurityRoles().rootId]
-        if long(gid) in system_groups:
-            # prevent removing 'root' or yourself from group if it's a system
-            # group
-            admins.append(conn.getUserId())
-        return {'form': form, 'gid': gid, 'permissions': permissions,
-                "admins": admins}
+    system_groups = [
+        conn.getAdminService().getSecurityRoles().systemGroupId,
+        conn.getAdminService().getSecurityRoles().userGroupId,
+        conn.getAdminService().getSecurityRoles().guestGroupId]
 
-    if action == 'new':
-        form = GroupForm(initial={'experimenters': experimenters,
-                                  'permissions': 0})
-        context = {'form': form}
+    initial = {'experimenters': experimenters,
+               'permissions': 0}
+    group_is_system = False
+    name_check = False
+    data = None
+    if gid is not None:
+        group = conn.getObject("ExperimenterGroup", gid)
+        initial['name'] = group.name
+        initial['description'] = group.description
+        initial['owners'] = [e.id for e in group.getOwners()]
+        initial['members'] = [m.id for m in group.getMembers()]
+        initial['permissions'] = getActualPermissions(group)
+        group_is_system = long(gid) in system_groups
+    if request.method == 'POST':
+        data = request.POST.copy()
+        # name needs to be unique
+        old_name = group.name if gid is not None else None
+        name_check = conn.checkGroupName(request.POST.get('name'), old_name)
+    form = GroupForm(initial=initial,
+                     data=data,
+                     name_check=name_check,
+                     can_modify_group=can_modify_group,
+                     can_add_member=can_add_member,
+                     group_is_system=group_is_system)
+
+    context = {'form': form}
+
+    if action == 'new' or action == 'edit':
+        # form prepared above - nothing else needed
+        pass
     elif action == 'create':
         if request.method != 'POST':
             return HttpResponseRedirect(reverse(viewname="wamanagegroupid",
                                                 args=["new"]))
         else:
-            name_check = conn.checkGroupName(request.POST.get('name'))
-            form = GroupForm(initial={'experimenters': experimenters},
-                             data=request.POST.copy(), name_check=name_check)
             if form.is_valid():
                 logger.debug("Create group form:" + str(form.cleaned_data))
-                name = form.cleaned_data['name']
-                description = form.cleaned_data['description']
-                owners = form.cleaned_data['owners']
-                members = form.cleaned_data['members']
-                permissions = form.cleaned_data['permissions']
-
-                perm = setActualPermissions(permissions)
-                listOfOwners = getSelectedExperimenters(conn, owners)
-                gid = conn.createGroup(name, perm, listOfOwners, description)
-                new_members = getSelectedExperimenters(
-                    conn, mergeLists(members, owners))
-                group = conn.getObject("ExperimenterGroup", gid)
-                conn.setMembersOfGroup(group, new_members)
+                if can_modify_group:
+                    name = form.cleaned_data['name']
+                    description = form.cleaned_data['description']
+                    permissions = form.cleaned_data['permissions']
+                    perm = setActualPermissions(permissions)
+                    gid = conn.createGroup(name, perm, description)
+                if can_add_member:
+                    owners = form.cleaned_data['owners']
+                    members = form.cleaned_data['members']
+                    group = conn.getObject("ExperimenterGroup", gid)
+                    listOfOwners = getSelectedExperimenters(conn, owners)
+                    conn.setOwnersOfGroup(group, listOfOwners)
+                    new_members = getSelectedExperimenters(
+                        conn, mergeLists(members, owners))
+                    conn.setMembersOfGroup(group, new_members)
 
                 return HttpResponseRedirect(reverse("wagroups"))
-            context = {'form': form}
-    elif action == 'edit':
-        context = getEditFormContext()
     elif action == 'save':
-        group = conn.getObject("ExperimenterGroup", gid)
-
         if request.method != 'POST':
             return HttpResponseRedirect(reverse(viewname="wamanagegroupid",
                                                 args=["edit", group.id]))
         else:
-            permissions = getActualPermissions(group)
-
-            name_check = conn.checkGroupName(request.POST.get('name'),
-                                             group.name)
-            form = GroupForm(initial={'experimenters': experimenters},
-                             data=request.POST.copy(), name_check=name_check)
-            context = {'form': form, 'gid': gid, 'permissions': permissions}
             if form.is_valid():
                 logger.debug("Update group form:" + str(form.cleaned_data))
-                name = form.cleaned_data['name']
-                description = form.cleaned_data['description']
-                owners = form.cleaned_data['owners']
-                permissions = form.cleaned_data['permissions']
-                members = form.cleaned_data['members']
+                if can_modify_group:
+                    name = form.cleaned_data['name']
+                    description = form.cleaned_data['description']
+                    permissions = form.cleaned_data['permissions']
 
-                listOfOwners = getSelectedExperimenters(conn, owners)
-                if permissions != int(permissions):
-                    perm = setActualPermissions(permissions)
-                else:
-                    perm = None
-
-                context = getEditFormContext()
-                context['ome'] = {}
-
-                try:
-                    msgs = conn.updateGroup(group, name, perm, listOfOwners,
-                                            description)
-                except omero.SecurityViolation, ex:
-                    if ex.message.startswith('Cannot change permissions'):
-                        msgs.append("Downgrade to private group not currently"
-                                    " possible")
+                    if permissions != int(permissions):
+                        perm = setActualPermissions(permissions)
                     else:
-                        msgs.append(ex.message)
+                        perm = None
 
-                new_members = getSelectedExperimenters(
-                    conn, mergeLists(members, owners))
-                removalFails = conn.setMembersOfGroup(group, new_members)
+                    try:
+                        msgs = conn.updateGroup(group, name, perm, description)
+                    except omero.SecurityViolation, ex:
+                        if ex.message.startswith('Cannot change permissions'):
+                            msgs.append("Downgrade to private group not"
+                                        " currently possible")
+                        else:
+                            msgs.append(ex.message)
+
+                removalFails = []
+                if can_add_member:
+                    owners = form.cleaned_data['owners']
+                    members = form.cleaned_data['members']
+
+                    listOfOwners = getSelectedExperimenters(conn, owners)
+                    conn.setOwnersOfGroup(group, listOfOwners)
+                    new_members = getSelectedExperimenters(
+                        conn, mergeLists(members, owners))
+                    removalFails = conn.setMembersOfGroup(group, new_members)
+
                 if len(removalFails) == 0 and len(msgs) == 0:
                     return HttpResponseRedirect(reverse("wagroups"))
-                # If we've failed to remove user...
 
+                # If we've failed to remove user...
                 # prepare error messages
                 for e in removalFails:
                     url = reverse("wamanageexperimenterid",
                                   args=["edit", e.id])
                     msgs.append("Can't remove user <a href='%s'>%s</a> from"
                                 " their only group" % (url, e.getFullName()))
-                # refresh the form and add messages
-                context = getEditFormContext()
+                # Refresh form (ignore POST data)
+                context['form'] = GroupForm(initial=initial,
+                                            name_check=name_check,
+                                            can_modify_group=can_modify_group,
+                                            can_add_member=can_add_member,
+                                            group_is_system=group_is_system)
 
     else:
         return HttpResponseRedirect(reverse("wagroups"))
 
     context['userId'] = conn.getEventContext().userId
     context['template'] = template
+    context['can_modify_group'] = can_modify_group
+    context['can_add_member'] = can_add_member
+    context['gid'] = gid
+    # prevent removing 'root' or yourself from group if it's a system group
+    context['admins'] = [conn.getAdminService().getSecurityRoles().rootId]
+    if group_is_system:
+        context['admins'].append(conn.getUserId())
 
     if len(msgs) > 0:
         context['ome'] = {}

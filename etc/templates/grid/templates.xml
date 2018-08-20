@@ -73,7 +73,7 @@
            default if you are seeing "Protocol family unavailable"
            errors. To do that, use bin/omero config set Ice.IPv6 0
 
-           See https://www.openmicroscopy.org/site/support/omero5.2/sysadmins/troubleshooting.html#server-fails-to-start
+           See https://docs.openmicroscopy.org/latest/omero/sysadmins/troubleshooting.html#server-fails-to-start
            for more information.
         -->
         <property name="Ice.IPv6" value="0"/>
@@ -205,8 +205,6 @@
         <option>-Djava.awt.headless=true</option>
         <option>-Dlogback.configurationFile=${OMERO_ETC}logback.xml</option>
         <option>-Domero.logfile=${OMERO_LOGFILE}</option>
-        <!-- This is a hack, the value needs to come from omero.properties -->
-        <option>-Domero.logbase=/OMERO/ManagedRepository/</option>
         <option>-Domero.name=Blitz-${index}</option>
         <target name="jmx">
             <!-- Be sure to understand the consequences of enabling JMX.

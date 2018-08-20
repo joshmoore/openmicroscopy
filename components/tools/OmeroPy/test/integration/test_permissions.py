@@ -25,7 +25,7 @@
 """
 
 import pytest
-import library as lib
+from omero.testlib import ITest, PFS
 import omero
 from omero_model_PermissionsI import PermissionsI
 from omero_model_TagAnnotationI import TagAnnotationI
@@ -105,7 +105,7 @@ class CallContextFixture(object):
         assert img is not None
 
 
-class TestPermissions(lib.ITest):
+class TestPermissions(ITest):
 
     def testLoginToPublicGroupTicket1940(self):
         # As root create a new group
@@ -481,7 +481,7 @@ class TestPermissions(lib.ITest):
         # Locally this test always fails as the two times are
         # the same order of magnitude. This may be an indication that
         # the relevant ticket:
-        # http://trac.openmicroscopy.org/ome/ticket/3136
+        # https://trac.openmicroscopy.org/ome/ticket/3136
         # is still valid. Does the ticket need re-opening
         # or does the test condition need relaxing?
         assert elapsed1 < (0.1 * elapsed2),\
@@ -780,9 +780,9 @@ class TestPermissions(lib.ITest):
 
     def testAdminUseOfRawPixelsBean(self):
         owner = self.new_client()
-        image1 = self.createTestImage(session=owner.sf)
+        image1 = self.create_test_image(session=owner.sf)
         pixid1 = image1.getPrimaryPixels().getId().getValue()
-        image2 = self.createTestImage(session=owner.sf)
+        image2 = self.create_test_image(session=owner.sf)
         pixid2 = image2.getPrimaryPixels().getId().getValue()
 
         rps = self.root.sf.createRawPixelsStore()
@@ -833,7 +833,7 @@ class TestPermissions(lib.ITest):
         })
 
 
-class TestPermissionProjections(lib.ITest):
+class TestPermissionProjections(ITest):
 
     _group = None
     _other = dict()
@@ -864,7 +864,7 @@ class TestPermissionProjections(lib.ITest):
     def assertPerms(self, perms, fixture):
         found_arr = []
         expected_arr = []
-        for x in ("Annotate", "Delete", "Edit", "Link"):
+        for x in ("Annotate", "Delete", "Edit", "Link", "Chgrp", "Chown"):
             key = "can%s" % x
             found = bool(perms[key])
             found_arr.append(found)
@@ -872,9 +872,10 @@ class TestPermissionProjections(lib.ITest):
             expected_arr.append(expected)
         assert expected_arr == found_arr
 
-    @pytest.mark.parametrize("fixture", lib.PFS,
-                             ids=[x.get_name() for x in lib.PFS])
-    def testProjectionPermissions(self, fixture):
+    @pytest.mark.parametrize("fixture", PFS,
+                             ids=[x.get_name() for x in PFS])
+    def testProjectionPermissionsWorkaround(self, fixture):
+        """Test we get same permissions via _details_permissions map"""
         writer = self.writer(fixture)
         reader = self.reader(fixture)
         project = self.make_project(name="testProjectPermissions",
@@ -902,9 +903,9 @@ class TestPermissionProjections(lib.ITest):
             self.assertPerms(perms1, fixture)
             self.assertPerms(perms2, fixture)
 
-    @pytest.mark.parametrize("fixture", lib.PFS,
-                             ids=[x.get_name() for x in lib.PFS])
-    def testProjectionPermissionsWorkaround(self, fixture):
+    @pytest.mark.parametrize("fixture", PFS,
+                             ids=[x.get_name() for x in PFS])
+    def testProjectionPermissions(self, fixture):
         writer = self.writer(fixture)
         reader = self.reader(fixture)
         project = self.make_project(name="testProjectPermissions",
@@ -933,8 +934,12 @@ class TestPermissionProjections(lib.ITest):
                     "canDelete": perms.canDelete(),
                     "canEdit": perms.canEdit(),
                     "canLink": perms.canLink(),
+                    "canChgrp": perms.canChgrp(),
+                    "canChown": perms.canChown(),
                 }
+
                 self._cache[key] = value
+
         except IndexError:
             # No permissions were returned.
             assert not fixture.canRead

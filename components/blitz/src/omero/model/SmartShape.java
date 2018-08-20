@@ -10,10 +10,14 @@ package omero.model;
 import static omero.rtypes.rdouble;
 
 import java.awt.Shape;
+import java.awt.geom.Line2D;
+import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 
 import org.apache.batik.parser.AWTPathProducer;
 import org.apache.batik.parser.DefaultPointsHandler;
@@ -48,7 +52,7 @@ public interface SmartShape {
          * 
          * @param points the points
          * @return false if iterating through the points list and dereferencing
-         *         the cx and cy fields would cause a
+         *         the x and y fields would cause a
          *         {@link NullPointerException}
          */
         public static boolean checkNonNull(List<Point> points) {
@@ -57,7 +61,7 @@ public interface SmartShape {
             }
 
             for (Point point : points) {
-                if (point == null || point.cx == null || point.cy == null) {
+                if (point == null || point.x == null || point.y == null) {
                     return false;
                 }
             }
@@ -66,39 +70,39 @@ public interface SmartShape {
         }
 
         public static void appendDbPoint(StringBuilder sb, Point p) {
-            appendDbPoint(sb, p.cx.getValue(), p.cy.getValue());
+            appendDbPoint(sb, p.x.getValue(), p.y.getValue());
         }
 
-        public static void appendDbPoint(StringBuilder sb, double cx, double cy) {
+        public static void appendDbPoint(StringBuilder sb, double x, double y) {
             sb.append("(");
-            sb.append(cx);
+            sb.append(x);
             sb.append(",");
-            sb.append(cy);
+            sb.append(y);
             sb.append(")");
         }
 
         public static void appendSvgPoint(StringBuilder sb, Point p) {
-            appendSvgPoint(sb, p.cx.getValue(), p.cy.getValue());
+            appendSvgPoint(sb, p.x.getValue(), p.y.getValue());
         }
 
-        public static void appendSvgPoint(StringBuilder sb, double cx, double cy) {
-            sb.append(cx);
+        public static void appendSvgPoint(StringBuilder sb, double x, double y) {
+            sb.append(x);
             sb.append(",");
-            sb.append(cy);
+            sb.append(y);
             sb.append(" ");
         }
 
-        public static boolean appendSegement(StringBuilder sb, boolean first,
-                double cx, double cy) {
+        public static boolean appendSegment(StringBuilder sb, boolean first,
+                double x, double y) {
             if (first) {
                 sb.append("M ");
                 first = false;
             } else {
                 sb.append("L ");
             }
-            sb.append(cx);
+            sb.append(x);
             sb.append(" ");
-            sb.append(cy);
+            sb.append(y);
             sb.append(" ");
             return first;
         }
@@ -107,9 +111,9 @@ public interface SmartShape {
             StringBuilder sb = new StringBuilder(points.size() * 16);
             boolean first = true;
             for (Point point : points) {
-                double cx = point.getCx().getValue();
-                double cy = point.getCy().getValue();
-                first = appendSegement(sb, first, cx, cy);
+                double x = point.getX().getValue();
+                double y = point.getY().getValue();
+                first = appendSegment(sb, first, x, y);
             }
             if (close) {
                 sb.append("Z");
@@ -124,7 +128,7 @@ public interface SmartShape {
             PointsParser pp = new PointsParser();
             PointsHandler ph = new DefaultPointsHandler() {
                 public void point(float x, float y) throws ParseException {
-                    first[0] = appendSegement(sb, first[0], x, y);
+                    first[0] = appendSegment(sb, first[0], x, y);
                 }
             };
             pp.setPointsHandler(ph);
@@ -146,8 +150,8 @@ public interface SmartShape {
             PointsHandler ph = new DefaultPointsHandler() {
                 public void point(float x, float y) throws ParseException {
                     SmartPointI sp = new SmartPointI();
-                    sp.setCx(rdouble(x));
-                    sp.setCy(rdouble(y));
+                    sp.setX(rdouble(x));
+                    sp.setY(rdouble(y));
                     points.add(sp);
                 }
             };
@@ -177,23 +181,23 @@ public interface SmartShape {
 
             List<Point> points = new ArrayList<Point>();
             SmartPointI tl = new SmartPointI();
-            tl.setCx(x0);
-            tl.setCy(y0);
+            tl.setX(x0);
+            tl.setY(y0);
             points.add(tl);
 
             SmartPointI tr = new SmartPointI();
-            tr.setCx(x1);
-            tr.setCy(y0);
+            tr.setX(x1);
+            tr.setY(y0);
             points.add(tr);
 
             SmartPointI br = new SmartPointI();
-            br.setCx(x1);
-            br.setCy(y1);
+            br.setX(x1);
+            br.setY(y1);
             points.add(br);
 
             SmartPointI bl = new SmartPointI();
-            bl.setCx(x0);
-            bl.setCy(y1);
+            bl.setX(x0);
+            bl.setY(y1);
             points.add(bl);
 
             return points;
@@ -214,7 +218,57 @@ public interface SmartShape {
                     }
                 }
             }
+        }
 
+        public static java.awt.geom.AffineTransform getAwtTransform(AffineTransform transform) {
+            if (transform == null) return null;
+            return 
+                new java.awt.geom.AffineTransform(
+                    transform.getA00().getValue(),
+                    transform.getA10().getValue(),
+                    transform.getA01().getValue(),
+                    transform.getA11().getValue(),
+                    transform.getA02().getValue(),
+                    transform.getA12().getValue());
+        }
+
+        public static Shape transformAwtShape(Shape shape, AffineTransform transform) {
+            if (transform == null) return shape;
+            final java.awt.geom.AffineTransform t = 
+                SmartShape.Util.getAwtTransform(transform);
+            return t.createTransformedShape(shape);
+        }
+        
+        public static Set<Point2D> getQuantizedLinePoints(Line2D line, Set<Point2D> points) {
+            if (line == null) return null;
+
+            final Set<Point2D> set =
+                (points instanceof LinkedHashSet) ?
+                    points : new LinkedHashSet<Point2D>();
+
+            Point2D start = line.getP1();
+            Point2D end = line.getP2();
+            Point2D m = new Point2D.Double(
+                end.getX()-start.getX(), end.getY()-start.getY());
+            double lengthM = (Math.sqrt(m.getX()*m.getX()+m.getY()*m.getY()));
+            if (lengthM == 0) {
+                set.add(
+                    new Point2D.Double(
+                        Math.floor(start.getX()), Math.floor(start.getY())));
+                return set;
+            }
+            Point2D mNorm = new Point2D.Double(m.getX()/lengthM,m.getY()/lengthM);
+            
+            for (double i = 0 ; i <= (lengthM + 0.1) ; i += 0.1) {
+                final Point2D pt = 
+                    new Point2D.Double(
+                        start.getX()+i*mNorm.getX(),
+                        start.getY()+i*mNorm.getY());
+                set.add(
+                    new Point2D.Double(Math.floor(pt.getX()), Math.floor(pt.getY())));
+            }
+            
+            return set;
         }
     }
 

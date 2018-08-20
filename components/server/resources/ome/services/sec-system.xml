@@ -3,8 +3,6 @@
 <!--
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #
-# $Id$
-#
 # Copyright 2008 Glencoe Software, Inc.. All rights reserved.
 # Use is subject to license terms supplied in LICENSE.txt
 #
@@ -41,11 +39,19 @@
     <constructor-arg ref="systemTypes"/>
     <constructor-arg ref="currentDetails"/>
     <constructor-arg ref="sessionManager"/>
+    <constructor-arg ref="sessionProvider"/>
+    <constructor-arg ref="eventProvider"/>
     <constructor-arg ref="roles"/>
     <constructor-arg ref="internalServiceFactory"/>
     <constructor-arg ref="tokenHolder"/>
-    <constructor-arg ref="securityFilterHolder"/>
+    <constructor-arg>
+      <list>
+        <ref bean="securityFilterHolder"/>
+        <ref bean="&amp;LightAdminPrivilegesSecurityFilter"/>  <!-- filter is a factory -->
+      </list>
+    </constructor-arg>
     <constructor-arg ref="policyService"/>
+    <constructor-arg ref="aclVoter"/>
   </bean>
 
   <bean id="securityWiring" class="ome.security.basic.BasicSecurityWiring"
@@ -62,7 +68,7 @@
     <constructor-arg ref="basicSecuritySystem"/>
     <constructor-arg ref="omeroSessionFactory"/>
     <constructor-arg ref="transactionAttributeSource"/>
-    <constructor-arg value="${omero.cluster.read_only}"/>
+    <constructor-arg ref="readOnlyStatus"/>
   </bean>
 
   <!-- These might should be moved to a third security tier -->
@@ -78,7 +84,7 @@
     <property name="debugAll" value="false"/>
   </bean>
 
-  <bean id="omeroInterceptor" class="ome.security.basic.OmeroInterceptor">
+  <bean id="omeroInterceptor" class="ome.security.basic.OmeroInterceptor" depends-on="adminPrivilegesCleanup">
     <description>
     Scope: private
     </description>
@@ -88,6 +94,32 @@
     <constructor-arg ref="tokenHolder"/>
     <constructor-arg ref="extendedMetadata"/>
     <constructor-arg ref="delegatingStats"/>
+    <constructor-arg ref="adminPrivileges"/>
+    <constructor-arg ref="simpleSqlAction"/>
+    <constructor-arg ref="managedRepoUuids"/>
+    <constructor-arg ref="scriptRepoUuids"/>
+  </bean>
+
+  <bean id="adminPrivilegesCleanup" class="ome.security.basic.LightAdminPrivilegesCleanup">
+    <constructor-arg ref="simpleSqlAction"/>
+    <constructor-arg value="10"></constructor-arg>  <!-- seconds, matching cron expression below -->
+  </bean>
+
+  <bean id="adminPrivilegesCleanupTrigger" class="org.springframework.scheduling.quartz.CronTriggerBean">
+    <property name="jobDetail" ref="adminPrivilegesCleanupRun"/>
+    <property name="cronExpression" value="*/10 * * * * ?"/>
+  </bean>
+
+  <bean id="adminPrivilegesCleanupRun" class="org.springframework.scheduling.quartz.MethodInvokingJobDetailFactoryBean">
+    <property name="targetObject" ref="adminPrivilegesCleanup"/>
+    <property name="targetMethod" value="run"/>
+    <property name="concurrent" value="false"/>
+  </bean>
+
+  <bean id="adminPrivilegesCleanupTriggerGuard" class="ome.services.util.BeanInstantiationGuard">
+    <constructor-arg ref="readOnlyStatus"/>
+    <constructor-arg value="adminPrivilegesCleanupTrigger"/>
+    <property name="isWriteDb" value="true"/>
   </bean>
 
 </beans>

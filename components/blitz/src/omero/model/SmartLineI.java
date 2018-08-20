@@ -11,14 +11,23 @@ import static omero.rtypes.rdouble;
 
 import java.awt.Shape;
 import java.awt.geom.Line2D;
+import java.awt.geom.Point2D;
 import java.util.ArrayList;
+import java.util.Set;
 import java.util.List;
 import java.util.Random;
 
 public class SmartLineI extends omero.model.LineI implements SmartShape {
 
     public void areaPoints(PointCallback cb) {
-        throw new UnsupportedOperationException();
+        Shape s = asAwtShape();
+        if (s == null) {
+            return;
+        }
+        if (transform != null) s = Util.transformAwtShape(s, transform);
+        final Set<Point2D> points = Util.getQuantizedLinePoints((Line2D) s, null);
+        for (Point2D p : points)
+            cb.handle((int) p.getX(), (int) p.getY());
     }
     
     public Shape asAwtShape() {
@@ -38,11 +47,11 @@ public class SmartLineI extends omero.model.LineI implements SmartShape {
         try {
             List<Point> points = new ArrayList<Point>();
             SmartPointI start = new SmartPointI();
-            start.setCx(getX1());
-            start.setCy(getY1());
+            start.setX(getX1());
+            start.setY(getY1());
             SmartPointI end = new SmartPointI();
-            end.setCx(getX2());
-            end.setCy(getY2());
+            end.setX(getX2());
+            end.setY(getY2());
             points.addAll(start.asPoints());
             points.addAll(end.asPoints());
             assert Util.checkNonNull(points) : "Null points in " + this;

@@ -29,12 +29,6 @@
     {{ block.super }}
     <link rel="stylesheet" href="{% static "webgateway/css/ome.table.css"|add:url_suffix %}" type="text/css" media="screen"/>
     <link rel="stylesheet" href="{% static "3rdparty/jquery.tablesorter-2.0.3/jquery.tablesorter.css" %}" type="text/css" media="screen"/>
-    
-<!--[if lte IE 8]>
-	<link rel="stylesheet" type="text/css" href="{% static "webgateway/css/ome.table_ie.css"|add:url_suffix %}" />
-<![endif]-->
-
-
 {% endblock %}
 
 {% block script %}
@@ -67,16 +61,22 @@
 {% if groups %}
 
 <div class="one_column_header">
-    <form class="search filtersearch" id="filtersearch" action="#">
+
+    {% if can_modify_group and ome.can_create %}
+        <div class="btn blue">
+            <a href="{% url 'wamanagegroupid' "new" %}">
+                <span>{% trans "Add new Group" %}</span>
+            </a>
+        </div>
+    {% endif %}
+
+    <form class="search filtersearch" id="filtersearch" action="#" style="width:160px">
         <input type="text" id="id_search">
         <input type="submit" value="Go" />
         <span class="loading">
             <img class="loader" alt="Loading" src="{% static "webgateway/img/spinner.gif" %}">
         </span>
     </form>
-
-	<div class="btn blue"><a href="{% url 'wamanagegroupid' "new" %}"><span>{% trans "Add new Group" %}</span></a></div>
-
 </div>
 
 <table id="groupTable" class="tablesorter tablesorter_basic">

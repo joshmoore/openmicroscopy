@@ -68,7 +68,6 @@
         <property name="blitz.comp"     value="${components.dir}/blitz"/>
         <property name="tools.comp"     value="${components.dir}/tools"/>
         <property name="insight.comp"   value="${components.dir}/insight"/>
-        <property name="OmeroCpp.comp"     value="${tools.comp}/OmeroCpp"/>
         <property name="OmeroJava.comp"     value="${tools.comp}/OmeroJava"/>
         <property name="OmeroWeb.comp"     value="${tools.comp}/OmeroWeb"/>
         <property name="OmeroPy.comp"     value="${tools.comp}/OmeroPy"/>
@@ -99,9 +98,6 @@
         </path>
         <path id="OmeroWeb.buildpath">
             <pathelement location="${OmeroWeb.comp}/build.xml"/>
-        </path>
-        <path id="OmeroCpp.buildpath">
-            <pathelement location="${OmeroCpp.comp}/build.xml"/>
         </path>
         <path id="OmeroJava.buildpath">
             <pathelement location="${OmeroJava.comp}/build.xml"/>
@@ -181,6 +177,7 @@
             <fileset dir="@{fromdir}">
                 <include name="**/*.properties"/>
                 <include name="**/*.vm"/>
+                <include name="**/minimal-script.py"/>
                 <include name="**/*.dv"/>
                 <include name="**/*.bmp"/>
                 <include name="**/*.jpg"/>
@@ -355,12 +352,18 @@
                     <then>
                         <property name="versions.ice" value="${versions.ice35}"/>
                         <property name="versions.ice_lib" value="${versions.ice35_lib}"/>
+                        <property name="versions.icedb" value="${versions.icedb35}"/>
+                        <property name="versions.omeromock" value="${versions.omeromock35}"/>
+                        <property name="versions.omeroshares" value="${versions.omeroshares35}"/>
                     </then>
                 </if>
                 <if><matches string="${executable.ice.version}" pattern="^3[.]6"/>
                     <then>
                         <property name="versions.ice" value="${versions.ice36}"/>
                         <property name="versions.ice_lib" value="${versions.ice36_lib}"/>
+                        <property name="versions.icedb" value="${versions.icedb36}"/>
+                        <property name="versions.omeromock" value="${versions.omeromock36}"/>
+                        <property name="versions.omeroshares" value="${versions.omeroshares36}"/>
                     </then>
                 </if>
             </then>
@@ -369,6 +372,9 @@
                 <then>
                     <property name="versions.ice" value="${versions.ice35}"/>
                     <property name="versions.ice_lib" value="${versions.ice35_lib}"/>
+                    <property name="versions.icedb" value="${versions.icedb35}"/>
+                    <property name="versions.omeromock" value="${versions.omeromock35}"/>
+                    <property name="versions.omeroshares" value="${versions.omeroshares35}"/>
                 </then>
             </elseif>
             <elseif>
@@ -376,6 +382,9 @@
                 <then>
                     <property name="versions.ice" value="${versions.ice36}"/>
                     <property name="versions.ice_lib" value="${versions.ice36_lib}"/>
+                    <property name="versions.icedb" value="${versions.icedb36}"/>
+                    <property name="versions.omeromock" value="${versions.omeromock36}"/>
+                    <property name="versions.omeroshares" value="${versions.omeroshares36}"/>
                 </then>
             </elseif>
             <else>

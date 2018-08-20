@@ -10,7 +10,8 @@
 
 import traceback
 from datetime import datetime
-from omero.cli import BaseControl, CLI
+from omero.cli import DiagnosticsControl
+from omero.cli import CLI
 import platform
 import sys
 import os
@@ -19,11 +20,15 @@ from functools import wraps
 from omero_ext.argparse import SUPPRESS
 
 from omero.install.windows_warning import windows_warning, WINDOWS_WARNING
+from omero.install.python_warning import py27_only, PYTHON_WARNING
 
 HELP = "OMERO.web configuration/deployment tools"
 
 if platform.system() == 'Windows':
     HELP += ("\n\n%s" % WINDOWS_WARNING)
+
+if not py27_only():
+    HELP += ("\n\nERROR: %s" % PYTHON_WARNING)
 
 LONGHELP = """OMERO.web configuration/deployment tools
 
@@ -45,17 +50,6 @@ Example Nginx developer usage:
     omero web stop
     nginx -s stop
 
-Example IIS usage:
-
-    # Install server
-    omero config set omero.web.debug true
-    omero web iis
-    iisreset
-
-    # Uninstall server
-    omero web iis --remove
-    iisreset
-
 """
 
 APACHE_MOD_WSGI_ERR = ("[ERROR] You are deploying OMERO.web using Apache and"
@@ -70,6 +64,8 @@ def config_required(func):
     def import_django_settings(func):
         @windows_warning
         def wrapper(self, *args, **kwargs):
+            if not py27_only():
+                self.ctx.die(681, "ERROR: %s" % PYTHON_WARNING)
             try:
                 import django  # NOQA
             except:
@@ -101,7 +97,11 @@ def assert_config_argtype(func):
             if settings.APPLICATION_SERVER in ("development",):
                 mismatch = True
             if settings.APPLICATION_SERVER in (settings.WSGITCP,):
-                if argtype not in ("nginx", "nginx-development",):
+                if argtype not in (
+                    "nginx",
+                    "nginx-development",
+                    "nginx-location",
+                ):
                     mismatch = True
             if (settings.APPLICATION_SERVER in (settings.WSGI,) and
                     argtype not in ("apache22", "apache24", "apache")):
@@ -117,14 +117,21 @@ def assert_config_argtype(func):
     return wraps(func)(config_argtype(func))
 
 
-class WebControl(BaseControl):
+class WebControl(DiagnosticsControl):
 
     # DEPRECATED: apache
     config_choices = (
-        "nginx", "nginx-development", "apache22", "apache24", "apache")
+        "nginx",
+        "nginx-development",
+        "nginx-location",
+        "apache22",
+        "apache24",
+        "apache",
+    )
 
     def _configure(self, parser):
         sub = parser.sub()
+        self._add_diagnostics(parser, sub)
 
         parser.add(sub, self.help, "Extended help")
         start = parser.add(
@@ -134,10 +141,7 @@ class WebControl(BaseControl):
             sub, self.restart, "Restart the OMERO.web server")
         parser.add(sub, self.status, "Status for the OMERO.web server")
 
-        iis = parser.add(sub, self.iis, "IIS (un-)install of OMERO.web ")
-        iis.add_argument("--remove", action="store_true", default=False)
-
-        for x in (start, restart, iis):
+        for x in (start, restart):
             group = x.add_mutually_exclusive_group()
             group.add_argument(
                 "--keep-sessions", action="store_true",
@@ -166,6 +170,7 @@ class WebControl(BaseControl):
             "Output a config template for web server\n"
             "  nginx: Nginx system configuration for inclusion\n"
             "  nginx-development: Standalone user-run Nginx server\n"
+            "  nginx-location: Minimal location blocks (experts only)\n"
             "  apache22: Apache 2.2 with mod_wsgi\n"
             "  apache24: Apache 2.4+ with mod_wsgi\n")
         config.add_argument("type", choices=self.config_choices)
@@ -683,20 +688,34 @@ class WebControl(BaseControl):
         os.environ['PATH'] = str(os.environ.get('PATH', '.') + ':' +
                                  self.ctx.dir / 'bin')
 
-    @config_required
-    def iis(self, args, settings):
-        if not (self._isWindows() or self.ctx.isdebug):
-            self.ctx.die(2, "'iis' command is for Windows only")
+    def diagnostics(self, args):
+        self._diagnostics_banner("web")
+        try:
+            self.status(args)
+        except Exception, e:
+            try:
+                self.ctx.out("OMERO.web error: %s" % e.message[1].message)
+            except:
+                self.ctx.out("OMERO.web not installed!")
+        try:
+            import django
+            self.ctx.out("Django version: %s" % django.get_version())
+        except:
+            self.ctx.err("Django not installed!")
 
-        self.collectstatic()
-        if not args.keep_sessions:
-            self.clearsessions(args)
-
-        web_iis = self._get_python_dir() / "omero_web_iis.py"
-        cmd = [sys.executable, str(web_iis)]
-        if args.remove:
-            cmd.append("remove")
-        self.ctx.call(cmd)
+        if not args.no_logs:
+            log_dir = self.ctx.dir / "var" / "log"
+            self.ctx.out("")
+            self._item("Log dir", "%s" % log_dir.abspath())
+            if not log_dir.exists():
+                self.ctx.out("")
+                self.ctx.out("No logs available")
+                return
+            else:
+                self._exists(log_dir)
+                log_file = "OMEROweb.log"
+                self._item("Log file ", log_file)
+                self._exists(log_dir / log_file)
 
 try:
     register("web", WebControl, HELP)

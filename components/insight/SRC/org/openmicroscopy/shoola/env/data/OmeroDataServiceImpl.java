@@ -1,6 +1,6 @@
 /*
  *------------------------------------------------------------------------------
- *  Copyright (C) 2006-2015 University of Dundee. All rights reserved.
+ *  Copyright (C) 2006-2017 University of Dundee. All rights reserved.
  *
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -55,6 +55,7 @@ import omero.model.Screen;
 import omero.model.ScreenAnnotationLink;
 import omero.model.ScreenPlateLink;
 import omero.model.TagAnnotation;
+import omero.model.Well;
 import omero.sys.Parameters;
 import omero.sys.ParametersI;
 
@@ -70,6 +71,7 @@ import omero.gateway.util.PojoMapper;
 
 import org.openmicroscopy.shoola.env.data.util.SearchDataContext;
 
+import omero.gateway.Gateway;
 import omero.gateway.SecurityContext;
 import omero.gateway.exception.DSAccessException;
 import omero.gateway.exception.DSOutOfServiceException;
@@ -93,7 +95,6 @@ import omero.gateway.model.ScreenData;
 import omero.gateway.model.TagAnnotationData;
 import omero.gateway.model.WellData;
 import omero.gateway.model.WellSampleData;
-
 import omero.api.StatefulServiceInterfacePrx;
 
 /**
@@ -114,13 +115,18 @@ class OmeroDataServiceImpl
 	/** Reference to the entry point to access the <i>OMERO</i> services. */
 	private OMEROGateway gateway;
 
+	@Override
+	public Gateway getGateway() {
+	    return gateway.getGateway();
+	}
+	
 	/**
 	 * Unlinks the collection of children from the specified parent.
 	 *
 	 * @param ctx The security context.
 	 * @param parent    The parent of the children.
 	 * @param children  The children to unlink
-	 * @throws DSOutOfServiceException If the connection is broken, or logged in
+	 * @throws DSOutOfServiceException If the connection is broken, or not logged in
 	 * @throws DSAccessException If an error occurred while trying to
 	 * retrieve data from OMEDS service.
 	 */
@@ -144,7 +150,7 @@ class OmeroDataServiceImpl
 	 * @param ctx The security context.
 	 * @param id The identifier of the set.
 	 * @return See above.
-	 * @throws DSOutOfServiceException If the connection is broken, or logged in
+	 * @throws DSOutOfServiceException If the connection is broken, or not logged in
 	 * @throws DSAccessException If an error occurred while trying to
 	 * retrieve data from OMEDS service.
 	 */
@@ -208,7 +214,7 @@ class OmeroDataServiceImpl
 	 * Implemented as specified by {@link OmeroDataService}.
 	 * @see OmeroDataService#loadContainerHierarchy(SecurityContext, Class, List, boolean, long)
 	 */
-	public Set loadContainerHierarchy(SecurityContext ctx,
+	public Collection<DataObject> loadContainerHierarchy(SecurityContext ctx,
 			Class rootNodeType, List rootNodeIDs, boolean withLeaves,
 			long userID)
 		throws DSOutOfServiceException, DSAccessException
@@ -232,7 +238,7 @@ class OmeroDataServiceImpl
 	 * Implemented as specified by {@link OmeroDataService}.
 	 * @see OmeroDataService#loadTopContainerHierarchy(SecurityContext, Class, long)
 	 */
-	public Set loadTopContainerHierarchy(SecurityContext ctx,
+	public Collection<DataObject> loadTopContainerHierarchy(SecurityContext ctx,
 			Class rootNodeType, long userID)
 		throws DSOutOfServiceException, DSAccessException
 	{
@@ -245,7 +251,7 @@ class OmeroDataServiceImpl
 	 * Implemented as specified by {@link OmeroDataService}.
 	 * @see OmeroDataService#findContainerHierarchy(SecurityContext, Class, List, long)
 	 */
-	public Set findContainerHierarchy(SecurityContext ctx, Class rootNodeType,
+	public Collection<DataObject> findContainerHierarchy(SecurityContext ctx, Class rootNodeType,
 			List leavesIDs, long userID)
 		throws DSOutOfServiceException, DSAccessException
 	{
@@ -259,7 +265,7 @@ class OmeroDataServiceImpl
 	 * Implemented as specified by {@link OmeroDataService}.
 	 * @see OmeroDataService#getImages(SecurityContext, Class, List, long)
 	 */
-	public Set getImages(SecurityContext ctx, Class nodeType, List nodeIDs,
+	public Collection<ImageData> getImages(SecurityContext ctx, Class nodeType, List nodeIDs,
 			long userID)
 		throws DSOutOfServiceException, DSAccessException
 	{
@@ -626,7 +632,7 @@ class OmeroDataServiceImpl
 		
 		// search by ID:
 		if(!results.isEmpty())
-		    findByIds(ctx, results, true);
+		    findByIds(ctx, results);
 		
 		// search by text:
 		SearchResultCollection searchResults = gateway.search(ctx, context);
@@ -643,17 +649,37 @@ class OmeroDataServiceImpl
 	/**
 	 * Tries to find and load the Objects in results; removes them from results
 	 * if they can't be found.
-	 * @param ctx
-	 * @param results
-	 * @param allGroups
+	 * @param ctx The {@link SecurityContext}
+	 * @param results The results to look up
+	 * @throws DSOutOfServiceException If the connection is broken, or not logged in
 	 */
-        private void findByIds(SecurityContext ctx, SearchResultCollection results, boolean allGroups) throws DSOutOfServiceException{
+        private void findByIds(SecurityContext ctx, SearchResultCollection results) throws DSOutOfServiceException{
             Iterator<SearchResult> it = results.iterator();
             while (it.hasNext()) {
                 SearchResult r = it.next();
                 IObject obj = null;
                     try {
-                        String type = PojoMapper.convertTypeForSearchByQuery(r.getType());
+                        String type = null;
+                        if (r.getType().equals(Image.class) || r.getType().equals(ImageData.class))
+                            type = Image.class.getSimpleName();
+                        else if (r.getType().equals(Dataset.class)
+                                || r.getType().equals(DatasetData.class))
+                            type = Dataset.class.getSimpleName();
+                        else if (r.getType().equals(Project.class)
+                                || r.getType().equals(ProjectData.class))
+                            type = Project.class.getSimpleName();
+                        else if (r.getType().equals(Screen.class)
+                                || r.getType().equals(ScreenData.class))
+                            type = Screen.class.getSimpleName();
+                        else if (r.getType().equals(Well.class) || r.getType().equals(WellData.class))
+                            type = Well.class.getSimpleName();
+                        else if (r.getType().equals(Plate.class)
+                                || r.getType().equals(PlateData.class))
+                            type = Plate.class.getSimpleName();
+                        
+                        if (type == null)
+                            return;
+                        
                         String query = "select x from "+type+" x join fetch x.details.creationEvent where x.id="+r.getObjectId();
                         obj = gateway.findIObjectByQuery(ctx, query, true);
                     } catch (DSAccessException e) {
@@ -686,11 +712,10 @@ class OmeroDataServiceImpl
                 SecurityContext ctx = new SecurityContext(groupId);
     
                 try {
-                    Set tmp = gateway.getContainerImages(ctx, ImageData.class, ids,
+                    Collection<ImageData> tmp = gateway.getContainerImages(ctx, ImageData.class, ids,
                             new Parameters());
                     
-                    for(Object obj : tmp) {
-                        ImageData img = (ImageData) obj;
+                    for(ImageData img : tmp) {
                         for(SearchResult r : byGroup.get(groupId)) {
                             if(r.getObjectId()==img.getId()) {
                                 r.setObject(img);
@@ -866,36 +891,20 @@ class OmeroDataServiceImpl
             DataObject data = delo.getObjectToDelete();
 
             if (!CollectionUtils.isEmpty(delo.getAnnotations())) {
-                opts.add(Requests.option(null,
-                        PojoMapper.getGraphType(AnnotationData.class)));
+                opts.add(Requests.option().excludeType(PojoMapper.getGraphType(AnnotationData.class)).build());
             }
 
             if (!delo.deleteContent()) {
                 if (data instanceof DatasetData) {
-                    opts.add(Requests.option(null,
-                            PojoMapper.getGraphType(ImageData.class)));
+                    opts.add(Requests.option().excludeType(PojoMapper.getGraphType(ImageData.class)).build());
                 } else if (data instanceof ProjectData) {
-                    opts.add(Requests.option(null,
-                            PojoMapper.getGraphType(DatasetData.class)));
-                    opts.add(Requests.option(null,
-                            PojoMapper.getGraphType(ImageData.class)));
+                    opts.add(Requests.option().excludeType(PojoMapper.getGraphType(DatasetData.class)).build());
                 } else if (data instanceof ScreenData) {
-                    opts.add(Requests.option(null,
-                            PojoMapper.getGraphType(PlateData.class)));
-                    opts.add(Requests.option(null,
-                            PojoMapper.getGraphType(WellData.class)));
-                    opts.add(Requests.option(null,
-                            PojoMapper.getGraphType(PlateAcquisitionData.class)));
-                    opts.add(Requests.option(null,
-                            PojoMapper.getGraphType(ImageData.class)));
+                    opts.add(Requests.option().excludeType(PojoMapper.getGraphType(PlateData.class)).build());
                 } else if (data instanceof PlateData) {
-                    opts.add(Requests.option(null,
-                            PojoMapper.getGraphType(PlateAcquisitionData.class)));
-                    opts.add(Requests.option(null,
-                            PojoMapper.getGraphType(ImageData.class)));
+                    opts.add(Requests.option().excludeType(PojoMapper.getGraphType(ImageData.class)).build());
                 } else if (data instanceof PlateAcquisitionData) {
-                    opts.add(Requests.option(null,
-                            PojoMapper.getGraphType(ImageData.class)));
+                    opts.add(Requests.option().excludeType(PojoMapper.getGraphType(ImageData.class)).build());
                 }
 
                 else if (data instanceof TagAnnotationData) {
@@ -919,8 +928,7 @@ class OmeroDataServiceImpl
 
         List<Request> cmds = new ArrayList<Request>();
         for (String type : toDelete.keySet()) {
-            cmds.add(Requests.delete(type, toDelete.get(type),
-                    options.get(type)));
+            cmds.add(Requests.delete().target(type).id(toDelete.get(type)).option(options.get(type)).build());
         }
 
         return gateway.submit(cmds, ctx);
@@ -1083,7 +1091,7 @@ class OmeroDataServiceImpl
 	 * List)
 	 */
 	public Map<Long, Map<Boolean, List<ImageData>>> getImagesBySplitFilesets(
-			SecurityContext ctx, Class<?> rootType, List<Long> rootIDs)
+			SecurityContext ctx, Class<? extends DataObject> rootType, List<Long> rootIDs)
 		throws DSOutOfServiceException, DSAccessException
 	{
 		if (CollectionUtils.isEmpty(rootIDs) || rootType == null)
@@ -1104,7 +1112,7 @@ class OmeroDataServiceImpl
 				ids.addAll(j.next());
 			}
 		}
-		Set<ImageData> imgs = getImages(ctx, ImageData.class, ids, -1);
+		Collection<ImageData> imgs = getImages(ctx, ImageData.class, ids, -1);
 		Map<Long, ImageData> idMap = new HashMap<Long, ImageData>(imgs.size());
 		Iterator<ImageData> k = imgs.iterator();
 		ImageData img;

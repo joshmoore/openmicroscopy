@@ -10,12 +10,12 @@
 Integration test focused on the omero.api.IUpdate interface.
 """
 
-import library as lib
+from omero.testlib import ITest
 import omero
 import pytest
 
 
-class TestIUpdate(lib.ITest):
+class TestIUpdate(ITest):
     """
     Basic test of all IUpdate functionality
     """
@@ -90,6 +90,14 @@ class TestIUpdate(lib.ITest):
         # column).
         with pytest.raises(Exception):
             self.assert_type(ds, "updated")
+
+    def testCannotSaveDeleted(self):
+        ds = self.mkdataset(True)
+        ds = self.update.saveAndReturnObject(ds)
+        self.delete([ds])
+        ds.name = omero.rtypes.rstring("now is deleted")
+        with pytest.raises(omero.ValidationException):
+            self.update.saveObject(ds)
 
     # Helpers
 

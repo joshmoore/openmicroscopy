@@ -1,9 +1,8 @@
 /*
- * ome.io.nio.AbstractFileSystemService
- *
- *   Copyright 2006 University of Dundee. All rights reserved.
+ *   Copyright 2006-2018 University of Dundee. All rights reserved.
  *   Use is subject to license terms supplied in LICENSE.txt
  */
+
 package ome.io.nio;
 
 import java.io.File;
@@ -33,10 +32,16 @@ public class AbstractFileSystemService {
 
     private final String root;
 
+    @Deprecated
     public AbstractFileSystemService(String path) {
+        this(path, false);
+        log.info("assuming read-write repository at " + path);
+    }
+
+    public AbstractFileSystemService(String path, boolean isReadOnlyRepo) {
         File rootDirectory = new File(path);
         if (!rootDirectory.isDirectory() || !rootDirectory.canRead()
-                || !rootDirectory.canWrite()) {
+                || !(isReadOnlyRepo || rootDirectory.canWrite())) {
             throw new IllegalArgumentException(
                     "Invalid directory specified for file system service."
 		    + rootDirectory);
@@ -49,12 +54,12 @@ public class AbstractFileSystemService {
     }
 
     /**
-     * Makes sure that for a given path, it's subpath exists. For example, given
+     * Makes sure that for a given path, its subpath exists. For example, given
      * the path "/foo/bar/foobar.txt" the method will make sure the directory
      * structure "/foo/bar" exists.
      *
      * @param path
-     *            the path to check for subpath existance.
+     *            the path to check for subpath existence.
      */
     protected void createSubpath(String path) {
         File file = new File(path);
@@ -64,6 +69,17 @@ public class AbstractFileSystemService {
                 directory.mkdirs();
             }
         }
+    }
+
+    /**
+     * Returns a numbered path relative to the root of this service, but is
+     * ignorant of FS and similar constructs. For example, this will return
+     * "ROOT/Pixels/"
+     *
+     * @return the path relative to the root
+     */
+    public String getPixelsDirectory() {
+        return FilenameUtils.concat(root, PIXELS_PATH);
     }
 
     /**
@@ -115,14 +131,13 @@ public class AbstractFileSystemService {
             remaining /= 1000;
 
             if (remaining > 0) {
-                Formatter formatter = new Formatter();
-                dirno = remaining % 1000;
-                suffix = formatter.format("Dir-%03d", dirno).out().toString()
-                        + File.separator + suffix;
+                try (final Formatter formatter = new Formatter()) {
+                    dirno = remaining % 1000;
+                    suffix = formatter.format("Dir-%03d", dirno).out().toString()
+                            + File.separator + suffix;
+                }
             }
         }
-        
-        String path = FilenameUtils.concat(root, prefix + suffix + id);
-        return path;
+        return FilenameUtils.concat(root, prefix + suffix + id);
     }
 }

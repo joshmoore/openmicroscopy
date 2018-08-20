@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 University of Dundee & Open Microscopy Environment.
+ * Copyright (C) 2013-2017 University of Dundee & Open Microscopy Environment.
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -46,10 +46,14 @@ public class DBUserCheck {
     final private PreferenceContext prefs;
     final private Roles roles;
 
-    public DBUserCheck(SqlAction sql, PreferenceContext prefs) throws Exception {
+    public DBUserCheck(SqlAction sql, PreferenceContext prefs, ReadOnlyStatus readOnly) throws Exception {
         this.sql = sql;
         this.prefs = prefs;
         this.roles = load();
+        if (!readOnly.isReadOnlyDb()) {
+            sql.setRoles(roles.getRootId(), roles.getGuestId(),
+                    roles.getSystemGroupId(), roles.getUserGroupId(), roles.getGuestGroupId());
+        }
     }
 
     private String getRoleName(String which, String defaultValue) {

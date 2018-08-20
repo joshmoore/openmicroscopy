@@ -14,23 +14,24 @@ for tools in glob.glob("../../../lib/repository/setuptools*.egg"):
     if tools.find(".".join(map(str, sys.version_info[0:2]))) > 0:
         sys.path.insert(0, os.path.abspath(tools))
 
-sys.path.append("..")
-from test_setup import PyTest
+sys.path.append("../OmeroPy/src")
+from omero_setup import PyTest
 
 from ez_setup import use_setuptools
 use_setuptools(to_dir='../../../lib/repository')
 from setuptools import setup
 from omero_version import omero_version as ov
 
+url = 'https://docs.openmicroscopy.org/latest/omero/developers/Server/FS.html'
 setup(name="OmeroFS",
       version=ov,
       description="OMERO.fs server for watching directories",
       long_description="OMERO.fs server for watching directories",
-      author="Colin Blackburn",
-      author_email="",
-      url="http://trac.openmicroscopy.org.uk/ome/wiki/OmeroFs",
-      download_url="http://trac.openmicroscopy.org.uk/ome/wiki/OmeroFs",
+      author="The Open Microscopy Team",
+      author_email="ome-devel@lists.openmicroscopy.org.uk",
+      url=url,
+      download_url=url,
       package_dir={"": "target"},
       packages=[''],
       cmdclass={'test': PyTest},
-      tests_require=['pytest != 3.0.0, != 3.0.1, != 3.0.2'])
+      tests_require=['pytest<3'])

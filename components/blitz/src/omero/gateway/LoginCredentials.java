@@ -1,6 +1,6 @@
 /*
  *------------------------------------------------------------------------------
- *  Copyright (C) 2015 University of Dundee. All rights reserved.
+ *  Copyright (C) 2015-2017 University of Dundee. All rights reserved.
  *
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -71,10 +71,12 @@ public class LoginCredentials {
 
     /**
      * Creates a new instance.
-     * @param args The connection arguments.
+     * 
+     * @param args
+     *            The connection arguments. Note: When using this constructor
+     *            the '#' character has to be escaped with a backslash!
      */
-    public LoginCredentials(String[] args)
-    {
+    public LoginCredentials(String[] args) {
         this();
         if (args == null) {
             throw new IllegalArgumentException("No connection arguments");
@@ -86,7 +88,8 @@ public class LoginCredentials {
      * Creates a new instance with the given credentials and default port
      * 
      * @param username
-     *            The username
+     *            The username or alternatively a session ID (in which case
+     *            the password will be ignored)
      * @param password
      *            The password
      * @param host
@@ -100,7 +103,8 @@ public class LoginCredentials {
      * Creates a new instance with the given credentials
      * 
      * @param username
-     *            The username
+     *            The username or alternatively a session ID (in which case
+     *             the password will be ignored)
      * @param password
      *            The password
      * @param host
@@ -221,6 +225,7 @@ public class LoginCredentials {
      * Sets the groupID to use for the connection
      * 
      * @param groupID
+     *            The group id
      */
     public void setGroupID(long groupID) {
         this.groupID = groupID;

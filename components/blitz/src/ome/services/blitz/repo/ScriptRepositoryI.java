@@ -5,9 +5,12 @@
 
 package ome.services.blitz.repo;
 
+import java.util.Set;
+
 import ome.services.blitz.fire.Registry;
 import ome.services.scripts.ScriptRepoHelper;
 import ome.services.util.Executor;
+import ome.services.util.ReadOnlyStatus;
 import ome.system.Principal;
 import omero.ServerError;
 import omero.model.OriginalFile;
@@ -29,10 +32,18 @@ public class ScriptRepositoryI extends AbstractRepositoryI {
 
     private final ScriptRepoHelper helper;
 
+    @Deprecated
     public ScriptRepositoryI(ObjectAdapter oa, Registry reg, Executor ex,
-            Principal p, ScriptRepoHelper helper, PublicRepositoryI servant) {
-        super(oa, reg, ex, p, helper.getScriptDir(), servant);
+            Principal p, ScriptRepoHelper helper, PublicRepositoryI servant, Set<String> scriptRepoUuids) {
+        this(oa, reg, ex, p, helper, new ReadOnlyStatus(false, false), servant, scriptRepoUuids);
+        log.info("assuming read-write repository");
+    }
+
+    public ScriptRepositoryI(ObjectAdapter oa, Registry reg, Executor ex, Principal p,
+           ScriptRepoHelper helper, ReadOnlyStatus readOnly, PublicRepositoryI servant, Set<String> scriptRepoUuids) {
+        super(oa, reg, ex, p, helper.getScriptDir(), readOnly, servant);
         this.helper = helper;
+        scriptRepoUuids.add(helper.getUuid());
     }
 
     @Override

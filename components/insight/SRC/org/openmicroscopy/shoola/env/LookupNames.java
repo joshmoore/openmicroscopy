@@ -2,7 +2,7 @@
  * org.openmicroscopy.shoola.env.LookupNames
  *
  *------------------------------------------------------------------------------
- *  Copyright (C) 2006-2015 University of Dundee. All rights reserved.
+ *  Copyright (C) 2006-2017 University of Dundee. All rights reserved.
  *
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -169,6 +169,27 @@ public class LookupNames
 
     /** Field indicating if the user is an administrator. */
     public static final String USER_ADMINISTRATOR = "/users/administrator";
+    
+    /** Field indicating if the user can edit users. */
+    public static final String PRIV_SUDO = "/users/sudo";
+    
+    /** Field indicating if the user has all admin privileges. */
+    public static final String PRIV_FULL = "/fulladministrator";
+
+    /** Field indicating if the user can edit users. */
+    public static final String PRIV_EDIT_USER = "/users/edit";
+    
+    /** Field indicating if the user can edit groups. */
+    public static final String PRIV_EDIT_GROUP = "/groups/edit";
+    
+    /** Field indicating if the user move objects to/from groups. */
+    public static final String PRIV_MOVE_GROUP = "/groups/move";
+    
+    /** Field indicating if the user add group members. */
+    public static final String PRIV_GROUP_ADD = "/groups/add";
+
+    /** Field indicating if the user is allowed to upload scripts */
+    public static final String PRIV_UPLOAD_SCRIPT = "/scripts/upload";
 
     /** Field to indicate if the connection is fast or not. */
     public static final String IMAGE_QUALITY_LEVEL = "/connection/speed";
@@ -388,4 +409,13 @@ public class LookupNames
 
     /** Lookup name of the orphaned images folder */
     public static final String ORPHANED_IMAGE_DESCRIPTION = "omero.client.ui.tree.orphans.description";
+
+    /** Lookup name for the tree type order */
+    public static final String TREE_TYPE_ORDER = "omero.client.ui.tree.type_order";
+
+    /** Lookup name used to identify the status of the server*/
+    public static final String CAN_CREATE = "canCreate";
+
+    /** Lookup name used to identify the format to use to download the data when using open with*/
+    public static final String OPEN_WITH_DATA = "/services/OpenWith/Original";
 }

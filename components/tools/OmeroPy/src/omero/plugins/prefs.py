@@ -26,6 +26,7 @@ from omero.util import edit_path, get_omero_userdir
 from omero.util.decorators import wraps
 from omero.util.upgrade_check import UpgradeCheck
 from omero_ext import portalocker
+from omero_ext.argparse import SUPPRESS
 
 import omero.java
 
@@ -148,9 +149,16 @@ class PrefsControl(WriteableConfigControl):
         get.set_defaults(func=self.get)
         get.add_argument(
             "KEY", nargs="*", help="Names of keys in the current profile")
-        get.add_argument(
-            "--hide-password", action="store_true",
-            help="Hide values of password keys in the current profile")
+
+        for x in [get, list]:
+            secrets = x.add_mutually_exclusive_group()
+            secrets.add_argument(
+                "--show-password", action="store_true",
+                help="Show values of sensitive keys (passwords, "
+                "tokens, etc.) in the current profile")
+            secrets.add_argument(
+                "--hide-password", action="store_false",
+                dest="show_password", help=SUPPRESS)
 
         set = parser.add(
             sub, self.set,
@@ -165,12 +173,18 @@ class PrefsControl(WriteableConfigControl):
         for x in [set, append, remove]:
             x.add_argument(
                 "KEY", help="Name of the key in the current profile")
+            # report is intended for use with cfg mgmt tools
+            x.add_argument("--report", action="store_true",
+                           help="Report if changes are made")
         set.add_argument(
             "-f", "--file", type=ExistingFile('r'),
             help="Load value from file")
         set.add_argument(
             "VALUE", nargs="?",
             help="Value to be set. If it is missing, the key will be removed")
+        append.add_argument(
+            "--set", action="store_true",
+            help="Append only if not already in the list")
         append.add_argument("VALUE", help="Value to be appended")
         remove.add_argument("VALUE", help="Value to be removed")
 
@@ -225,9 +239,6 @@ class PrefsControl(WriteableConfigControl):
                    " it")
         parser.add(sub, self.upgrade, "Create a 4.2 config.xml file based on"
                    " your current Java Preferences")
-        old = parser.add(sub, self.old, "Delegate to the old configuration"
-                         " system using Java preferences")
-        old.add_argument("target", nargs="*")
 
     def open_config(self, args):
         if args.source:
@@ -281,15 +292,16 @@ class PrefsControl(WriteableConfigControl):
             for k in config.IGNORE:
                 k in keys and keys.remove(k)
 
-        hide_password = 'hide_password' in args and args.hide_password
-        is_password = lambda x: x.endswith('.pass') or x.endswith('.password')
+        is_password = (lambda x: x.lower().endswith('pass') or
+                       x.lower().endswith('password'))
         for k in keys:
             if k not in orig:
                 continue
             if args.KEY and len(args.KEY) == 1:
                 self.ctx.out(config[k])
             else:
-                if (hide_password and is_password(k)):
+                if is_password(k) and not getattr(
+                        args, "show_password", False):
                     self.ctx.out("%s=%s" % (k, '*' * 8 if config[k] else ''))
                 else:
                     self.ctx.out("%s=%s" % (k, config[k]))
@@ -317,8 +329,12 @@ class PrefsControl(WriteableConfigControl):
                 f.close()
         elif args.VALUE is None:
             del config[args.KEY]
+            if args.report:
+                self.ctx.out('Changed: Removed %s' % args.KEY)
         else:
             config[args.KEY] = args.VALUE
+            if args.report:
+                self.ctx.out('Changed: Set %s:%s' % (args.KEY, args.VALUE))
 
     def get_list_value(self, args, config):
         import json
@@ -336,9 +352,11 @@ class PrefsControl(WriteableConfigControl):
             from omeroweb import settings
             setting = settings.CUSTOM_SETTINGS_MAPPINGS.get(key)
             default = setting[2](setting[1]) if setting else []
-        except:
-            self.ctx.die(514, "Cannot retrieve default value for property %s" %
-                         key)
+        except Exception, e:
+            self.ctx.dbg(traceback.format_exc())
+            self.ctx.die(514,
+                         "Cannot retrieve default value for property %s: %s" %
+                         (key, e))
         if not isinstance(default, list):
             self.ctx.die(515, "Property %s is not a list" % key)
         return default
@@ -348,13 +366,17 @@ class PrefsControl(WriteableConfigControl):
         import json
         if args.KEY in config.keys():
             list_value = self.get_list_value(args, config)
-            list_value.append(json.loads(args.VALUE))
         elif args.KEY.startswith('omero.web.'):
             list_value = self.get_omeroweb_default(args.KEY)
-            list_value.append(json.loads(args.VALUE))
         else:
-            list_value = [json.loads(args.VALUE)]
-        config[args.KEY] = json.dumps(list_value)
+            list_value = []
+        jv = json.loads(args.VALUE)
+        if not args.set or jv not in list_value:
+            list_value.append(json.loads(args.VALUE))
+            config[args.KEY] = json.dumps(list_value)
+            if args.report:
+                self.ctx.out(
+                    'Changed: Appended %s:%s' % (args.KEY, args.VALUE))
 
     @with_rw_config
     def remove(self, args, config):
@@ -372,6 +394,8 @@ class PrefsControl(WriteableConfigControl):
 
         list_value.remove(json.loads(args.VALUE))
         config[args.KEY] = json.dumps(list_value)
+        if args.report:
+            self.ctx.out('Changed: Removed %s:%s' % (args.KEY, args.VALUE))
 
     @with_config
     def keys(self, args, config):

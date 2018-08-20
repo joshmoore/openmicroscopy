@@ -27,20 +27,20 @@ import omero.cmd.admin.ResetPasswordRequestI;
 import omero.cmd.basic.DoAllI;
 import omero.cmd.basic.ListRequestsI;
 import omero.cmd.basic.TimingI;
+import omero.cmd.fs.FindPyramidsI;
 import omero.cmd.fs.ManageImageBinariesI;
 import omero.cmd.fs.OriginalMetadataRequestI;
 import omero.cmd.fs.UsedFilesRequestI;
 import omero.cmd.graphs.Chgrp2I;
-import omero.cmd.graphs.ChgrpFacadeI;
 import omero.cmd.graphs.ChildOptionI;
 import omero.cmd.graphs.Chmod2I;
-import omero.cmd.graphs.ChmodFacadeI;
 import omero.cmd.graphs.Chown2I;
-import omero.cmd.graphs.ChownFacadeI;
 import omero.cmd.graphs.Delete2I;
-import omero.cmd.graphs.DeleteFacadeI;
+import omero.cmd.graphs.DiskUsage2I;
 import omero.cmd.graphs.DiskUsageI;
 import omero.cmd.graphs.DuplicateI;
+import omero.cmd.graphs.FindChildrenI;
+import omero.cmd.graphs.FindParentsI;
 import omero.cmd.graphs.GraphRequestFactory;
 import omero.cmd.graphs.LegalGraphTargetsI;
 import omero.cmd.graphs.SkipHeadI;
@@ -51,7 +51,7 @@ import omero.cmd.mail.SendEmailRequestI;
  * register all its {@link Ice.ObjectFactory} instances with the
  * {@link Ice.Communicator}.
  *
- * @see <a href="http://trac.openmicroscopy.org/ome/ticket/6340">Trac ticket #6340</a>
+ * @see <a href="https://trac.openmicroscopy.org/ome/ticket/6340">Trac ticket #6340</a>
  */
 public class RequestObjectFactoryRegistry extends
         omero.util.ObjectFactoryRegistry implements ApplicationContextAware {
@@ -132,27 +132,11 @@ public class RequestObjectFactoryRegistry extends
             }
 
         });
-        factories.put(Chgrp.ice_staticId(),
-                new ObjectFactory(Chgrp.ice_staticId()) {
-                    @Override
-                    public Ice.Object create(String name) {
-                        return new ChgrpFacadeI(graphRequestFactory);
-                    }
-
-                });
         factories.put(Chgrp2I.ice_staticId(),
                 new ObjectFactory(Chgrp2I.ice_staticId()) {
                     @Override
                     public Ice.Object create(String name) {
                         return graphRequestFactory.getRequest(Chgrp2I.class);
-                    }
-
-                });
-        factories.put(Chmod.ice_staticId(),
-                new ObjectFactory(Chmod.ice_staticId()) {
-                    @Override
-                    public Ice.Object create(String name) {
-                        return new ChmodFacadeI(graphRequestFactory);
                     }
 
                 });
@@ -164,27 +148,11 @@ public class RequestObjectFactoryRegistry extends
                     }
 
                 });
-        factories.put(Chown.ice_staticId(),
-                new ObjectFactory(Chown.ice_staticId()) {
-                    @Override
-                    public Ice.Object create(String name) {
-                        return new ChownFacadeI(graphRequestFactory);
-                    }
-
-                });
         factories.put(Chown2I.ice_staticId(),
                 new ObjectFactory(Chown2I.ice_staticId()) {
                     @Override
                     public Ice.Object create(String name) {
                         return graphRequestFactory.getRequest(Chown2I.class);
-                    }
-
-                });
-        factories.put(Delete.ice_staticId(),
-                new ObjectFactory(Delete.ice_staticId()) {
-                    @Override
-                    public Ice.Object create(String name) {
-                        return new DeleteFacadeI(graphRequestFactory);
                     }
 
                 });
@@ -232,11 +200,28 @@ public class RequestObjectFactoryRegistry extends
                         return new ManageImageBinariesI(pixelsService, voter);
                     }
                 });
+        factories.put(FindPyramidsI.ice_staticId(),
+                new ObjectFactory(FindPyramidsI.ice_staticId()) {
+                    @Override
+                    public Ice.Object create(String name) {
+                        return new FindPyramidsI(pixelsService);
+                    }
+                });
         factories.put(DiskUsageI.ice_staticId(),
                 new ObjectFactory(DiskUsageI.ice_staticId()) {
                     @Override
                     public Ice.Object create(String name) {
                         return new DiskUsageI(pixelsService, thumbnailService, graphRequestFactory.getGraphPathBean());
+                    }
+                });
+        factories.put(DiskUsage2I.ice_staticId(),
+                new ObjectFactory(DiskUsage2I.ice_staticId()) {
+                    @Override
+                    public Ice.Object create(String name) {
+                        final DiskUsage2I request = graphRequestFactory.getRequest(DiskUsage2I.class);
+                        request.setPixelsService(pixelsService);
+                        request.setThumbnailService(thumbnailService);
+                        return request;
                     }
                 });
         factories.put(DuplicateI.ice_staticId(),
@@ -258,6 +243,20 @@ public class RequestObjectFactoryRegistry extends
                     @Override
                     public Ice.Object create(String name) {
                     	return new ResetPasswordRequestI(mailUtil, passwordUtil, sec, passwordProvider);
+                    }
+                });
+        factories.put(FindParentsI.ice_staticId(),
+                new ObjectFactory(FindParentsI.ice_staticId()) {
+                    @Override
+                    public Ice.Object create(String name) {
+                        return graphRequestFactory.getRequest(FindParentsI.class);
+                    }
+                });
+        factories.put(FindChildrenI.ice_staticId(),
+                new ObjectFactory(FindChildrenI.ice_staticId()) {
+                    @Override
+                    public Ice.Object create(String name) {
+                        return graphRequestFactory.getRequest(FindChildrenI.class);
                     }
                 });
         /* request parameters */

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 
-   Copyright 2009 - 2014 Glencoe Software, Inc. All rights reserved.
+   Copyright 2009 - 2016 Glencoe Software, Inc. All rights reserved.
    Use is subject to license terms supplied in LICENSE.txt
 
 """
@@ -716,16 +716,20 @@ class BaseClient(object):
         finally:
             self.__lock.release()
 
-    def getManagedRepository(self):
-        repoMap = self.getSession().sharedResources().repositories()
+    def getManagedRepository(self, description=False):
+        repos = self.getSession().sharedResources().repositories()
+        repoMap = zip(repos.proxies, repos.descriptions)
         prx = None
-        for prx in repoMap.proxies:
+        for (prx, desc) in repoMap:
             if not prx:
                 continue
             prx = omero.grid.ManagedRepositoryPrx.checkedCast(prx)
             if prx:
                 break
-        return prx
+        if description:
+            return(prx, desc)
+        else:
+            return prx
 
     def getRouter(self, comm):
         """
@@ -1002,7 +1006,6 @@ class BaseClient(object):
                 # * Ice.DNSException
             finally:
                 oldIc.destroy()
-                del oldIc._impl  # WORKAROUND ticket:2007
 
         finally:
             self.__lock.release()
@@ -1015,10 +1018,8 @@ class BaseClient(object):
         cannot be called, -1 is returned.
         """
 
-        s = omero.model.SessionI()
-        s.uuid = omero.rtypes.rstring(self.getSessionId())
         try:
-            svc = self.sf.getSessionService()
+            self.sf.getSessionService()
         except:
             self.__logger.warning(
                 "Cannot get session service for killSession. "
@@ -1028,12 +1029,7 @@ class BaseClient(object):
 
         count = 0
         try:
-            r = 1
-            while r > 0:
-                count += 1
-                r = svc.closeSession(s)
-        except omero.RemovedSessionException:
-            pass
+            count = self.destroySession(self.getSessionId())
         except:
             self.__logger.warning(
                 "Unknown exception while closing all references",
@@ -1041,6 +1037,27 @@ class BaseClient(object):
 
         # Now the server-side session is dead, call closeSession()
         self.closeSession()
+        return count
+
+    def destroySession(self, session_uuid):
+        """
+        Takes the UUID for a session and iterates over calls to
+        ISession.closeSession until the reference count hits 0.
+        Returns the number of calls to closeSession executed
+        before hitting 0. Raises any non-RemovedSessionExceptions.
+        """
+        svc = self.sf.getSessionService()
+        s = omero.model.SessionI()
+        s.uuid = omero.rtypes.rstring(session_uuid)
+        count = 0
+        try:
+            r = 1
+            while r > 0:
+                count += 1
+                r = svc.closeSession(s)
+        except omero.RemovedSessionException:
+            pass
+
         return count
 
     # Environment Methods

@@ -3,8 +3,6 @@
 <!--
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #
-# $Id$
-#
 # Copyright 2007-2014 Glencoe Software, Inc. All rights reserved.
 # Use is subject to license terms supplied in LICENSE.txt
 #
@@ -64,33 +62,12 @@
         <bean class="ome.services.blitz.impl.ScriptI">
             <constructor-arg ref="throttlingStrategy"/>
             <constructor-arg ref="scriptRepoHelper"/>
+            <constructor-arg ref="aclVoter"/>
+            <constructor-arg ref="omeroInterceptor"/>
             <constructor-arg ref="checksumProviderFactory"/>
             <constructor-arg ref="paramsCache"/>
         </bean>
     </constructor-arg>
-  </bean>
-  <bean id="scriptRepoHelper" class="ome.services.scripts.ScriptRepoHelper" depends-on="sessionManager">
-      <constructor-arg ref="executor"/>
-      <constructor-arg ref="roles"/>
-      <constructor-arg ref="uuid"/>
-  </bean>
-  <bean id="PythonScripts" class="ome.services.scripts.ScriptFileType">
-      <constructor-arg index="0" value="*.py"/>
-      <constructor-arg index="1" value="text/x-python"/>
-      <constructor-arg index="2" value="${omero.launcher.python}"/>
-      <constructor-arg index="3" value="${omero.process.python}"/>
-  </bean>
-  <bean id="JythonScripts" class="ome.services.scripts.ScriptFileType">
-      <constructor-arg index="0" value="*.jy"/>
-      <constructor-arg index="1" value="text/x-jython"/>
-      <constructor-arg index="2" value="${omero.launcher.jython}"/>
-      <constructor-arg index="3" value="${omero.process.jython}"/>
-  </bean>
-  <bean id="MatlabScripts" class="ome.services.scripts.ScriptFileType">
-      <constructor-arg index="0" value="*.m"/>
-      <constructor-arg index="1" value="text/x-matlab"/>
-      <constructor-arg index="2" value="${omero.launcher.matlab}"/>
-      <constructor-arg index="3" value="${omero.process.matlab}"/>
   </bean>
 
   <bean id="omero.api.Exporter" class="omero.api._ExporterTie" singleton="false">
@@ -129,7 +106,7 @@
 
   <!-- Stateless ome.api service-based
   ==============================================================================
-  See documentation at http://downloads.openmicroscopy.org/latest/omero5.2/api/package-summary.html
+  See documentation at https://downloads.openmicroscopy.org/latest/omero/api
   -->
 
 
@@ -336,6 +313,7 @@
   <bean id="::omero::cmd::Handle" class="omero.cmd._HandleTie" singleton="false">
     <constructor-arg>
         <bean class="omero.cmd.HandleI" singleton="false">
+            <constructor-arg ref="readOnlyStatus"/>
             <constructor-arg value="${omero.threads.cancel_timeout}"/>
         </bean>
     </constructor-arg>
@@ -358,8 +336,8 @@
   <bean id="graphRequestFactory" class="omero.cmd.graphs.GraphRequestFactory">
       <constructor-arg ref="aclVoter"/>
       <constructor-arg ref="roles"/>
-      <constructor-arg ref="systemTypes"/>
       <constructor-arg ref="graphPathBean"/>
+      <constructor-arg ref="adminPrivileges"/>
       <constructor-arg ref="ome.services.delete.Deletion"/>
       <constructor-arg>
         <map>
@@ -367,7 +345,10 @@
           <entry key="omero.cmd.graphs.Chmod2I" value-ref="chmodTargets"/>
           <entry key="omero.cmd.graphs.Chown2I" value-ref="chownTargets"/>
           <entry key="omero.cmd.graphs.Delete2I" value-ref="deleteTargets"/>
+          <entry key="omero.cmd.graphs.DiskUsage2I" value-ref="diskUsageTargets"/>
           <entry key="omero.cmd.graphs.DuplicateI" value-ref="duplicateTargets"/>
+          <entry key="omero.cmd.graphs.FindParentsI" value-ref="containerTargets"/>
+          <entry key="omero.cmd.graphs.FindChildrenI" value-ref="containedTargets"/>
         </map>
       </constructor-arg>
       <constructor-arg>
@@ -376,7 +357,10 @@
           <entry key="omero.cmd.graphs.Chmod2I" value-ref="chmodRules"/>
           <entry key="omero.cmd.graphs.Chown2I" value-ref="chownRules"/>
           <entry key="omero.cmd.graphs.Delete2I" value-ref="deleteRules"/>
+          <entry key="omero.cmd.graphs.DiskUsage2I" value-ref="diskUsageRules"/>
           <entry key="omero.cmd.graphs.DuplicateI" value-ref="duplicateRules"/>
+          <entry key="omero.cmd.graphs.FindParentsI" value-ref="containerRules"/>
+          <entry key="omero.cmd.graphs.FindChildrenI" value-ref="containedRules"/>
         </map>
       </constructor-arg>
       <constructor-arg>
@@ -420,6 +404,7 @@
   <bean class="omero.cmd.admin.CurrentSessionsRequestI$Factory" lazy-init="false">
       <constructor-arg ref="currentDetails"/>
       <constructor-arg ref="sessionManager"/>
+      <constructor-arg ref="sessionProvider"/>
      <property name="iceCommunicator" ref="Ice.Communicator"/>
   </bean>
 
@@ -438,6 +423,8 @@
     <constructor-arg index="1" ref="roles"/>
     <constructor-arg index="2" ref="executor"/>
     <constructor-arg index="3" ref="statefulExecutor"/>
+    <constructor-arg index="4" ref="omeroInterceptor"/>
+    <constructor-arg index="5" ref="uuid"/>  <!-- allows setting OriginalFile.repo -->
   </bean>
 
   <bean id="scheduledExecutorService" class="java.util.concurrent.ScheduledThreadPoolExecutor">

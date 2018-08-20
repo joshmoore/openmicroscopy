@@ -1,6 +1,6 @@
 /*
  *------------------------------------------------------------------------------
- *  Copyright (C) 2006-2015 University of Dundee. All rights reserved.
+ *  Copyright (C) 2006-2016 University of Dundee. All rights reserved.
  *
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -53,7 +53,6 @@ import javax.swing.SwingUtilities;
 
 import org.apache.commons.collections.CollectionUtils;
 import org.jdesktop.swingx.JXBusyLabel;
-
 import org.openmicroscopy.shoola.agents.metadata.IconManager;
 import org.openmicroscopy.shoola.agents.metadata.MetadataViewerAgent;
 import org.openmicroscopy.shoola.agents.metadata.util.FilesetInfoDialog;
@@ -63,6 +62,7 @@ import org.openmicroscopy.shoola.agents.util.ui.ScriptSubMenu;
 import org.openmicroscopy.shoola.env.LookupNames;
 import org.openmicroscopy.shoola.env.data.model.FigureParam;
 import org.openmicroscopy.shoola.env.data.model.ScriptObject;
+import org.openmicroscopy.shoola.util.PojosUtil;
 import org.openmicroscopy.shoola.util.filter.file.CppFilter;
 import org.openmicroscopy.shoola.util.filter.file.CustomizedFileFilter;
 import org.openmicroscopy.shoola.util.filter.file.JavaFilter;
@@ -178,7 +178,7 @@ class ToolBar
         if (!CollectionUtils.isEmpty(nodes)) {
             Iterator<DataObject> i = nodes.iterator();
             while (i.hasNext()) {
-                if (model.isArchived(i.next())) {
+                if (PojosUtil.isDownloadable(i.next())) {
                     b = true;
                     break;
                 }
@@ -194,8 +194,8 @@ class ToolBar
         exportAsOmeTiffItem.addActionListener(controller);
         exportAsOmeTiffItem.setActionCommand(
                 ""+EditorControl.EXPORT_AS_OMETIFF);
-        if (model.isMultiSelection()) b = false;
-        else {
+        b = false;
+        if (!model.isMultiSelection() && MetadataViewerAgent.canCreate()) {
             b = model.getRefObject() instanceof ImageData &&
                     !model.isLargeImage();
         }
@@ -596,16 +596,18 @@ class ToolBar
         exportAsOmeTiffButton.setEnabled(false);
         
         if (model.isSingleMode()) {
-            exportAsOmeTiffButton.setEnabled(model.getImage() != null
-                    && !model.isLargeImage());
+            if (MetadataViewerAgent.canCreate()) {
+                exportAsOmeTiffButton.setEnabled(model.getImage() != null
+                        && !model.isLargeImage());
+            }
             viewButton.setEnabled(model.getImage() != null);
             pathButton.setEnabled(model.getImage() != null);
             locationButton.setEnabled((model.getImage() != null || model
                     .getRefObject() instanceof DatasetData));
         }
 
-        publishingButton.setEnabled(true);
-        scriptsButton.setEnabled(true);
+        publishingButton.setEnabled(MetadataViewerAgent.canCreate());
+        scriptsButton.setEnabled(MetadataViewerAgent.canCreate());
         if (publishingDialog != null)
             publishingDialog.setRootObject();
         if (analysisDialog != null)
@@ -621,6 +623,7 @@ class ToolBar
 	 */
 	void launchOptions(Component source, Point p, int index)
 	{
+	    if (!publishingButton.isEnabled()) return;
 		if (p == null) p = new Point(0, 0);
 		switch (index) {
 			case MetadataViewer.PUBLISHING_OPTION:

@@ -10,13 +10,20 @@ package omero.model;
 import static omero.rtypes.rstring;
 
 import java.awt.Shape;
+import java.awt.geom.Rectangle2D;
 import java.util.List;
 import java.util.Random;
 
 public class SmartPolygonI extends omero.model.PolygonI implements SmartShape {
 
     public void areaPoints(PointCallback cb) {
-        throw new UnsupportedOperationException();
+        Shape s = asAwtShape();
+        if (s == null) {
+            return;
+        }
+        if (transform != null) s = Util.transformAwtShape(s, transform);
+        Rectangle2D r = s.getBounds2D();
+        Util.pointsByBoundingBox(s, r, cb);
     }
     
     public Shape asAwtShape() {
@@ -43,12 +50,12 @@ public class SmartPolygonI extends omero.model.PolygonI implements SmartShape {
             StringBuilder sb = new StringBuilder();
             int sz = random.nextInt(20) + 1;
             for (int i = 0; i < sz; i++) {
-                int cx = random.nextInt(100);
-                int cy = random.nextInt(100);
+                int x = random.nextInt(100);
+                int y = random.nextInt(100);
                 if (i > 0) {
                     sb.append(",");
                 }
-                Util.appendSvgPoint(sb, cx, cy);
+                Util.appendSvgPoint(sb, x, y);
             }
             this.points = rstring(sb.toString());
         } else {

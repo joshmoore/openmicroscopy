@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 University of Dundee & Open Microscopy Environment.
+ * Copyright (C) 2014-2018 University of Dundee & Open Microscopy Environment.
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -41,17 +41,26 @@ abstract class BaseDBCheck {
     private final String version;
     private final int patch;
 
-    private final String configKey = "DB check " + getClass().getSimpleName();
-    private final String configValue = getCheckDone();
-    private final String configKeyValue = configKey + ": " + configValue;
+    private final String configKey, configValue, configKeyValue;
+
+    private final boolean isReadOnlyDb;
 
     /**
      * @param executor executor to use for configuration map check
+     * @param preferences the OMERO configuration settings
+     * @param readOnly the read-only status
      */
-    protected BaseDBCheck(Executor executor, PreferenceContext preferences) {
+    protected BaseDBCheck(Executor executor, PreferenceContext preferences, ReadOnlyStatus readOnly) {
         this.executor = executor;
         this.version = preferences.getProperty("omero.db.version");
         this.patch = Integer.parseInt(preferences.getProperty("omero.db.patch"));
+
+        /* these values may depend upon version and patch above */
+        configKey = "DB check " + getClass().getSimpleName();
+        configValue = getCheckDone();
+        configKeyValue = configKey + ": " + configValue;
+
+        isReadOnlyDb = readOnly.isReadOnlyDb();
     }
 
     /**
@@ -102,9 +111,13 @@ abstract class BaseDBCheck {
      */
     public void start() {
         if (isCheckRequired()) {
-            checkIsStarting();
-            doCheck();
-            checkIsDone();
+            if (isReadOnlyDb) {
+                doCheck();
+            } else {
+                checkIsStarting();
+                doCheck();
+                checkIsDone();
+            }
             log.info("performed " + configKeyValue);
         } else if (log.isDebugEnabled()) {
             log.debug("skipped " + configKey);
@@ -121,5 +134,12 @@ abstract class BaseDBCheck {
      */
     protected String getCheckDone() {
         return "done";
+    }
+
+    /**
+     * @return a string representing the version and patch of this server
+     */
+    protected String getOmeroVersion() {
+        return version + "__" + patch;
     }
 }

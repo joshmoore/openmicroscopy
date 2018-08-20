@@ -1,6 +1,6 @@
 /*
  *------------------------------------------------------------------------------
- * Copyright (C) 2006-2015 University of Dundee. All rights reserved.
+ * Copyright (C) 2006-2017 University of Dundee. All rights reserved.
  *
  *
  * This program is free software; you can redistribute it and/or modify
@@ -20,17 +20,16 @@
  */
 package omero.gateway.model;
 
-import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
 
-import ome.formats.model.UnitsFactory;
 import ome.model.units.BigResult;
 import omero.RInt;
 import omero.RString;
 import omero.rtypes;
 import omero.model.Length;
 import omero.model.LengthI;
+import omero.model.Line;
 import omero.model.Shape;
 import omero.model.enums.UnitsLength;
 
@@ -47,15 +46,6 @@ import omero.model.enums.UnitsLength;
 public class ShapeSettingsData
     extends DataObject
 {
-
-    /** The <code>Butt</code> descriptor. */
-    public static final String	LINE_CAP_BUTT = "Butt";
-
-    /** The <code>Round</code> descriptor. */
-    public static final String	LINE_CAP_ROUND = "Round";
-
-    /** The <code>Square</code> descriptor. */
-    public static final String	LINE_CAP_SQUARE = "Square";
 
     /** The default fill color. */
     public final static Color DEFAULT_FILL_COLOUR = new Color(0, 0, 0, 64);
@@ -89,6 +79,37 @@ public class ShapeSettingsData
     /** Set if font bold. */
     public final static String FONT_REGULAR = "Normal";
 
+    /**
+     * Returns the Color's RGBA value as integer
+     * 
+     * @param c
+     *            The {@link Color}
+     * @return See above.
+     */
+    public static int getRGBA(Color c) {
+        int rgba = 0;
+        rgba |= (c.getRed() & 255) << 24;
+        rgba |= (c.getGreen() & 255) << 16;
+        rgba |= (c.getBlue() & 255) << 8;
+        rgba |= (c.getAlpha() & 255);
+        return rgba;
+    }
+
+    /**
+     * Creates a {@link Color} object from an RGBA integer value
+     * 
+     * @param rgba
+     *            The RGBA value
+     * @return See above.
+     */
+    public static Color getColor(int rgba) {
+        int r = (rgba >> 24) & 0xFF;
+        int g = (rgba >> 16) & 0xFF;
+        int b = (rgba >> 8) & 0xFF;
+        int a = rgba & 0xFF;
+        return new Color(r, g, b, a);
+    }
+    
     /**
      * Returns the font style is supported.
      *
@@ -156,8 +177,7 @@ public class ShapeSettingsData
         Shape shape = (Shape) asIObject();
         RInt value = shape.getFillColor();
         if (value == null) return DEFAULT_FILL_COLOUR;
-        Color c = new Color(value.getValue(), true);
-        if (c.getAlpha() == 0) return new Color(value.getValue(), false);
+        Color c = getColor(value.getValue()); 
         return c;
     }
 
@@ -171,8 +191,10 @@ public class ShapeSettingsData
         Shape shape = (Shape) asIObject();
         if (shape == null) 
             throw new IllegalArgumentException("No shape specified.");
-        if (fillColour == null) return;
-        shape.setFillColor(rtypes.rint(fillColour.getRGB()));
+        if (fillColour == null) 
+            return;
+        
+       shape.setFillColor(rtypes.rint(getRGBA(fillColour)));
         setDirty(true);
     }
 
@@ -186,8 +208,7 @@ public class ShapeSettingsData
         Shape shape = (Shape) asIObject();
         RInt value = shape.getStrokeColor();
         if (value == null) return DEFAULT_STROKE_COLOUR;
-        Color c = new Color(value.getValue(), true);
-        if (c.getAlpha() == 0) return new Color(value.getValue(), false);
+        Color c =  getColor(value.getValue()); 
         return c;
     }
 
@@ -202,27 +223,8 @@ public class ShapeSettingsData
         if (shape == null) 
             throw new IllegalArgumentException("No shape specified.");
         if (strokeColour == null) return;
-        shape.setStrokeColor(rtypes.rint(strokeColour.getRGB()));
+        shape.setStrokeColor(rtypes.rint(getRGBA(strokeColour)));
         setDirty(true);
-    }
-
-    /**
-     * Returns the stroke's width.
-     *
-     * @return See above.
-     * @deprecated Replaced by {@link #getStrokeWidth(UnitsLength)}
-     */
-    @Deprecated
-    public double getStrokeWidth()
-    {
-        Shape shape = (Shape) asIObject();
-        Length value = shape.getStrokeWidth();
-        if (value == null) return 1.0;
-        try {
-            return new LengthI(value, UnitsFactory.Shape_StrokeWidth).getValue();
-        } catch (BigResult e) {
-            return value.getValue();
-        }
     }
 
     /**
@@ -241,22 +243,6 @@ public class ShapeSettingsData
         if (value == null || value.getValue()<=0) 
             return new LengthI(1, UnitsLength.PIXEL);
         return unit == null ? value : new LengthI(value, unit);
-    }
-
-    /**
-     * Set the stroke width.
-     *
-     * @param strokeWidth See above.
-     * @deprecated Replaced by {@link #setStrokeWidth(Length)}
-     */
-    @Deprecated
-    public void setStrokeWidth(Double strokeWidth)
-    {
-        Shape shape = (Shape) asIObject();
-        if (shape == null) 
-            throw new IllegalArgumentException("No shape specified.");
-        shape.setStrokeWidth(new LengthI(strokeWidth, UnitsFactory.Shape_StrokeWidth));
-        setDirty(true);
     }
 
     /**
@@ -310,51 +296,6 @@ public class ShapeSettingsData
         setDirty(true);
     }
 
-    /**
-     * Returns the shape of the end of the line.
-     *
-     * @return See above.
-     */
-    public int getLineCap()
-    {
-        Shape shape = (Shape) asIObject();
-        RString value = shape.getStrokeLineCap();
-        if (value == null) return BasicStroke.CAP_BUTT;
-        String v = value.getValue();
-        if (LINE_CAP_BUTT.equals(v)) return BasicStroke.CAP_BUTT;
-        else if (LINE_CAP_ROUND.equals(v)) return BasicStroke.CAP_ROUND;
-        else if (LINE_CAP_SQUARE.equals(v)) return BasicStroke.CAP_SQUARE;
-        return BasicStroke.CAP_BUTT;
-    }
-
-    /**
-     * Sets the line cap.
-     *
-     * @param lineCap See above.
-     */
-    public void setLineCap(int lineCap)
-    {
-        Shape shape = (Shape) asIObject();
-        if (shape == null) 
-            throw new IllegalArgumentException("No shape specified.");
-        switch(lineCap)
-        {
-            case BasicStroke.CAP_BUTT:
-                shape.setStrokeLineCap(rtypes.rstring(LINE_CAP_BUTT));
-                break;
-            case BasicStroke.CAP_ROUND:
-                shape.setStrokeLineCap(rtypes.rstring(LINE_CAP_BUTT));
-                break;
-            case BasicStroke.CAP_SQUARE:
-                shape.setStrokeLineCap(rtypes.rstring(LINE_CAP_BUTT));
-                break;
-            default:
-                shape.setStrokeLineCap(rtypes.rstring(LINE_CAP_BUTT));
-                break;
-        }
-        setDirty(true);
-    }
-
     /** 
      * Get the style of the font for Shape.
      * @return See above.
@@ -366,7 +307,13 @@ public class ShapeSettingsData
             style = style | Font.BOLD;
         if (isFontItalic())
             style = style | Font.ITALIC;
-        return new Font(getFontFamily(), style, (int) getFontSize());
+        int size = DEFAULT_FONT_SIZE;
+        try {
+            size = (int) getFontSize(UnitsLength.POINT).getValue();
+        } catch (BigResult e) {
+            // just use default font size
+        }
+        return new Font(getFontFamily(), style, size);
     }
 
     /**
@@ -401,37 +348,6 @@ public class ShapeSettingsData
     /**
      * Returns the stroke.
      *
-     * @return See above.
-     * @deprecated Replaced by {@link #getFontSize(UnitsLength)}
-     */
-    @Deprecated
-    public double getFontSize()
-    {
-        Shape shape = (Shape) asIObject();
-        if (shape == null) 
-            throw new IllegalArgumentException("No shape specified.");
-        Length size = shape.getFontSize();
-        if (size != null) {
-            try {
-                if (size.getUnit().equals(UnitsLength.PIXEL)) {
-                    return size.getValue();
-                }
-                return (new LengthI(size, UnitsLength.POINT)).getValue();
-            } catch (Exception e) {
-                if (e instanceof BigResult) {
-                    BigResult ex = (BigResult) e;
-                    if (ex.result != null) {
-                        return ex.result.doubleValue();
-                    }
-                }
-            }
-        }
-        return DEFAULT_FONT_SIZE;
-    }
-
-    /**
-     * Returns the stroke.
-     *
      * @param unit
      *            The unit (may be null, in which case no conversion will be
      *            performed)
@@ -447,21 +363,6 @@ public class ShapeSettingsData
         if (size != null) 
             return unit == null ? size : new LengthI(size, unit);
         return new LengthI(DEFAULT_FONT_SIZE, UnitsLength.POINT);
-    }
-
-    /**
-     * Set the size of the font.
-     * @deprecated Replaced by {@link #setFontSize(Length)}
-     */
-    @Deprecated
-    public void setFontSize(int fontSize)
-    {
-        Shape shape = (Shape) asIObject();
-        if (shape == null) 
-            throw new IllegalArgumentException("No shape specified.");
-        if (fontSize <= 0) fontSize = DEFAULT_FONT_SIZE;
-        shape.setFontSize(new LengthI(fontSize, UnitsLength.POINT));
-        setDirty(true);
     }
 
     /**
@@ -502,8 +403,6 @@ public class ShapeSettingsData
         if (shape == null) 
             throw new IllegalArgumentException("No shape specified.");
         shape.setFontStyle(rtypes.rstring(formatFontStyle(fontStyle)));
-        //update the font weight.
-        shape.setFontWeight(null);
         setDirty(true);
     }
 
@@ -512,8 +411,13 @@ public class ShapeSettingsData
      *
      * @return See above.
      */
-    public String getMarkerStart()
-    {
+    public String getMarkerStart() {
+        Shape shape = (Shape) asIObject();
+        if (shape instanceof Line) {
+            Line l = (Line) shape;
+            return l.getMarkerStart() != null ? l.getMarkerStart().getValue()
+                    : "";
+        }
         return "";
     }
 
@@ -524,27 +428,41 @@ public class ShapeSettingsData
      */
     public String getMarkerEnd()
     {
+        Shape shape = (Shape) asIObject();
+        if (shape instanceof Line) {
+            Line l = (Line) shape;
+            return l.getMarkerEnd() != null ? l.getMarkerEnd().getValue()
+                    : "";
+        }
         return "";
     }
 
     /**
-     * Returns the marker start.
+     * Sets the marker start.
      *
      * @param start The value to set.
      */
-    public String setMarkerStart(String start)
+    public void setMarkerStart(String start)
     {
-        return "";
+        Shape shape = (Shape) asIObject();
+        if (shape instanceof Line) {
+            Line l = (Line) shape;
+            l.setMarkerStart(rtypes.rstring(start));
+        }
     }
 
     /**
-     * Returns the marker end.
+     * Sets the marker end.
      *
      * @param end The value to set.
      */
-    public String setMarkerEnd(String end)
+    public void setMarkerEnd(String end)
     {
-        return "";
+        Shape shape = (Shape) asIObject();
+        if (shape instanceof Line) {
+            Line l = (Line) shape;
+            l.setMarkerEnd(rtypes.rstring(end));
+        }
     }
 
     /**
@@ -555,11 +473,8 @@ public class ShapeSettingsData
      */
     public boolean isFontItalic()
     { 
-        String value = getFontStyle();
-        value = value.toLowerCase();
-        String f = FONT_ITALIC.toLowerCase();
-        String f1 = FONT_BOLD_ITALIC.toLowerCase();
-        return (f.equals(value) || f1.equals(value));
+        final String style = getFontStyle();
+        return FONT_ITALIC.equalsIgnoreCase(style) || FONT_BOLD_ITALIC.equalsIgnoreCase(style);
     }
 
     /**
@@ -570,23 +485,7 @@ public class ShapeSettingsData
      */
     public boolean isFontBold()
     { 
-        //in order to handle the previous value.
-        Shape shape = (Shape) asIObject();
-        if (shape == null) 
-            throw new IllegalArgumentException("No shape specified.");
-        String f = FONT_BOLD.toLowerCase();
-        String f1 = FONT_BOLD_ITALIC.toLowerCase();
-        String value;
-        RString weight = shape.getFontWeight();
-        if (weight != null) {
-            value = weight.getValue();
-            value = value.toLowerCase();
-            if (value.trim().length() > 0)
-                return (f.equals(value) || f1.equals(value));
-        }
-        value = getFontStyle();
-        value = value.toLowerCase();
-        return (f.equals(value) || f1.equals(value));
+        final String style = getFontStyle();
+        return FONT_BOLD.equalsIgnoreCase(style) || FONT_BOLD_ITALIC.equalsIgnoreCase(style);
     }
-
 }

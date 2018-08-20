@@ -27,12 +27,9 @@
     <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
 
     {% block link %}
-		<link rel="shortcut icon" href="/favicon.ico" type="image/x-icon">
-		<link rel="icon" href="/favicon.ico" type="image/x-icon">
 		<link rel="stylesheet" href="{% static "webgateway/css/reset.css"|add:url_suffix %}" type="text/css" />   
 		<link rel="stylesheet" href="{% static "webgateway/css/ome.body.css"|add:url_suffix %}" type="text/css" />
 		<link rel="stylesheet" href="{% static "webclient/css/dusty.css"|add:url_suffix %}" type="text/css" media="screen"/>
-		
     {% endblock %}
 
 
@@ -58,5 +55,10 @@
 
 {% endblock %}
 
+
+    <!-- settings.BASE_INCLUDE_TEMPLATE included here -->
+    {% if base_include_template %}
+      {% include base_include_template %}
+    {% endif %}
 </body>
 </html>

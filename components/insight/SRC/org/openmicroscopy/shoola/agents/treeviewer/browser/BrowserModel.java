@@ -330,12 +330,7 @@ class BrowserModel
         		currentLoader = new AdminLoader(component, ctx,
         				(TreeImageSet) expNode);
         		currentLoader.load();
-            } else if (ho instanceof FileData) {
-            	FileData fa = (FileData) ho;
-            	if (fa.isDirectory() && !fa.isHidden()) {
-            		
-            	}
-            }
+            } 
     	}
     }
 
@@ -800,6 +795,7 @@ class BrowserModel
 	/** Creates a {@link DeleteCmd} command to execute the action. */
 	void delete()
 	{
+        if (!TreeViewerAgent.canCreate()) return;
 		TreeImageDisplay[] selected = getSelectedDisplays();
     	int count = 0;
     	boolean b = false;

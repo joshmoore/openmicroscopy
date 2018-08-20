@@ -19,13 +19,14 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-from test.integration.clitest.cli import CLITest
+from omero.testlib.cli import CLITest
 from omero.cli import NonZeroReturnCode
 from omero.plugins.ldap import LdapControl
 
 import pytest
 
-subcommands = ["active", "list", "discover", "create", "getdn", "setdn"]
+subcommands = ["active", "discover", "create", "getdn", "setdn"]
+# 'list' command is available to non-admins
 
 
 class TestLDAP(CLITest):

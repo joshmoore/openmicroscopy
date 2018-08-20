@@ -6,7 +6,7 @@
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 #
 #
-# Copyright (c) 2008-2014 University of Dundee.
+# Copyright (c) 2008-2016 University of Dundee.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -28,8 +28,8 @@
 
 
 import os.path
+import warnings
 import sys
-import platform
 import logging
 import omero
 import omero.config
@@ -41,8 +41,15 @@ import random
 import string
 
 from omero_ext import portalocker
+from omero.install.python_warning import py27_only, PYTHON_WARNING
+from omero.util.concurrency import get_event
+from utils import sort_properties_to_tuple
+from connector import Server
 
 logger = logging.getLogger(__name__)
+
+if not py27_only():
+    warnings.warn("WARNING: %s" % PYTHON_WARNING, RuntimeWarning)
 
 # LOGS
 # NEVER DEPLOY a site into production with DEBUG turned on.
@@ -80,10 +87,9 @@ FULL_REQUEST_LOGFORMAT = (
     ' (proc.%(process)5.5d) %(funcName)s():%(lineno)d'
     ' HTTP %(status_code)d %(request)s')
 
-if platform.system() in ("Windows",):
-    LOGGING_CLASS = 'logging.handlers.RotatingFileHandler'
-else:
-    LOGGING_CLASS = 'omero_ext.cloghandler.ConcurrentRotatingFileHandler'
+LOGGING_CLASS = 'omero_ext.cloghandler.ConcurrentRotatingFileHandler'
+LOGSIZE = 500000000
+
 
 LOGGING = {
     'version': 1,
@@ -110,7 +116,7 @@ LOGGING = {
             'class': LOGGING_CLASS,
             'filename': os.path.join(
                 LOGDIR, 'OMEROweb.log').replace('\\', '/'),
-            'maxBytes': 1024*1024*5,  # 5 MB
+            'maxBytes': LOGSIZE,
             'backupCount': 10,
             'formatter': 'standard',
         },
@@ -118,8 +124,8 @@ LOGGING = {
             'level': 'DEBUG',
             'class': LOGGING_CLASS,
             'filename': os.path.join(
-                LOGDIR, 'OMEROweb_brokenrequest.log').replace('\\', '/'),
-            'maxBytes': 1024*1024*5,  # 5 MB
+                LOGDIR, 'OMEROweb.log').replace('\\', '/'),
+            'maxBytes': LOGSIZE,
             'backupCount': 10,
             'filters': ['require_debug_false'],
             'formatter': 'full_request',
@@ -159,9 +165,7 @@ LOGGING = {
     }
 }
 
-# Load custom settings from etc/grid/config.xml
-# Tue  2 Nov 2010 11:03:18 GMT -- ticket:3228
-from omero.util.concurrency import get_event
+
 CONFIG_XML = os.path.join(OMERO_HOME, 'etc', 'grid', 'config.xml')
 count = 10
 event = get_event("websettings")
@@ -262,6 +266,7 @@ def leave_none_unset_int(s):
     if s is not None:
         return int(s)
 
+
 CUSTOM_HOST = CUSTOM_SETTINGS.get("Ice.Default.Host", "localhost")
 CUSTOM_HOST = CUSTOM_SETTINGS.get("omero.master.host", CUSTOM_HOST)
 # DO NOT EDIT!
@@ -274,7 +279,7 @@ INTERNAL_SETTINGS_MAPPING = {
         ["CHECK_VERSION", "true", parse_boolean, None],
 
     # Allowed hosts:
-    # https://docs.djangoproject.com/en/1.6/ref/settings/#allowed-hosts
+    # https://docs.djangoproject.com/en/1.8/ref/settings/#allowed-hosts
     "omero.web.allowed_hosts":
         ["ALLOWED_HOSTS", '["*"]', json.loads, None],
 
@@ -334,7 +339,9 @@ CUSTOM_SETTINGS_MAPPINGS = {
         ["DEBUG",
          "false",
          parse_boolean,
-         "A boolean that turns on/off debug mode."],
+         ("A boolean that turns on/off debug mode. "
+          "Use debug mode only in development, not in production, as it logs "
+          "sensitive and confidential information in plaintext.")],
     "omero.web.secret_key":
         ["SECRET_KEY",
          None,
@@ -370,6 +377,26 @@ CUSTOM_SETTINGS_MAPPINGS = {
         ["APPLICATION_SERVER_MAX_REQUESTS", 0, int,
          ("The maximum number of requests a worker will process before "
           "restarting.")],
+    "omero.web.middleware":
+        ["MIDDLEWARE_CLASSES_LIST",
+         ('['
+          '{"index": 1, '
+          '"class": "django.middleware.common.BrokenLinkEmailsMiddleware"},'
+          '{"index": 2, '
+          '"class": "django.middleware.common.CommonMiddleware"},'
+          '{"index": 3, '
+          '"class": "django.contrib.sessions.middleware.SessionMiddleware"},'
+          '{"index": 4, '
+          '"class": "django.middleware.csrf.CsrfViewMiddleware"},'
+          '{"index": 5, '
+          '"class": "django.contrib.messages.middleware.MessageMiddleware"}'
+          ']'),
+         json.loads,
+         ('Warning: Only system administrators should use this feature. '
+          'List of Django middleware classes in the form '
+          '[{"class": "class.name", "index": FLOAT}]. '
+          'See https://docs.djangoproject.com/en/1.8/topics/http/middleware/. '
+          'Classes will be ordered by increasing index')],
     "omero.web.prefix":
         ["FORCE_SCRIPT_NAME",
          None,
@@ -424,6 +451,11 @@ CUSTOM_SETTINGS_MAPPINGS = {
           " delete stale data using the cache session store backend, see "
           ":djangodoc:`Django cached session documentation <topics/http/"
           "sessions/#using-cached-sessions>` for more details.")],
+    "omero.web.secure":
+        ["SECURE",
+         "false",
+         parse_boolean,
+         ("Force all backend OMERO.server connections to use SSL.")],
     "omero.web.session_cookie_age":
         ["SESSION_COOKIE_AGE",
          86400,
@@ -472,7 +504,6 @@ CUSTOM_SETTINGS_MAPPINGS = {
           "and restarted. Check Gunicorn Documentation "
           "http://docs.gunicorn.org/en/stable/settings.html#timeout")],
 
-
     # Public user
     "omero.web.public.enabled":
         ["PUBLIC_ENABLED",
@@ -481,12 +512,16 @@ CUSTOM_SETTINGS_MAPPINGS = {
          "Enable and disable the OMERO.web public user functionality."],
     "omero.web.public.url_filter":
         ["PUBLIC_URL_FILTER",
-         r'^/(?!webadmin)',
+         r'(?#This regular expression matches nothing)a^',
          re.compile,
-         ("Set a URL filter for which the OMERO.web public user is allowed to"
-          " navigate. The idea is that you can create the public pages"
-          " yourself (see OMERO.web framework since we do not provide public"
-          " pages.")],
+         ("Set a regular expression that matches URLs the public user is "
+          "allowed to access. If this is not set, no URLs will be "
+          "publicly available.")],
+    "omero.web.public.get_only":
+        ["PUBLIC_GET_ONLY",
+         "true",
+         parse_boolean,
+         "Restrict public users to GET requests only"],
     "omero.web.public.server_id":
         ["PUBLIC_SERVER_ID", 1, int, "Server to authenticate against."],
     "omero.web.public.user":
@@ -533,6 +568,20 @@ CUSTOM_SETTINGS_MAPPINGS = {
          ("Django view which handles display of, or redirection to, the "
           "desired full image viewer.")],
 
+    # OPEN WITH
+    "omero.web.open_with":
+        ["OPEN_WITH",
+         ('[["Image viewer", "webgateway", {"supported_objects": ["image"],'
+          '"script_url": "webclient/javascript/ome.openwith_viewer.js"}]]'),
+         json.loads,
+         ("A list of viewers that can be used to display selected Images "
+          "or other objects. Each viewer is defined as "
+          "``[\"Name\", \"url\", options]``. Url is reverse(url). "
+          "Selected objects are added to the url as ?image=:1&image=2"
+          "Objects supported must be specified in options with "
+          "e.g. ``{\"supported_objects\":[\"images\"]}`` "
+          "to enable viewer for one or more images.")],
+
     # PIPELINE 1.3.20
 
     # Pipeline is an asset packaging library for Django, providing both CSS
@@ -567,8 +616,7 @@ CUSTOM_SETTINGS_MAPPINGS = {
          ("Customize webclient login page with your own logo. Logo images "
           "should ideally be 150 pixels high or less and will appear above "
           "the OMERO logo. You will need to host the image somewhere else "
-          "and link to it with"
-          " ``\"http://www.openmicroscopy.org/site/logo.jpg\"``.")],
+          "and link to it with the OMERO logo.")],
     "omero.web.login_view":
         ["LOGIN_VIEW", "weblogin", str, None],
     "omero.web.staticfile_dirs":
@@ -584,8 +632,7 @@ CUSTOM_SETTINGS_MAPPINGS = {
          '[]',
          json.loads,
          ("List of locations of the template source files, in search order. "
-          "Note that these paths should use Unix-style forward slashes, even"
-          " on Windows.")],
+          "Note that these paths should use Unix-style forward slashes.")],
     "omero.web.index_template":
         ["INDEX_TEMPLATE",
          None,
@@ -593,6 +640,11 @@ CUSTOM_SETTINGS_MAPPINGS = {
          ("Define template used as an index page ``http://your_host/omero/``."
           "If None user is automatically redirected to the login page."
           "For example use 'webclient/index.html'. ")],
+    "omero.web.base_include_template":
+        ["BASE_INCLUDE_TEMPLATE",
+         None,
+         identity,
+         ("Template to be included in every page, at the end of the <body>")],
     "omero.web.login_redirect":
         ["LOGIN_REDIRECT",
          '{}',
@@ -602,7 +654,7 @@ CUSTOM_SETTINGS_MAPPINGS = {
           " <ref/urlresolvers/#django.core.urlresolvers.reverse>`. "
           "For example: ``'{\"redirect\": [\"webindex\"], \"viewname\":"
           " \"load_template\", \"args\":[\"userdata\"], \"query_string\":"
-          " \"experimenter=-1\"}'``")],
+          " {\"experimenter\": -1}}'``")],
     "omero.web.apps":
         ["ADDITIONAL_APPS",
          '[]',
@@ -617,22 +669,49 @@ CUSTOM_SETTINGS_MAPPINGS = {
          int,
          ("Number of images displayed within a dataset or 'orphaned'"
           " container to prevent from loading them all at once.")],
+    "omero.web.thumbnails_batch":
+        ["THUMBNAILS_BATCH",
+         50,
+         int,
+         ("Number of thumbnails retrieved to prevent from loading them"
+          " all at once. Make sure the size is not too big, otherwise"
+          " you may exceed limit request line, see"
+          " http://docs.gunicorn.org/en/latest/settings.html"
+          "?highlight=limit_request_line")],
     "omero.web.ui.top_links":
         ["TOP_LINKS",
          ('['
           '["Data", "webindex", {"title": "Browse Data via Projects, Tags'
           ' etc"}],'
           '["History", "history", {"title": "History"}],'
-          '["Help", "http://help.openmicroscopy.org/",'
+          '["Help", "https://help.openmicroscopy.org/",'
           '{"title":"Open OMERO user guide in a new tab", "target":"new"}]'
           ']'),
          json.loads,
-         ("Add links to the top header: links are ``['Link Text', 'link',"
-          " options]``, where "
-          "the url is reverse('link') OR simply 'link' (for external urls). "
-          "E.g. ``'[[\"Webtest\", \"webtest_index\"], [\"Homepage\","
+         ("Add links to the top header: links are ``['Link Text', "
+          "'link|lookup_view', options]``, where the url is reverse('link'), "
+          "simply 'link' (for external urls) or lookup_view is a detailed "
+          "dictionary {\"viewname\": \"str\", \"args\": [], \"query_string\": "
+          "{\"param\": \"value\" }], "
+          "E.g. ``'[\"Webtest\", \"webtest_index\"] or [\"Homepage\","
           " \"http://...\", {\"title\": \"Homepage\", \"target\": \"new\"}"
-          " ]]'``")],
+          " ] or [\"Repository\", {\"viewname\": \"webindex\", "
+          "\"query_string\": {\"experimenter\": -1}}, "
+          "{\"title\": \"Repo\"}]'``")],
+    "omero.web.ui.metadata_panes":
+        ["METADATA_PANES",
+         ('['
+          '{"name": "tag", "label": "Tags", "index": 1},'
+          '{"name": "map", "label": "Key-Value Pairs", "index": 2},'
+          '{"name": "table", "label": "Tables", "index": 3},'
+          '{"name": "file", "label": "Attachments", "index": 4},'
+          '{"name": "comment", "label": "Comments", "index": 5},'
+          '{"name": "rating", "label": "Ratings", "index": 6},'
+          '{"name": "other", "label": "Others", "index": 7}'
+          ']'),
+         json.loads,
+         ("Manage Metadata pane accordion. This functionality is limited to"
+          " the exiting sections.")],
     "omero.web.ui.right_plugins":
         ["RIGHT_PLUGINS",
          ('[["Acquisition",'
@@ -659,6 +738,22 @@ CUSTOM_SETTINGS_MAPPINGS = {
           " 'webtest/webclient_plugins/center_plugin.overlay.js.html',"
           " 'channel_overlay_panel']``. "
           "The javascript loads data into ``$('#div_id')``.")],
+
+    # CORS
+    "omero.web.cors_origin_whitelist":
+        ["CORS_ORIGIN_WHITELIST",
+         '[]',
+         json.loads,
+         ("A list of origin hostnames that are authorized to make cross-site "
+          "HTTP requests. "
+          "Used by the django-cors-headers app as described at "
+          "https://github.com/ottoyiu/django-cors-headers")],
+    "omero.web.cors_origin_allow_all":
+        ["CORS_ORIGIN_ALLOW_ALL",
+         "false",
+         parse_boolean,
+         ("If True, cors_origin_whitelist will not be used and all origins "
+          "will be authorized to make cross-site HTTP requests.")],
 }
 
 DEPRECATED_SETTINGS_MAPPINGS = {
@@ -744,6 +839,7 @@ def check_threading(t):
             raise ImportError("You are using sync workers with "
                               "multiple threads. Install futures")
     return int(t)
+
 
 # DEVELOPMENT_SETTINGS_MAPPINGS - WARNING: For each setting developer MUST open
 # a ticket that needs to be resolved before a release either by moving the
@@ -838,6 +934,7 @@ def process_custom_settings(
         except LeaveUnset:
             pass
 
+
 process_custom_settings(sys.modules[__name__], 'INTERNAL_SETTINGS_MAPPING')
 process_custom_settings(sys.modules[__name__], 'CUSTOM_SETTINGS_MAPPINGS',
                         'DEPRECATED_SETTINGS_MAPPINGS')
@@ -874,6 +971,7 @@ def report_settings(module):
                 "%s = %r (deprecated:%s, %s)", global_name,
                 cleanse_setting(global_name, global_value), key, description)
 
+
 report_settings(sys.modules[__name__])
 
 SITE_ID = 1
@@ -881,8 +979,6 @@ SITE_ID = 1
 # Local time zone for this installation. Choices can be found here:
 # http://www.postgresql.org/docs/8.1/static/datetime-keywords.html#DATETIME-TIMEZONE-SET-TABLE
 # although not all variations may be possible on all operating systems.
-# If running in a Windows environment this must be set to the same as your
-# system time zone.
 TIME_ZONE = 'Europe/London'
 FIRST_DAY_OF_WEEK = 0     # 0-Monday, ... 6-Sunday
 
@@ -927,17 +1023,6 @@ except NameError:
 # False, Django will make some optimizations so as not to load the
 # internationalization machinery.
 USE_I18N = True
-
-# MIDDLEWARE_CLASSES: A tuple of middleware classes to use.
-# See https://docs.djangoproject.com/en/1.6/topics/http/middleware/.
-MIDDLEWARE_CLASSES = (
-    'django.middleware.common.BrokenLinkEmailsMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-)
-
 
 # ROOT_URLCONF: A string representing the full Python import path to your root
 # URLconf.
@@ -984,35 +1069,11 @@ TEMPLATES = [
                 'django.template.context_processors.tz',
                 'django.contrib.messages.context_processors.messages',
                 'omeroweb.custom_context_processor.url_suffix',
+                'omeroweb.custom_context_processor.base_include_template',
             ],
         },
     },
 ]
-
-# Django 1.6 only
-# TEMPLATE_DEBUG: A boolean that turns on/off template debug mode. If this is
-# True, the fancy error page will display a detailed report for any
-# TemplateSyntaxError. This report contains
-# the relevant snippet of the template, with the appropriate line highlighted.
-# Note that Django only displays fancy error pages if DEBUG is True,
-# alternatively error is handled by:
-#    handler404 = "omeroweb.feedback.views.handler404"
-#    handler500 = "omeroweb.feedback.views.handler500"
-TEMPLATE_DEBUG = DEBUG  # from CUSTOM_SETTINGS_MAPPINGS  # noqa
-
-# Django 1.6 only
-# TEMPLATE_CONTEXT_PROCESSORS: A tuple of callables that are used to populate
-# the context in RequestContext. These callables take a request object as
-# their argument and return a dictionary of items to be merged into the
-# context.
-TEMPLATE_CONTEXT_PROCESSORS = (
-    "django.core.context_processors.debug",
-    "django.core.context_processors.i18n",
-    "django.core.context_processors.media",
-    "django.core.context_processors.static",
-    "django.contrib.messages.context_processors.messages",
-    "omeroweb.custom_context_processor.url_suffix"
-)
 
 # INSTALLED_APPS: A tuple of strings designating all applications that are
 # enabled in this Django installation. Each string should be a full Python
@@ -1024,12 +1085,6 @@ INSTALLED_APPS = (
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.sites',
-    'omeroweb.feedback',
-    'omeroweb.webadmin',
-    'omeroweb.webclient',
-    'omeroweb.webgateway',
-    'omeroweb.webredirect',
-    'pipeline',
 )
 
 # ADDITONAL_APPS: We import any settings.py from apps. This allows them to
@@ -1056,6 +1111,16 @@ for app in ADDITIONAL_APPS:  # from CUSTOM_SETTINGS_MAPPINGS  # noqa
     except ImportError:
         logger.debug("Couldn't import settings from app: %s" % app)
 
+INSTALLED_APPS += (
+    'omeroweb.feedback',
+    'omeroweb.webadmin',
+    'omeroweb.webclient',
+    'omeroweb.webgateway',
+    'omeroweb.webredirect',
+    'omeroweb.api',
+    'pipeline',
+)
+
 logger.debug('INSTALLED_APPS=%s' % [INSTALLED_APPS])
 
 
@@ -1071,7 +1136,6 @@ PIPELINE_CSS = {
             'webgateway/css/base.css',
             'webgateway/css/ome.snippet_header_logo.css',
             'webgateway/css/ome.postit.css',
-            'webgateway/css/ome.rangewidget.css',
             '3rdparty/farbtastic-1.2/farbtastic.css',
             'webgateway/css/ome.colorbtn.css',
             '3rdparty/JQuerySpinBtn-1.3a/JQuerySpinBtn.css',
@@ -1118,7 +1182,6 @@ PIPELINE_JS = {
             'webgateway/js/ome.colorbtn.js',
             'webgateway/js/ome.postit.js',
             '3rdparty/jquery.selectboxes-2.2.6.js',
-            'webgateway/js/ome.rangewidget.js',
             '3rdparty/farbtastic-1.2/farbtastic.js',
             '3rdparty/jquery.mousewheel-3.0.6.js',
         ),
@@ -1127,6 +1190,13 @@ PIPELINE_JS = {
 }
 
 CSRF_FAILURE_VIEW = "omeroweb.feedback.views.csrf_failure"
+
+# Configuration for django-cors-headers app
+# See https://github.com/ottoyiu/django-cors-headers
+# Configration of allowed origins is handled by custom settings above
+CORS_ALLOW_CREDENTIALS = True
+# Needed for Django <1.9 since CSRF_TRUSTED_ORIGINS not supported
+CORS_REPLACE_HTTPS_REFERER = True
 
 # FEEDBACK - DO NOT MODIFY!
 # FEEDBACK_URL: Is now configurable for testing purpuse only. Used in
@@ -1180,13 +1250,18 @@ MANAGERS = ADMINS  # from CUSTOM_SETTINGS_MAPPINGS  # noqa
 # omeroweb.connector.Connector object
 SESSION_SERIALIZER = 'django.contrib.sessions.serializers.PickleSerializer'
 
+# Load custom settings from etc/grid/config.xml
+# Tue  2 Nov 2010 11:03:18 GMT -- ticket:3228
+# MIDDLEWARE_CLASSES: A tuple of middleware classes to use.
+MIDDLEWARE_CLASSES = sort_properties_to_tuple(MIDDLEWARE_CLASSES_LIST)  # noqa
+
+
 # Load server list and freeze
-from connector import Server
-
-
 def load_server_list():
     for s in SERVER_LIST:  # from CUSTOM_SETTINGS_MAPPINGS  # noqa
         server = (len(s) > 2) and unicode(s[2]) or None
         Server(host=unicode(s[0]), port=int(s[1]), server=server)
     Server.freeze()
+
+
 load_server_list()

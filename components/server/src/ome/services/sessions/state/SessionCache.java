@@ -22,7 +22,6 @@ import ome.services.messages.DestroySessionMessage;
 import ome.services.sessions.SessionCallback;
 import ome.services.sessions.SessionContext;
 import ome.services.sessions.SessionManager;
-import ome.services.sessions.SessionManagerImpl;
 import ome.services.sessions.events.UserGroupUpdateEvent;
 import ome.system.OmeroContext;
 
@@ -49,7 +48,7 @@ import com.google.common.collect.MapMaker;
  * 
  * @author Josh Moore, josh at glencoesoftware.com
  * @since 4.2.1
- * @see <a href="http://trac.openmicroscopy.org/ome/ticket/3173">ticket:3173</a>
+ * @see <a href="https://trac.openmicroscopy.org/ome/ticket/3173">ticket:3173</a>
  */
 public class SessionCache implements ApplicationContextAware {
 
@@ -161,7 +160,7 @@ public class SessionCache implements ApplicationContextAware {
 
         /**
          * Time of the last update request. Most likely occurs via
-         * SessionManagerImpl.onApplicationEvent(). Initialized to <em>before</em>
+         * ome.services.session.BaseSessionManager#onApplicationEvent. Initialized to <em>before</em>
          * {@link #lastUpdateRun} to prevent initial blocking.
          */
         final long lastUpdateRequest;
@@ -377,7 +376,7 @@ public class SessionCache implements ApplicationContextAware {
 
     /**
      * Returns all the data contained in the internal implementation of
-     * this manger.
+     * this manager.
      *
      * @param quietly If true, then the access time for the given UUID
      *                  will not be updated.
@@ -541,7 +540,7 @@ public class SessionCache implements ApplicationContextAware {
         // Check to make sure exists
         getDataNullOrThrowOnTimeout(uuid, true);
         String key = "memory:" + uuid;
-        return createCache(key, true, Integer.MAX_VALUE);
+        return createCache(key, true, 0);
     }
 
     public Ehcache onDiskCache(String uuid) {
@@ -642,10 +641,10 @@ public class SessionCache implements ApplicationContextAware {
 
     /**
      * Provides the reloading logic of the {@link SessionCache} for the
-     * {@link SessionManagerImpl} to use.
+     * {@link ome.services.sessions.SessionManagerImpl} to use.
      *
-     * @see <a href="http://trac.openmicroscopy.org/ome/ticket/4011">ticket:4011</a>
-     * @see <a href="http://trac.openmicroscopy.org/ome/ticket/5849">ticket:5849</a>
+     * @see <a href="https://trac.openmicroscopy.org/ome/ticket/4011">ticket:4011</a>
+     * @see <a href="https://trac.openmicroscopy.org/ome/ticket/5849">ticket:5849</a>
      */
     public void reload(String id) {
 

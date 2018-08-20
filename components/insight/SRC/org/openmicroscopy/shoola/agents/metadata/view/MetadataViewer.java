@@ -495,13 +495,6 @@ public interface MetadataViewer
 	 * @return See above.
 	 */
 	Dimension getIdealRendererSize();
-	
-	/**
-	 * Analyzes the image.
-	 * 
-	 *  @param index The index identifying the type of analysis routine.
-	 */
-	void analyse(int index);
 
 	/**
 	 * Notifies that the rendering settings have been copied.
@@ -719,4 +712,15 @@ public interface MetadataViewer
 	 * Reload the ROI count
 	 */
     void reloadROICount();
+
+    
+    /**
+     * Set the histogram data for the given channel
+     * 
+     * @param ch
+     *            The channel index
+     * @param data
+     *            The data
+     */
+    public void setHistogramData(int ch, int[] data);
 }

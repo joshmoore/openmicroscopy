@@ -17,14 +17,144 @@
  *
  */
  
- 
 
- /*
- 	===============================================
- 	:: Left Panel
- 	===============================================
- */
+/*******************************************************************/
+/* Left Panel 													   */
+/*******************************************************************/
+.left_panel_content {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+}
 
+.left_panel_tabs_container {
+	position: relative; /* Also declared in ui-tabs */
+	min-width: 340px;
+}
+
+.left_panel_toolbar {
+	position: relative;
+}
+
+.left_panel_tree_container {
+	position: absolute;
+	top: 60px;
+	left: 0;
+	bottom: 0;
+	right: 0;
+}
+
+.left_panel_tree {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	overflow: auto;
+	border-top: solid 1px hsl(210, 10%, 85%);
+	border-right: solid 1px hsl(210, 10%, 85%);
+}
+
+/*******************************************************************/
+/* Left bottom panel - displayed when a user clicks a well in grid */
+/*******************************************************************/
+.left_panel_preview {
+	display: none;
+	position: relative;
+	width: 100%;
+	overflow: auto;
+	border-top: solid 1px hsl(210, 10%, 85%);
+	border-right: solid 1px hsl(210, 10%, 85%);
+}
+
+.left_panel_preview__header {
+	position: relative;
+	padding: 4px 8px;
+	height: 24px;
+}
+
+.left_panel_preview__close {
+	position: absolute;
+	top: 50%;
+	left: 95%;
+	transform: translate(-50%, -50%);
+}
+
+.left_panel_preview__title--centered {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+}
+
+.left_panel_preview__title--medium {
+	font-size: medium;
+}
+
+.left_paneL_preview__content {
+    position: relative;
+	width: 100%;
+	height: calc(100% - 32px);
+}
+
+.left_paneL_preview__well {
+	position: absolute;
+	margin: 0 auto;
+	right: 0;
+	left: 0;
+	border: solid #bbb 1px;
+}
+/*******************************************************************/
+/* Well Fields Panel - displayed at the center bottom of a well grid */
+/*******************************************************************/
+.well-fields {
+	bottom: 0;
+	height: 160px; /*160*/
+}
+
+.well-fields__toolbar {
+	position: relative;
+	width: 100%;
+	height: 32px;
+	border-bottom: solid 1px #ddd;
+}
+.well-fields__toolbar-title {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+}
+
+.well-fields__toolbar-tools--left {
+	position: absolute;
+    top: 50%;
+    transform: translate(0, -50%);
+	margin-left: 8px;
+	margin-right: 8px;
+    text-align: center;
+}
+
+.well-fields__images {
+	top: 32px;
+	bottom: 25px;
+	margin: 8px 0;
+}
+
+.wrap-images-tool {
+	width: auto;
+	max-height: 32px;
+}
+
+.wrap-images-tool__input {
+	width: 36px;
+	font-size: medium;
+	font-weight: bold;
+	margin: 4px;
+}
+
+.text--medium {
+	font-size: medium;
+}
+/*******************************************************************/
 
     /* jstree */
 
@@ -55,6 +185,7 @@
 	    border-right:solid 1px hsl(210,10%,40%);
 	    position:relative;
 	    height:31px;
+		min-width: 340px;
 	}
 	
 	
@@ -148,13 +279,13 @@
     /* Generic Left and Right Panel Tabs */
     
 	
-	#left_panel_tabs, #annotation_tabs {
+	#annotation_tabs {
 	    position:absolute;
 	    padding:0;
 	}
 	
 	.ui-tabs {
-		padding:0;
+		padding: 0 !important;
 	}
 
     /* Move down the layout of the tab to give the impression of continuous background
@@ -248,11 +379,11 @@
 	
 	
     	.ui-tabs-nav {
-			padding:0px !important;
+			padding: 0 !important;
 		}
 		
 		.ui-tabs-panel {
-			padding:0 !important;
+			padding: 0 !important;
 		}
 	
 	
@@ -306,13 +437,6 @@
 
     /* Left Panel Tree */
 
-    #tree_details {
-        top:59px;
-        padding:0;
-        padding-top:6px;
-    }
-
-
     .hiddenField {
         display: none;
     }
@@ -329,6 +453,8 @@
         overflow:           auto;
     }
 
+
+
 /*
 	===============================================
 	:: Right Panel
@@ -339,7 +465,7 @@
 
     /* Right & Center Panel Headers */
     
-    #center_panel_header, #annotation_tabs_list {
+    #center_panel_header, #annotation_tabs_list, .toolbarBg {
   		background:hsl(215,10%,80%); /* Old browsers */
 		background-image:-moz-linear-gradient(top, rgba(255,255,255,.7) 0%, rgba(255,255,255,0) 100%); /* FF3.6+ */
 		background-image:-webkit-gradient(linear, left top, left bottom, color-stop(0%,rgba(255,255,255,.7)), color-stop(100%,rgba(255,255,255,0))); /* Chrome,Safari4+ */
@@ -482,7 +608,7 @@
     
         #right_panel th, #right_panel td {
             padding: 0 5px 5px 0;
-            white-space: nowrap;
+            overflow-wrap: break-word;
         }
     
         #right_panel th, #right_panel td.title{
@@ -1159,7 +1285,15 @@
 		background:url(../image/dropdown_right_arrow.png) center center no-repeat;
 	}
     
-    
+    .annotationCount {
+		opacity: 0.8;
+		background-color: rgba(255, 255, 255, 0.5);
+		border-radius: 2px;
+		display: inline-block;
+		padding: 0 3px;
+		color: hsl(210,10%,50%);
+		margin-left: 10px;
+    }
     
 	
 	
@@ -1318,6 +1452,29 @@
         position: absolute;
         top:33px; bottom:0px; left:0px; right:0px;
         overflow: auto;
+        /* flexbox */
+        display: -webkit-box;      /* OLD - iOS 6-, Safari 3.1-6 */
+        display: -moz-box;         /* OLD - Firefox 19- (buggy but mostly works) */
+        display: -ms-flexbox;      /* TWEENER - IE 10 */
+        display: -webkit-flex;     /* NEW - Chrome */
+        display: flex;             /* NEW, Spec - Opera 12.1, Firefox 20+ */
+
+        box-orient: vertical;
+        flex-direction: column;
+    }
+
+    #icon_table {
+        -webkit-box-flex: 1;      /* OLD - iOS 6-, Safari 3.1-6 */
+        -moz-box-flex: 1;         /* OLD - Firefox 19- */
+        -webkit-flex: 1;          /* Chrome */
+        -ms-flex: 1;              /* IE 10 */
+        flex: 1;                  /* NEW, Spec - Opera 12.1, Firefox 20+ */
+        overflow: auto;
+    }
+
+    .center_panel_content>div {
+        position: relative;
+        border-right:0px
     }
 
     
@@ -1399,6 +1556,7 @@
 				border:solid 1px rgba(0,0,0,.3);
 				border-top:solid 1px rgba(0,0,0,.4);
 				color:#333;
+				box-sizing: border-box;
 			}
 	
 
@@ -1412,41 +1570,52 @@
         top: 0; 
         left: 0;
         position: relative;
+        width: 100%;
     }
 
+    #dataIcons .ratingFilter_hidden {
+        display: none;
+    }
+    #dataIcons .tagFilter_hidden {
+        display: none;
+    }
 
-            #dataIcons .ui-selecting {  
-                background-color:hsl(0,0%,90%);
-            }
-    
-            #dataIcons .fs-selected {
-                background-color:#cddcfc;
-                border:solid 1px #cddcfc;
-            }
+    #dataIcons .ui-selecting {
+        background-color:hsl(0,0%,90%);
+    }
 
-            #dataIcons .ui-selected { 
-                color: white;
-                background-color:#3875d7;
-                border:solid 1px #3875d7;
-                -webkit-box-shadow: 0 1px 1px rgba(0,0,0,.2); 
-				
-				-webkit-box-shadow: 0 1px 1px rgba(0,0,0,0.2); /* Saf3.0+, Chrome */
-				   -moz-box-shadow: 0 1px 1px rgba(0,0,0,0.2); /* FF3.5+ */
-				        box-shadow: 0 1px 1px rgba(0,0,0,0.2); /* Opera 10.5, IE 9.0 */
-				
-            }
+    #dataIcons .fs-selected {
+        background-color:#cddcfc;
+        border:solid 1px #cddcfc;
+    }
 
-    #thumb_size_slider {
+    #dataIcons .ui-selected {
+        color: white;
+        background-color:#3875d7;
+        border:solid 1px #3875d7;
+        -webkit-box-shadow: 0 1px 1px rgba(0,0,0,.2);
+
+        -webkit-box-shadow: 0 1px 1px rgba(0,0,0,0.2); /* Saf3.0+, Chrome */
+           -moz-box-shadow: 0 1px 1px rgba(0,0,0,0.2); /* FF3.5+ */
+                box-shadow: 0 1px 1px rgba(0,0,0,0.2); /* Opera 10.5, IE 9.0 */
+    }
+
+    .thumb_size_slider {
         border: 1px solid #aaa;
         height: 6px;
-        right: 95px;
-        position: absolute;
-        top: 11px;
+        right: 25px;
+        position: absolute !important;
+        bottom: 8px;
         width: 120px;
+        background: #eee;
     }
-    #thumb_size_slider .ui-slider-handle {
+    .thumb_size_slider .ui-slider-handle {
         background: #727C86;
         border-radius: 3px;
+    }
+    /* disable transition delay on slider handles */
+    .ui-slider-handle.ui-state-default {
+        transition-duration: 0s;
     }
 
     /* Style a <ul> as a Table or Icons, depending on class .tableLayout or .iconLayout */
@@ -1494,6 +1663,9 @@
         display: none;
     }
 
+    .iconLayout {
+        height: 100%;
+    }
     .iconLayout li {
         display: inline-block;
         background-color:hsl(0,0%,95%);
@@ -1564,13 +1736,10 @@
 	display:inline-block;
 }
 
-#left_panel_inner {
-	border:solid 1px red;
+/* Used in tag search - only */
+.left_panel_inner {
+	padding: 16px;
 }
-
-
-
-
 
 /*
 	===============================================
@@ -1578,75 +1747,119 @@
 	===============================================
 */
 
-
-#searching .left_panel_inner {
-	padding:15px;
+.search_panel {
+	position: relative;
+	padding: 0 8px;
+	min-width: 340px;
 }
 
-    #searching_form {
-        border-bottom:solid 1px hsl(210,20%,90%);
-        -webkit-box-shadow:0 1px 0 rgba(255,255,255,.3);
-		
-		-webkit-box-shadow: 0 1px 0 rgba(255,255,255,0.3); /* Saf3.0+, Chrome */
-		   -moz-box-shadow: 0 1px 0 rgba(255,255,255,0.3); /* FF3.5+ */
-		        box-shadow: 0 1px 0 rgba(255,255,255,0.3); /* Opera 10.5, IE 9.0 */
-		
-        padding-bottom:25px;
-        margin-bottom:25px;
-    }
-        #searchHints {
-            font-size: 120%;
-            background: #fef69c;
-            padding: 3px;
-            border: solid #ddd 1px;
-            margin-bottom: 10px;
-        }
+.search_panel_header {
+	position: relative;
+	width: 100%;
+	height: 33px;
+	padding: 8px 0;
+}
 
-        #searchHints strong {
-            display:block;
-            width:35px;
-            float:left;
-        }
+.search_panel_header__text {
+	position: relative;
+	width: 100%;
+	height: 100%;
+}
 
-        #searching input[type=text], #searching textarea{
-            width:65%;
-        }
-        
-        #startdateinput, #enddateinput {
-            width:30% !important;
-        }
+.search_panel_header__text--title {
+	position: absolute;
+	top: 50%;
+	left: 0;
+  	transform: translateY(-50%);
+}
 
-        .clearDate {
-            position: absolute;
-            right: 5px;
-            top: -5px;
-        }
+.search_panel_header__text--hints {
+	position: absolute;
+	top: 50%;
+	right: 0;
+  	transform: translateY(-50%);
+}
 
-        .criteria {
-            overflow:hidden;
-        }
+.search_tips__button {
+	text-decoration: underline
+}
 
-            ul.criteria li{
-                list-style: none;
-                float: left;
-                margin: 0;
-                margin-right: 5px;
-                width:30%;
-                line-height:1.9em;
-                font-size:1.1em;
-            }
-        
-            .criteria input[type=checkbox] {
-                display:inline-block;
-                margin-right:5px;
-            }
-    
+.search_tips__image {
+	vertical-align: middle;
+}
 
-            #searching input[type=submit] {
-                float:none;
-                margin-left:80px;
-                margin-top:10px;
-            }
+
+/*#searching_form {*/
+	/*border-bottom: solid 1px hsl(210, 20%, 90%);*/
+	/*-webkit-box-shadow: 0 1px 0 rgba(255, 255, 255, .3);*/
+
+	/*-webkit-box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3); !* Saf3.0+, Chrome *!*/
+	/*-moz-box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3); !* FF3.5+ *!*/
+	/*box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3); !* Opera 10.5, IE 9.0 *!*/
+/*}*/
+
+#searchHints {
+	position: relative;
+	font-size: 120%;
+	background: #fef69c;
+	padding: 3px;
+	border: solid #ddd 1px;
+	margin-bottom: 10px;
+}
+
+#searchHints strong {
+	display: block;
+	width: 35px;
+	float: left;
+}
+
+#searching input[type=text], #searching textarea {
+	width: 65%;
+}
+
+#startdateinput, #enddateinput {
+	width: 30% !important;
+}
+
+.clearDate {
+	position: absolute;
+	right: 5px;
+	top: -5px;
+}
+
+.criteria {
+	overflow: hidden;
+}
+
+ul.criteria li {
+	list-style: none;
+	float: left;
+	margin: 0;
+	margin-right: 5px;
+	width: 30%;
+	line-height: 1.9em;
+	font-size: 1.1em;
+}
+
+ul.criteria_right li {
+	width: 40%;
+	float:right;
+	clear:right;
+}
+ul.criteria_right input{
+	margin-left: 20px;
+}
+
+.criteria input[type=checkbox] {
+	display: inline-block;
+	margin-right: 5px;
+}
+
+#searching input[type=submit] {
+	float: none;
+	margin-left: 80px;
+	margin-top: 10px;
+}
     
 
 
@@ -2151,37 +2364,111 @@ div.paging input.button_pagination {
 }
 
 #spw table {
-    background:#fff none repeat scroll 0 0;
+    background: #fff none repeat scroll 0 0;
     width: 0;
     table-layout: auto;
 }
+
 #spw table th {
     vertical-align: middle;
 }
+
 #spw table td {
     padding: 1px;
     border: 1px solid #ccc;
-    width: 25px;
+    position: relative;
 }
-#spw table td.well {
-    background: #eee;
-}
+
 #spw table td.placeholder {
     vertical-align: top;
 }
 
-#spw table td.ui-selecting { border: 1px dashed #555; padding: 1px; background-color:#87ABD2;}
-#spw table td.ui-selected { border: 1px dashed #555; padding: 1px; background-color:#87ABD2;}
+#spw table td.ui-selecting {
+    border: 1px dashed #555;
+    padding: 1px;
+    background-color: #87ABD2;
+}
 
-#spw .well .wellLabel {
+#spw table td.ui-selected {
+    border: 1px dashed #555;
+    padding: 1px;
+    background-color: #87ABD2;
+}
+
+.wellLabel {
     display: none;
     position: absolute;
     background: #eee;
     padding: 2px;
     color: black;
+    top: 0;
+    left: 0;
+    bottom: auto;
+    right: auto;
 }
-#spw .well:hover .wellLabel {
+.wellLabelOffset .wellLabel {
+    top: auto;
+    left: auto;
+    bottom: 100%;
+    right: 100%;
+}
+.well:hover .wellLabel {
     display: block;
+}
+
+
+#content_details .fillSpace {
+    position: absolute;
+    left: 0px;
+    right: 0px;
+    overflow: auto;
+}
+.zoomLabel {
+    font-size: 12px;
+    margin-top: 6px;
+    margin-left: 9px;
+    display: block;
+    opacity: 0.8;
+}
+.wellImages {
+    border-top: solid 1px #bbb;
+}
+.wellImages img {
+    margin: 5px;
+    cursor: pointer;
+}
+#wellImages li {
+    display: inline-block;
+}
+#wellImages ul, #wellImages h1 {
+    margin: 5px;
+}
+#wellImages .ui-selected {
+    background-color: #87ABD2;
+}
+.wellImagesLabel {
+    width: 30px;
+    vertical-align: middle;
+}
+#wellImages td {
+    border-bottom: solid #bbb 1px;
+}
+#well_birds_eye img {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border: solid black 1px;
+    background: #bbb;
+    cursor: pointer;
+}
+#well_birds_eye .ui-selected {
+    width: 6px;
+    height: 6px;
+    border: solid 3px #87ABD2;
+    z-index: 10;
+}
+#wellImagesContainer span {
+	font-size: 12px;
 }
 
 
@@ -2256,7 +2543,11 @@ width: 250px;
     color:white;
 }
 
-.ui-tooltip h3, .ui-tooltip div { margin: 0; }
+/* tooltip plugin */
+.ui-tooltip h3, .ui-tooltip div {
+	margin: 0;
+	word-wrap: break-word;
+}
 
 
 

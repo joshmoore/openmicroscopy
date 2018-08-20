@@ -1,8 +1,6 @@
 /*
- *
  *------------------------------------------------------------------------------
- * Copyright (C) 2006-2009 University of Dundee. All rights reserved.
- *
+ * Copyright (C) 2006-2018 University of Dundee. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,6 +17,7 @@
  *
  *------------------------------------------------------------------------------
  */
+
 package omero.gateway.model;
 
 import java.awt.geom.Point2D;
@@ -26,10 +25,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.StringTokenizer;
 
-import omero.RBool;
 import omero.rtypes;
 import omero.RInt;
-import omero.RString;
+import omero.model.AffineTransform;
 import omero.model.IObject;
 import omero.model.Polygon;
 import omero.model.Polyline;
@@ -156,7 +154,7 @@ public abstract class ShapeData
         {
             if (i != 0)
             {
-                buf.append(", ");
+                buf.append(" ");
             }
             buf.append(toNumber(points[i].x));
             buf.append(',');
@@ -269,7 +267,8 @@ public abstract class ShapeData
     }
 
     /**
-     * Returns the z-section.
+     * Returns the z-section. -1 if the shape applies to all z-sections of
+     * the image.
      *
      * @return See above.
      */
@@ -286,20 +285,25 @@ public abstract class ShapeData
     /**
      * Sets the z-section.
      *
-     * @param z The value to set.
+     * @param z
+     *            The value to set. Pass -1 to remove z value, i. e. shape
+     *            applies to all z-sections of the image.
      */
     public void setZ(int z)
     {
         Shape shape = (Shape) asIObject();
         if (shape == null) 
             throw new IllegalArgumentException("No shape specified.");
-        if (z < 0) z = 0;
-        shape.setTheZ(rtypes.rint(z));
+        if (z < 0)
+            shape.setTheZ(null);
+        else
+            shape.setTheZ(rtypes.rint(z));
         setDirty(true);
     }
 
     /**
-     * Returns the channel.
+     * Returns the channel. -1 if the shape applies to all channels of
+     * the image.
      *
      * @return See above.
      */
@@ -316,21 +320,26 @@ public abstract class ShapeData
     /**
      * Sets the channel.
      *
-     * @param c The value to set.
+     * @param c 
+     *            The value to set. Pass -1 to remove c value, i. e. shape
+     *            applies to all channels of the image.
      */
     public void setC(int c)
     {
         Shape shape = (Shape) asIObject();
         if (shape == null) 
             throw new IllegalArgumentException("No shape specified.");
-        if (c < 0) c = 0;
-        shape.setTheC(rtypes.rint(c));
+        if (c < 0)
+            shape.setTheC(null);
+        else
+            shape.setTheC(rtypes.rint(c));
         setDirty(true);
     }
 
 
     /**
-     * Returns the time-point.
+     * Returns the time-point. -1 if the shape applies to all time-points of
+     * the image.
      *
      * @return See above.
      */
@@ -347,15 +356,19 @@ public abstract class ShapeData
     /**
      * Sets the time-point.
      *
-     * @param t The value to set.
+     * @param t
+     *            The value to set. Pass -1 to remove t value, i. e. shape
+     *            applies to all time-points of the image.
      */
     public void setT(int t)
     {
         Shape shape = (Shape) asIObject();
         if (shape == null) 
             throw new IllegalArgumentException("No shape specified.");
-        if (t < 0) t = 0;
-        shape.setTheT(rtypes.rint(t));
+        if (t < 0)
+            shape.setTheT(null);
+        else
+            shape.setTheT(rtypes.rint(t));
         setDirty(true);
     }
 
@@ -388,7 +401,6 @@ public abstract class ShapeData
             throw new IllegalArgumentException("No shape specified.");
         int z = getZ();
         int t = getT();
-        if (z < 0 || t < 0) return null;
         return new ROICoordinate(z, t);
     }
 
@@ -397,14 +409,12 @@ public abstract class ShapeData
      *
      * @return See above.
      */
-    public String getTransform()
+    public AffineTransform getTransform()
     {
         Shape shape = (Shape) asIObject();
         if (shape == null) 
             throw new IllegalArgumentException("No shape specified.");
-        RString value = shape.getTransform();
-        if (value == null) return "";
-        return value.getValue();
+        return shape.getTransform();
     }
 
     /**
@@ -412,13 +422,12 @@ public abstract class ShapeData
      * 
      * @param transform The transform to set.
      */
-    public void setTransform(String transform)
+    public void setTransform(AffineTransform transform)
     {
         Shape shape = (Shape) asIObject();
         if (shape == null) 
             throw new IllegalArgumentException("No shape specified.");
-        if (transform == null) return;
-        shape.setTransform(rtypes.rstring(transform));
+        shape.setTransform(transform);
         setDirty(true);
     }
 
@@ -432,35 +441,4 @@ public abstract class ShapeData
     {
         super.setDirty(dirty);
     }
-
-    /**
-     * Returns <code>true</code> if the shape is visible, <code>false</code>
-     * otherwise.
-     *
-     * @return See above.
-     */
-    public boolean isVisible()
-    {
-        Shape shape = (Shape) asIObject();
-        if (shape == null) return false;
-        RBool b = shape.getVisibility();
-        if (b == null) return true;
-        return b.getValue();
-    }
-
-    /**
-     * Sets to <code>true</code> if the shape is visible, <code>false</code>
-     * otherwise.
-     *
-     * @param visible The value to set.
-     */
-    public void setVisible(boolean visible)
-    {
-        Shape shape = (Shape) asIObject();
-        if (shape == null) 
-            throw new IllegalArgumentException("No shape specified.");
-        shape.setVisibility(rtypes.rbool(visible));
-        setDirty(true);
-    }
-
 }

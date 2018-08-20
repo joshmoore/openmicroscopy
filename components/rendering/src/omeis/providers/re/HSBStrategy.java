@@ -1,10 +1,7 @@
 /*
- * omeis.providers.re.HSBStrategy
- *
- *   Copyright 2006 University of Dundee. All rights reserved.
+ *   Copyright 2006-2016 University of Dundee. All rights reserved.
  *   Use is subject to license terms supplied in LICENSE.txt
  */
-
 package omeis.providers.re;
 
 import java.awt.Color;
@@ -27,11 +24,11 @@ import ome.model.display.ChannelBinding;
 import ome.model.display.QuantumDef;
 import ome.model.enums.PixelsType;
 import ome.util.PixelData;
-
 import omeis.providers.re.codomain.CodomainChain;
 import omeis.providers.re.data.PlaneFactory;
 import omeis.providers.re.data.Plane2D;
 import omeis.providers.re.data.PlaneDef;
+import omeis.providers.re.lut.LutReader;
 import omeis.providers.re.quantum.BinaryMaskQuantizer;
 import omeis.providers.re.quantum.QuantizationException;
 import omeis.providers.re.quantum.QuantumStrategy;
@@ -111,7 +108,7 @@ class HSBStrategy extends RenderingStrategy {
         		for (byte[] overlay : overlays.keySet())
         		{
 				ome.util.PixelData data =
-					new PixelData(PlaneFactory.BIT, ByteBuffer.wrap(overlay));
+					new PixelData(PixelsType.VALUE_BIT, ByteBuffer.wrap(overlay));
         			wData.add(new Plane2D(pDef, metadata, data));
         		}
         	}
@@ -132,6 +129,25 @@ class HSBStrategy extends RenderingStrategy {
         }
 
         return wData;
+    }
+
+    /**
+     * Returns the collection of chains.
+     *
+     * @return See above.
+     */
+    private List<CodomainChain> getChains()
+    {
+        List<CodomainChain> chains = renderer.getCodomainChains();
+        ChannelBinding[] channelBindings = renderer.getChannelBindings();
+        List<CodomainChain> list = new ArrayList<CodomainChain>();
+        for (int w = 0; w < channelBindings.length; w++) {
+            ChannelBinding cb = channelBindings[w];
+            if (cb.getActive()) {
+                list.add(chains.get(w));
+            }
+        }
+        return list;
     }
 
     /**
@@ -187,7 +203,7 @@ class HSBStrategy extends RenderingStrategy {
     		QuantumDef def = new QuantumDef();  // Just to fulfill interface
     		Pixels pixels = new Pixels();
     		PixelsType bitType = new PixelsType();
-    		bitType.setValue(PlaneFactory.BIT);
+    		bitType.setValue(PixelsType.VALUE_BIT);
     		bitType.setBitSize(1);
     		pixels.setPixelsType(bitType);
     		for (int i = 0; i < overlays.size(); i++)
@@ -211,11 +227,11 @@ class HSBStrategy extends RenderingStrategy {
     private RenderingTask[] makeRenderingTasks(PlaneDef def, RGBBuffer buf) {
         List<RenderHSBRegionTask> tasks = new ArrayList<RenderHSBRegionTask>();
 
-        // Get all objects we need to create the tasks.
-        CodomainChain cc = renderer.getCodomainChain();
         //RenderingStats performanceStats = renderer.getStats();
         List<Plane2D> wData = getWavelengthData(def);
         List<int[]> colors = getColors();
+        List<LutReader> readers = renderer.getLutProvider().getLutReaders(
+                renderer.getChannelBindings());
         List<QuantumStrategy> strategies = getStrategies();
         // Create a number of rendering tasks.
         int taskCount = numTasks(sizeX2);
@@ -227,9 +243,9 @@ class HSBStrategy extends RenderingStrategy {
         for (int i = 0; i < taskCount; i++) {
             x2Start = i*delta;
             x2End = (i+1)*delta;
-            tasks.add(new RenderHSBRegionTask(buf, wData, strategies, cc,
-            		colors, renderer.getOptimizations(),
-            		x1Start, x1End, x2Start, x2End));
+            tasks.add(new RenderHSBRegionTask(buf, wData, strategies,
+                    getChains(), colors, renderer.getOptimizations(),
+                    x1Start, x1End, x2Start, x2End, readers));
         }
 
         // Turn the list into an array an return it.

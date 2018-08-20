@@ -96,7 +96,7 @@ version.
 The :source:`etc/omero.properties` file of your distribution defines all the
 default configuration properties used by the server. Changes made to the file
 are *not* recognized by the server. Instead, configuration options can be set
-using the :omerocmd:`config set` command:
+using the :program:`omero config set` command:
 
 ::
 
@@ -123,7 +123,7 @@ You can also review all your settings by using:
 
 which should return values without quotation marks.
 
-A final useful option of :omerocmd:`config edit` is:
+A final useful option of :program:`omero config edit` is:
 
 ::
 
@@ -137,8 +137,8 @@ editor.
     ``"[\\"foo\\", \\"bar\\"]"``) or wrap with ``'`` (e.g. ``'["foo",
     "bar"]'``).
 
-Examples of doing this are on the main :doc:`Unix <unix/server-installation>`
-and :doc:`Windows <windows/server-installation>` pages, as well as the
+Examples of doing this are on the
+:doc:`server installation page <unix/server-installation>`, as well as the
 :doc:`LDAP installation <server-ldap>` page.
 
 .. _core_configuration:

@@ -2,16 +2,11 @@
  *   Copyright 2010-2015 Glencoe Software, Inc. All rights reserved.
  *   Use is subject to license terms supplied in LICENSE.txt
  */
-
 package integration;
 
-import static org.testng.AssertJUnit.assertFalse;
-import static org.testng.AssertJUnit.assertNotNull;
-import static org.testng.AssertJUnit.assertNull;
-import static org.testng.AssertJUnit.assertTrue;
-import static org.testng.AssertJUnit.fail;
-
 import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -36,12 +31,15 @@ import ome.formats.importer.OMEROWrapper;
 import ome.formats.importer.util.ErrorHandler;
 import ome.io.nio.SimpleBackOff;
 import ome.services.blitz.repo.path.FsFile;
+import ome.system.Login;
 import omero.ApiUsageException;
 import omero.RLong;
 import omero.RType;
+import omero.SecurityViolation;
 import omero.ServerError;
 import omero.rtypes;
 import omero.api.IAdminPrx;
+import omero.api.IPixelsPrx;
 import omero.api.IQueryPrx;
 import omero.api.IUpdatePrx;
 import omero.api.ServiceFactoryPrx;
@@ -59,6 +57,7 @@ import omero.cmd.State;
 import omero.cmd.Status;
 import omero.grid.RepositoryMap;
 import omero.grid.RepositoryPrx;
+import omero.model.Annotation;
 import omero.model.BooleanAnnotation;
 import omero.model.BooleanAnnotationI;
 import omero.model.ChannelBinding;
@@ -67,6 +66,8 @@ import omero.model.CommentAnnotationI;
 import omero.model.Dataset;
 import omero.model.DatasetAnnotationLink;
 import omero.model.DatasetAnnotationLinkI;
+import omero.model.DatasetImageLink;
+import omero.model.DatasetImageLinkI;
 import omero.model.Detector;
 import omero.model.DetectorAnnotationLink;
 import omero.model.DetectorAnnotationLinkI;
@@ -79,6 +80,7 @@ import omero.model.FileAnnotation;
 import omero.model.FileAnnotationI;
 import omero.model.Fileset;
 import omero.model.FilesetI;
+import omero.model.Folder;
 import omero.model.IObject;
 import omero.model.Image;
 import omero.model.ImageAnnotationLink;
@@ -109,6 +111,8 @@ import omero.model.PlateAnnotationLinkI;
 import omero.model.Project;
 import omero.model.ProjectAnnotationLink;
 import omero.model.ProjectAnnotationLinkI;
+import omero.model.ProjectDatasetLink;
+import omero.model.ProjectDatasetLinkI;
 import omero.model.QuantumDef;
 import omero.model.RenderingDef;
 import omero.model.Screen;
@@ -123,14 +127,21 @@ import omero.model.WellAnnotationLink;
 import omero.model.WellAnnotationLinkI;
 import omero.model.WellSample;
 import omero.sys.EventContext;
+import omero.sys.Parameters;
 import omero.sys.ParametersI;
+import omero.sys.Roles;
 
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
+import org.springframework.util.ResourceUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
+import com.google.common.io.Files;
 
 /**
  * Base test for integration tests.
@@ -148,17 +159,11 @@ public class AbstractServerTest extends AbstractTest {
     /** Performs the move as group owner. */
     public static final int ADMIN = 102;
 
-    /** Identifies the <code>system</code> group. */
-    public String SYSTEM_GROUP = "system";
-
-    /** Identifies the <code>user</code> group. */
-    public String USER_GROUP = "user";
-
-    /** Identifies the <code>guest</code> group. */
-    public String GUEST_GROUP = "guest";
-
     /** Scaling factor used for CmdCallbackI loop timings. */
     protected long scalingFactor;
+
+    /** All groups context to use in cases where errors due to group restriction are to be avoided. */
+    protected static final ImmutableMap<String, String> ALL_GROUPS_CONTEXT = ImmutableMap.of(Login.OMERO_GROUP, "-1");
 
     /** The client object, this is the entry point to the Server. */
     protected omero.client client;
@@ -181,8 +186,14 @@ public class AbstractServerTest extends AbstractTest {
     /** Helper reference to the <code>IAdmin</code> service. */
     protected IAdminPrx iAdmin;
 
+    /** Helper reference to the <code>IPixels</code> service. */
+    protected IPixelsPrx iPix;
+
+    /** Helper reference to the server's critical roles. */
+    protected Roles roles;
+
     /** Reference to the importer store. */
-    protected OMEROMetadataStoreClient importer;
+    private OMEROMetadataStoreClient importer;
 
     /** Helper class creating mock object. */
     protected ModelMockFactory mmFactory;
@@ -203,6 +214,19 @@ public class AbstractServerTest extends AbstractTest {
      * @see #newUserInGroup(ExperimenterGroup)
      */
     private final Set<omero.client> clients = new HashSet<omero.client>();
+
+    /* a simple valid Python script */
+    private String pythonScript = null;
+
+    protected AbstractServerTest() {
+        final ome.system.Roles defaultRoles = new ome.system.Roles();
+        roles = new Roles(
+                defaultRoles.getRootId(), defaultRoles.getRootName(),
+                defaultRoles.getSystemGroupId(), defaultRoles.getSystemGroupName(),
+                defaultRoles.getUserGroupId(), defaultRoles.getUserGroupName(),
+                defaultRoles.getGuestId(), defaultRoles.getGuestName(),
+                defaultRoles.getGuestGroupId(), defaultRoles.getGuestGroupName());
+    }
 
     /**
      * Sole location where {@link omero.client#client()} or any other
@@ -271,11 +295,205 @@ public class AbstractServerTest extends AbstractTest {
     @Override
     @AfterClass
     public void tearDown() throws Exception {
+        clean();
         for (omero.client c : clients) {
             if (c != null) {
                 c.__del__();
             }
         }
+    }
+
+    /**
+     * Creates the import if not already initialized and returns it.
+     */
+    protected OMEROMetadataStoreClient createImporter() throws Exception
+    {
+
+        if (importer == null) {
+            try {
+                importer = new OMEROMetadataStoreClient();
+                importer.initialize(factory);
+            } catch (Exception e) {
+                if (importer != null) {
+                    try {
+                        importer.closeServices();
+                    } catch (Exception ex) {
+                        //the initial error will be thrown
+                    }
+                    importer = null;
+                }
+                throw e;
+            }
+        }
+        return importer;
+    }
+
+    /**
+     * An enumeration of properties for which IObjects can be examined.
+     * Used in {@link AbstractServerTest.verifyObjectProperty}.
+     * @author pwalczysko@dundee.ac.uk
+     */
+    private enum DetailsProperty {
+        GROUP("group"),
+        OWNER("owner");
+
+        private final String name;
+
+        DetailsProperty(String name) {
+            this.name = name;
+        }
+
+        @Override
+        public String toString() {
+            return this.name;
+        }
+    }
+
+    /**
+     * Add the given annotation to the given image.
+     * @param image an image
+     * @param annotation an annotation
+     * @return the new loaded link from the image to the annotation
+     * @throws ServerError an error possibly occurring during saving of the link
+     */
+    protected ImageAnnotationLink linkParentToChild(Image image, Annotation annotation) throws ServerError {
+        if (image.isLoaded()) {
+            image = (Image) image.proxy();
+        }
+        if (annotation.isLoaded() && annotation.getId() != null) {
+            annotation = (Annotation) annotation.proxy();
+        }
+
+        final ImageAnnotationLink link = new ImageAnnotationLinkI();
+        link.setParent(image);
+        link.setChild(annotation);
+        return (ImageAnnotationLink) iUpdate.saveAndReturnObject(link);
+    }
+
+    /**
+     * Create a link between a Project and a Dataset.
+     * @param project an OMERO Project
+     * @param dataset an OMERO Dataset
+     * @return the created link
+     * @throws ServerError an error possibly occurring during saving of the link
+     */
+    protected ProjectDatasetLink linkParentToChild(Project project, Dataset dataset) throws ServerError {
+        if (project.isLoaded() && project.getId() != null) {
+            project = (Project) project.proxy();
+        }
+        if (dataset.isLoaded() && dataset.getId() != null) {
+            dataset = (Dataset) dataset.proxy();
+        }
+
+        final ProjectDatasetLink link = new ProjectDatasetLinkI();
+        link.setParent(project);
+        link.setChild(dataset);
+        return (ProjectDatasetLink) iUpdate.saveAndReturnObject(link);
+    }
+
+    /**
+     * Create a link between a Dataset and an Image.
+     * @param dataset an OMERO Dataset
+     * @param image an OMERO Image
+     * @return the created link
+     * @throws ServerError an error possibly occurring during saving of the link
+     */
+    protected DatasetImageLink linkParentToChild(Dataset dataset, Image image) throws ServerError {
+        if (dataset.isLoaded() && dataset.getId() != null) {
+            dataset = (Dataset) dataset.proxy();
+        }
+        if (image.isLoaded() && image.getId() != null) {
+            image = (Image) image.proxy();
+        }
+
+        final DatasetImageLink link = new DatasetImageLinkI();
+        link.setParent(dataset);
+        link.setChild(image);
+        return (DatasetImageLink) iUpdate.saveAndReturnObject(link);
+    }
+
+    /**
+     * Assert that the given object is in the given group.
+     * @param object a model object
+     * @param expectedGroup an experimenter group
+     * @throws ServerError unexpected
+     */
+    protected void assertInGroup(IObject object, ExperimenterGroup expectedGroup) throws ServerError {
+        assertInGroup(Collections.singleton(object), expectedGroup);
+    }
+
+    /**
+     * Assert that the given objects are in the given group.
+     * @param objects some model objects
+     * @param expectedGroup an experimenter group
+     * @throws ServerError unexpected
+     */
+    protected void assertInGroup(Collection<? extends IObject> objects, ExperimenterGroup expectedGroup) throws ServerError {
+        assertInGroup(objects, expectedGroup.getId().getValue());
+    }
+
+    /**
+     * Assert that the given object is in the given group.
+     * @param object a model object
+     * @param expectedGroupId a group Id
+     * @throws ServerError unexpected
+     */
+    protected void assertInGroup(IObject object, long expectedGroupId) throws ServerError {
+        assertInGroup(Collections.singleton(object), expectedGroupId);
+    }
+
+    /**
+     * Assert that the given objects are in the given group.
+     * @param objects some model objects
+     * @param expectedGroupId a group Id
+     * @throws ServerError unexpected
+     */
+    protected void assertInGroup(Collection<? extends IObject> objects, long expectedGroupId) throws ServerError {
+        verifyObjectProperty(objects, expectedGroupId, DetailsProperty.GROUP);
+    }
+
+    /**
+     * Assert that certain objects either belong to a certain group
+     * or have a certain owner.
+     * @param testedObjects some model objects to test for properties
+     * @param id expected id of the property object (of GROUP or OWNER)
+     * @param property property to examine the testedObjects for (can be GROUP or OWNER)
+     * @throws ServerError if query fails
+     */
+    protected void verifyObjectProperty(Collection<? extends IObject> testedObjects, long id, DetailsProperty property)
+            throws ServerError {
+        if (testedObjects.isEmpty()) {
+            throw new IllegalArgumentException("must assert about some objects");
+        }
+        for (final IObject testedObject : testedObjects) {
+            final String testedObjectName = testedObject.getClass().getName() + '[' + testedObject.getId().getValue() + ']';
+            final String query = "SELECT details." + property + ".id FROM " +
+                    testedObject.getClass().getSuperclass().getSimpleName() + " WHERE id = :id";
+            final Parameters params = new ParametersI().addId(testedObject.getId());
+            final List<List<RType>> results = root.getSession().getQueryService().projection(query, params, ALL_GROUPS_CONTEXT);
+            final long actualId = ((RLong) results.get(0).get(0)).getValue();
+            Assert.assertEquals(actualId, id, testedObjectName);
+        }
+    }
+
+    /**
+     * Assert that the given object is owned by the given owner.
+     * @param object a model object
+     * @param expectedOwner a user's event context
+     * @throws ServerError unexpected
+     */
+    protected void assertOwnedBy(IObject object, EventContext expectedOwner) throws ServerError {
+        assertOwnedBy(Collections.singleton(object), expectedOwner);
+    }
+
+    /**
+     * Assert that the given objects are owned by the given owner.
+     * @param objects some model objects
+     * @param expectedOwner a user's event context
+     * @throws ServerError unexpected
+     */
+    protected void assertOwnedBy(Collection<? extends IObject> objects, EventContext expectedOwner) throws ServerError {
+        verifyObjectProperty(objects, expectedOwner.userId, DetailsProperty.OWNER);
     }
 
     /**
@@ -330,23 +548,6 @@ public class AbstractServerTest extends AbstractTest {
         g.getDetails().setPermissions(perms);
         g = new ExperimenterGroupI(rootAdmin.createGroup(g), false);
         return newUserInGroup(g, owner);
-    }
-
-    /**
-     * Changes the permissions of the group.
-     *
-     * @param perms
-     *            The permissions level.
-     * @param groupId
-     *            The identifier of the group to handle.
-     * @throws Exception
-     *             Thrown if an error occurred.
-     */
-    protected void resetGroupPerms(String perms, long groupId) throws Exception {
-        IAdminPrx rootAdmin = root.getSession().getAdminService();
-        ExperimenterGroup g = rootAdmin.getGroup(groupId);
-        g.getDetails().setPermissions(new PermissionsI(perms));
-        rootAdmin.updateGroup(g);
     }
 
     /**
@@ -586,7 +787,7 @@ public class AbstractServerTest extends AbstractTest {
     protected long newUserInGroupWithPassword(Experimenter experimenter,
             List<ExperimenterGroup> groups, String password) throws Exception {
         IAdminPrx rootAdmin = root.getSession().getAdminService();
-        ExperimenterGroup userGroup = rootAdmin.lookupGroup(USER_GROUP);
+        ExperimenterGroup userGroup = rootAdmin.lookupGroup(roles.userGroupName);
         return rootAdmin.createExperimenterWithPassword(experimenter,
                 omero.rtypes.rstring(password), userGroup, groups);
     }
@@ -646,8 +847,38 @@ public class AbstractServerTest extends AbstractTest {
      *             Thrown if an error occurred.
      */
     protected void loginUser(EventContext ownerEc) throws Exception {
+        loginUser(ownerEc.userName);
+    }
+
+    /**
+     * Logs in the user.
+     *
+     * @param ownerName
+     *            The OME name of the user.
+     * @throws Exception
+     *             Thrown if an error occurred.
+     */
+    protected void loginUser(String ownerName) throws Exception {
         omero.client client = newOmeroClient();
+        client.createSession(ownerName, ownerName);
+        init(client);
+    }
+
+    /**
+     * Logs in the user.
+     *
+     * @param ownerEc
+     *            The context of the user.
+     * @param g
+     *            The group to log into.
+     * @throws Exception
+     *             Thrown if an error occurred.
+     */
+    protected void loginUser(EventContext ownerEc, ExperimenterGroup g) throws Exception {
+        final omero.client client = newOmeroClient();
         client.createSession(ownerEc.userName, ownerEc.userName);
+        client.getSession().setSecurityContext(
+                new ExperimenterGroupI(g.getId(), false));
         init(client);
     }
 
@@ -741,15 +972,24 @@ public class AbstractServerTest extends AbstractTest {
 
         this.client = client;
         factory = client.getSession();
-        iQuery = factory.getQueryService();
-        iUpdate = factory.getUpdateService();
-        iAdmin = factory.getAdminService();
-        mmFactory = new ModelMockFactory(factory.getPixelsService());
+        EventContext ctx = null;
+        try {
+            iQuery = factory.getQueryService();
+            iUpdate = factory.getUpdateService();
+            iAdmin = factory.getAdminService();
+            iPix = factory.getPixelsService();
+            roles = iAdmin.getSecurityRoles();
+            mmFactory = new ModelMockFactory(root.getSession().getTypesService());
+            ctx = iAdmin.getEventContext();
+        } catch (SecurityViolation sv) {
+            mmFactory = null;
+            iAdmin = null;
+            iQuery = null;
+            iUpdate = null;
+            iPix = null;
+        }
 
-        importer = new OMEROMetadataStoreClient();
-        importer.initialize(factory);
-
-        return iAdmin.getEventContext();
+        return ctx;
     }
 
     /**
@@ -764,51 +1004,56 @@ public class AbstractServerTest extends AbstractTest {
      */
     protected void compareRenderingDef(RenderingDef def1, RenderingDef def2)
             throws Exception {
-        assertNotNull(def1);
-        assertNotNull(def2);
-        assertTrue(def1.getDefaultZ().getValue() == def2.getDefaultZ()
-                .getValue());
-        assertTrue(def1.getDefaultT().getValue() == def2.getDefaultT()
-                .getValue());
-        assertTrue(def1.getModel().getValue().getValue()
-                .equals(def2.getModel().getValue().getValue()));
+        Assert.assertNotNull(def1);
+        Assert.assertNotNull(def2);
+        Assert.assertEquals(def1.getDefaultZ().getValue(),
+                def2.getDefaultZ().getValue());
+        Assert.assertEquals(def1.getDefaultT().getValue(),
+                def2.getDefaultT().getValue());
+        Assert.assertEquals(def1.getModel().getValue().getValue(),
+                def2.getModel().getValue().getValue());
         QuantumDef q1 = def1.getQuantization();
         QuantumDef q2 = def2.getQuantization();
-        assertNotNull(q1);
-        assertNotNull(q2);
-        assertTrue(q1.getBitResolution().getValue() == q2.getBitResolution()
-                .getValue());
-        assertTrue(q1.getCdStart().getValue() == q2.getCdStart().getValue());
-        assertTrue(q1.getCdEnd().getValue() == q2.getCdEnd().getValue());
+        Assert.assertNotNull(q1);
+        Assert.assertNotNull(q2);
+        Assert.assertEquals(q1.getBitResolution().getValue(),
+                q2.getBitResolution().getValue());
+        Assert.assertEquals(q1.getCdStart().getValue(), q2.getCdStart().getValue());
+        Assert.assertEquals(q1.getCdEnd().getValue(), q2.getCdEnd().getValue());
         List<ChannelBinding> channels1 = def1.copyWaveRendering();
         List<ChannelBinding> channels2 = def2.copyWaveRendering();
-        assertNotNull(channels1);
-        assertNotNull(channels2);
-        assertTrue(channels1.size() == channels2.size());
+        Assert.assertNotNull(channels1);
+        Assert.assertNotNull(channels2);
+        Assert.assertEquals(channels1.size(), channels2.size());
         Iterator<ChannelBinding> i = channels1.iterator();
         ChannelBinding c1, c2;
         int index = 0;
         while (i.hasNext()) {
             c1 = i.next();
             c2 = channels2.get(index);
-            assertTrue(c1.getAlpha().getValue() == c2.getAlpha().getValue());
-            assertTrue(c1.getRed().getValue() == c2.getRed().getValue());
-            assertTrue(c1.getGreen().getValue() == c2.getGreen().getValue());
-            assertTrue(c1.getBlue().getValue() == c2.getBlue().getValue());
-            assertTrue(c1.getCoefficient().getValue() == c2.getCoefficient()
+            Assert.assertEquals(c1.getAlpha().getValue(), c2.getAlpha().getValue());
+            Assert.assertEquals(c1.getRed().getValue(), c2.getRed().getValue());
+            Assert.assertEquals(c1.getGreen().getValue(), c2.getGreen().getValue());
+            Assert.assertEquals(c1.getBlue().getValue(), c2.getBlue().getValue());
+            Assert.assertEquals(c1.getCoefficient().getValue(), c2.getCoefficient()
                     .getValue());
-            assertTrue(c1.getFamily().getValue().getValue()
-                    .equals(c2.getFamily().getValue().getValue()));
-            assertTrue(c1.getInputStart().getValue() == c2.getInputStart()
+            Assert.assertEquals(c1.getFamily().getValue().getValue(),
+                    c2.getFamily().getValue().getValue());
+            Assert.assertEquals(c1.getInputStart().getValue(), c2.getInputStart()
                     .getValue());
-            assertTrue(c1.getInputEnd().getValue() == c2.getInputEnd()
+            Assert.assertEquals(c1.getInputEnd().getValue(), c2.getInputEnd()
                     .getValue());
             Boolean b1 = Boolean.valueOf(c1.getActive().getValue());
             Boolean b2 = Boolean.valueOf(c2.getActive().getValue());
-            assertTrue(b1.equals(b2));
+            Assert.assertEquals(b1, b2);
             b1 = Boolean.valueOf(c1.getNoiseReduction().getValue());
             b2 = Boolean.valueOf(c2.getNoiseReduction().getValue());
-            assertTrue(b1.equals(b2));
+            Assert.assertEquals(b1, b2);
+            //Check lut
+            if (c1.getLookupTable() != null && c2.getLookupTable() != null) {
+                Assert.assertEquals(c1.getLookupTable().getValue(),
+                        c2.getLookupTable().getValue());
+            }
         }
     }
 
@@ -864,9 +1109,9 @@ public class AbstractServerTest extends AbstractTest {
         ParametersI param = new ParametersI();
         param.addId(id);
         List<IObject> results = iQuery.findAllByQuery(sql, param);
-        assertTrue(results.size() == 1);
+        Assert.assertEquals(1, results.size());
         WellSample ws = (WellSample) results.get(0);
-        assertNotNull(ws);
+        Assert.assertNotNull(ws);
         return ws;
     }
 
@@ -886,9 +1131,9 @@ public class AbstractServerTest extends AbstractTest {
         ParametersI param = new ParametersI();
         param.addId(id);
         List<IObject> results = iQuery.findAllByQuery(sql, param);
-        assertTrue(results.size() == 1);
+        Assert.assertEquals(1, results.size());
         Experiment e = (Experiment) results.get(0);
-        assertNotNull(e);
+        Assert.assertNotNull(e);
         return e;
     }
 
@@ -908,6 +1153,19 @@ public class AbstractServerTest extends AbstractTest {
     }
 
     /**
+     * Provides a simple Python script with valid syntax.
+     * @return the content of an uploadable Python script
+     * @throws IOException if the simple script cannot be read
+     */
+    protected String getPythonScript() throws IOException {
+        if (pythonScript == null) {
+            final File scriptFile = ResourceUtils.getFile("classpath:minimal-script.py");
+            pythonScript = Files.toString(scriptFile, StandardCharsets.UTF_8);
+        }
+        return pythonScript;
+    }
+
+    /**
      * Makes sure that the passed object exists.
      *
      * @param obj
@@ -918,10 +1176,9 @@ public class AbstractServerTest extends AbstractTest {
     protected void assertExists(IObject obj) throws Exception {
         IObject copy = iQuery.find(obj.getClass().getSimpleName(), obj.getId()
                 .getValue());
-        assertNotNull(
+        Assert.assertNotNull(copy,
                 String.format("%s:%s", obj.getClass().getName(), obj.getId()
-                        .getValue())
-                        + " is missing!", copy);
+                        .getValue()) + " is missing!");
     }
 
     protected void assertAllExist(IObject... obj) throws Exception {
@@ -958,10 +1215,9 @@ public class AbstractServerTest extends AbstractTest {
     protected void assertDoesNotExist(IObject obj) throws Exception {
         IObject copy = iQuery.find(obj.getClass().getSimpleName(), obj.getId()
                 .getValue());
-        assertNull(
+        Assert.assertNull(copy,
                 String.format("%s:%s", obj.getClass().getName(), obj.getId()
-                        .getValue())
-                        + " still exists!", copy);
+                        .getValue()) + " still exists!");
     }
 
     protected void assertNoneExist(IObject... obj) throws Exception {
@@ -1101,6 +1357,9 @@ public class AbstractServerTest extends AbstractTest {
     protected List<Pixels> importFile(OMEROMetadataStoreClient importer,
             File file, String format, boolean metadata, IObject target)
             throws Throwable {
+        if (importer == null) {
+            importer = createImporter();
+        }        
         String[] paths = new String[1];
         paths[0] = file.getAbsolutePath();
         ImportConfig config = new ImportConfig();
@@ -1129,8 +1388,8 @@ public class AbstractServerTest extends AbstractTest {
         ic.setTarget(target);
         // ic = library.uploadFilesToRepository(ic);
         List<Pixels> pixels = library.importImage(ic, 0, 0, 1);
-        assertNotNull(pixels);
-        assertTrue(pixels.size() > 0);
+        Assert.assertNotNull(pixels);
+        Assert.assertTrue(CollectionUtils.isNotEmpty(pixels));
         return pixels;
     }
 
@@ -1224,6 +1483,29 @@ public class AbstractServerTest extends AbstractTest {
     }
 
     /**
+     * Create a single image with binary.
+     *
+     * After recent changes on the server to check for existing binary data for
+     * pixels, many resetDefaults methods tested below began returning null
+     * since {@link omero.LockTimeout} exceptions were being thrown server-side.
+     * By using omero.client.forEachTile, we can set the necessary data easily.
+     *
+     * @param sizeX The number of pixels along the X-axis.
+     * @param sizeY The number of pixels along the Y-axis.
+     * @param sizeZ The number of z-sections.
+     * @param sizeT The number of timepoints.
+     * @param sizeC The number of channels.
+     * @see ticket:5755
+     */
+    protected Image createBinaryImage(int sizeX, int sizeY, int sizeZ,
+            int sizeT, int sizeC) throws Exception {
+        Image image = mmFactory.createImage(sizeX, sizeY, sizeZ, sizeT,
+                sizeC, ModelMockFactory.UINT16);
+        image = (Image) iUpdate.saveAndReturnObject(image);
+        return createBinaryImage(image);
+    }
+
+    /**
      * Create the binary data for the given image.
      */
     protected Image createBinaryImage(Image image) throws Exception {
@@ -1285,7 +1567,7 @@ public class AbstractServerTest extends AbstractTest {
 
         OriginalFile of = (OriginalFile) iUpdate.saveAndReturnObject(mmFactory
                 .createOriginalFile());
-        assertNotNull(of);
+        Assert.assertNotNull(of);
         FileAnnotation f = new FileAnnotationI();
         f.setFile(of);
         f = (FileAnnotation) iUpdate.saveAndReturnObject(f);
@@ -1916,6 +2198,30 @@ public class AbstractServerTest extends AbstractTest {
     }
 
     /**
+     * Refresh a folder.
+     * @param folder the folder to refresh
+     * @return the same folder refreshed with its child folder and image link collections loaded
+     * @throws ServerError unexpected
+     */
+    protected Folder returnFolder(Folder folder) throws ServerError {
+        final String query =
+                "FROM Folder AS f LEFT OUTER JOIN FETCH f.childFolders LEFT OUTER JOIN FETCH f.imageLinks WHERE f.id = :id";
+        final Parameters params = new ParametersI().addId(folder.getId().getValue());
+        return (Folder) iQuery.findByQuery(query, params);
+    }
+
+    /**
+     * Save and refresh a folder.
+     * @param folder the folder to save and refresh
+     * @return the same folder refreshed with its child folder and image link collections loaded
+     * @throws ServerError unexpected
+     */
+    protected Folder saveAndReturnFolder(Folder folder) throws ServerError {
+        folder = (Folder) iUpdate.saveAndReturnObject(folder);
+        return returnFolder(folder);
+    }
+
+    /**
      * Modifies the graph.
      *
      * @param change
@@ -1924,7 +2230,7 @@ public class AbstractServerTest extends AbstractTest {
      * @throws Exception
      */
     protected Response doChange(Request change) throws Exception {
-        return doChange(client, factory, change, true, null);
+        return doChange(client, factory, change, true);
     }
 
     /**
@@ -1936,12 +2242,12 @@ public class AbstractServerTest extends AbstractTest {
      * @throws Exception
      */
     protected Response doChange(Request change, long groupID) throws Exception {
-        return doChange(client, factory, change, true, groupID);
+        return doChange(client, factory, change, true, groupID, null);
     }
 
     protected Response doChange(omero.client c, ServiceFactoryPrx f,
             Request change, boolean pass) throws Exception {
-        return doChange(c, f, change, pass, null);
+        return doChange(c, f, change, pass, null, null);
     }
 
     protected Response doAllChanges(omero.client c, ServiceFactoryPrx f,
@@ -1962,7 +2268,7 @@ public class AbstractServerTest extends AbstractTest {
      * @throws Exception
      */
     protected Response doChange(omero.client c, ServiceFactoryPrx f,
-            Request change, boolean pass, Long groupID) throws Exception {
+            Request change, boolean pass, Long groupID, Integer scalingFactorAdjustment) throws Exception {
         final Map<String, String> callContext = new HashMap<String, String>();
         if (groupID != null) {
             callContext.put("omero.group", "" + groupID);
@@ -1970,7 +2276,11 @@ public class AbstractServerTest extends AbstractTest {
         final HandlePrx prx = f.submit(change, callContext);
         // assertFalse(prx.getStatus().flags.contains(State.FAILURE));
         CmdCallbackI cb = new CmdCallbackI(c, prx);
-        cb.loop(20, scalingFactor);
+        long useScalingFactor = scalingFactor;
+        if (scalingFactorAdjustment != null) {
+            useScalingFactor *= scalingFactorAdjustment;
+        }
+        cb.loop(20, useScalingFactor);
         return assertCmd(cb, pass);
     }
 
@@ -1992,22 +2302,22 @@ public class AbstractServerTest extends AbstractTest {
     protected Response assertCmd(CmdCallbackI cb, boolean pass) {
         Status status = cb.getStatus();
         Response rsp = cb.getResponse();
-        assertNotNull(rsp);
+        Assert.assertNotNull(rsp);
         if (pass) {
             if (rsp instanceof ERR) {
                 ERR err = (ERR) rsp;
                 String name = err.getClass().getSimpleName();
-                fail(String.format(
+                Assert.fail(String.format(
                         "Found %s when pass==true: %s (%s) params=%s", name,
                         err.category, err.name, err.parameters));
             }
-            assertFalse(status.flags.contains(State.FAILURE));
+            Assert.assertFalse(status.flags.contains(State.FAILURE));
         } else {
             if (rsp instanceof OK) {
                 OK ok = (OK) rsp;
-                fail(String.format("Found OK when pass==false: %s", ok));
+                Assert.fail(String.format("Found OK when pass==false: %s", ok));
             }
-            assertTrue(status.flags.contains(State.FAILURE));
+            Assert.assertTrue(status.flags.contains(State.FAILURE));
         }
         return rsp;
     }
@@ -2031,6 +2341,110 @@ public class AbstractServerTest extends AbstractTest {
                 break;
             case ADMIN:
                 logRootIntoGroup();
+        }
+    }
+
+    /**
+     * Convenient helper function for providing Boolean arguments to TestNG tests.
+     * @param argCount how many arguments the test takes
+     * @return every combination of argument values
+     */
+    private static Boolean[][] provideEveryBooleanCombination(int argCount) {
+        // TODO: Once we use Guava 19 we can use Collections.nCopies and Lists.cartesianProduct instead of this manual approach.
+        if (argCount < 1) {
+            throw new IllegalArgumentException("argument count must be strictly positive");
+        }
+        final Boolean[][] testArguments = new Boolean[1 << argCount][];
+        int testNum = 0;
+        testArguments[testNum] = new Boolean[argCount];
+        Arrays.fill(testArguments[testNum], false);
+        while (++testNum < testArguments.length) {
+            testArguments[testNum] = Arrays.copyOf(testArguments[testNum - 1], argCount);
+            int argNum = argCount - 1;
+            while (true) {
+                if (testArguments[testNum][argNum]) {
+                    testArguments[testNum][argNum--] = false;
+                } else {
+                    testArguments[testNum][argNum] = true;
+                    break;
+                }
+            }
+        }
+        return testArguments;
+    }
+
+    /**
+     * @return all four combinations of Boolean argument values
+     */
+    @DataProvider(name = "test cases using two Boolean arguments")
+    public Object[][] provideTwoBooleanArguments() {
+        return provideEveryBooleanCombination(2);
+    }
+
+    /**
+     * @return all eight combinations of Boolean argument values
+     */
+    @DataProvider(name = "test cases using three Boolean arguments")
+    public Object[][] provideThreeBooleanArguments() {
+        return provideEveryBooleanCombination(3);
+    }
+
+    /**
+     * @return all sixteen combinations of Boolean argument values
+     */
+    @DataProvider(name = "test cases using four Boolean arguments")
+    public Object[][] provideFourBooleanArguments() {
+        return provideEveryBooleanCombination(4);
+    }
+
+    /**
+     * Override the Ice implicit call context with a group ID.
+     * Removes the override upon closing.
+     * @author m.t.b.carroll@ixod.org
+     * @since 5.4.0
+     */
+    protected class ImplicitGroupContext implements AutoCloseable {
+        /**
+         * Set the implicit group context to the given group.
+         * @param groupId a group ID
+         */
+        ImplicitGroupContext(long groupId) {
+            if (client.getImplicitContext().containsKey(Login.OMERO_GROUP)) {
+                throw new IllegalStateException("group context already set");
+            }
+            client.getImplicitContext().put(Login.OMERO_GROUP, Long.toString(groupId));
+        }
+
+        /**
+         * Set the implicit group context.
+         * @param groupId a group ID
+         */
+        ImplicitGroupContext(RLong groupId) {
+            this(groupId.getValue());
+        }
+
+        @Override
+        public void close() {
+            if (!client.getImplicitContext().containsKey(Login.OMERO_GROUP)) {
+                throw new IllegalStateException("group context no longer set");
+            }
+            client.getImplicitContext().remove(Login.OMERO_GROUP);
+        }
+    }
+
+    /**
+     * Override the Ice implicit call context with all-groups.
+     * Removes the override upon closing.
+     * @author m.t.b.carroll@ixod.org
+     * @since 5.4.0
+     */
+    protected class ImplicitAllGroupsContext extends ImplicitGroupContext {
+        /**
+         * Set the implicit group context to all-groups.
+         * @param groupId a group ID
+         */
+        ImplicitAllGroupsContext() {
+            super(-1);
         }
     }
 }

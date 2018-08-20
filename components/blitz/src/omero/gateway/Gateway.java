@@ -1,6 +1,6 @@
 /*
  *------------------------------------------------------------------------------
- *  Copyright (C) 2015-2016 University of Dundee. All rights reserved.
+ *  Copyright (C) 2015-2018 University of Dundee. All rights reserved.
  *
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -18,6 +18,7 @@
  *
  *------------------------------------------------------------------------------
  */
+
 package omero.gateway;
 
 import java.beans.PropertyChangeListener;
@@ -28,7 +29,9 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.ResourceBundle;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -56,6 +59,7 @@ import omero.api.IRenderingSettingsPrx;
 import omero.api.IRepositoryInfoPrx;
 import omero.api.IRoiPrx;
 import omero.api.IScriptPrx;
+import omero.api.ITypesPrx;
 import omero.api.IUpdatePrx;
 import omero.api.RawFileStorePrx;
 import omero.api.RawPixelsStorePrx;
@@ -81,7 +85,12 @@ import omero.model.ExperimenterGroupI;
 import omero.gateway.model.ExperimenterData;
 import omero.gateway.model.GroupData;
 import omero.gateway.util.PojoMapper;
+import Glacier2.CannotCreateSessionException;
+import Glacier2.PermissionDeniedException;
+import Ice.DNSException;
+import Ice.SocketException;
 
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.LinkedListMultimap;
 import com.google.common.collect.ListMultimap;
 import com.google.common.collect.Multimaps;
@@ -94,7 +103,7 @@ import com.google.common.collect.Multimaps;
  * @since 5.1
  */
 
-public class Gateway {
+public class Gateway implements AutoCloseable {
 
     /** Property to indicate that a {@link Connector} has been created */
     public static final String PROP_CONNECTOR_CREATED = "PROP_CONNECTOR_CREATED";
@@ -110,6 +119,9 @@ public class Gateway {
 
     /** Property to indicate that a {@link Facility} has been created */
     public static final String PROP_FACILITY_CREATED = "PROP_FACILITY_CREATED";
+    
+    /** Property to indicate that a {@link Facility} has been closed */
+    public static final String PROP_FACILITY_CLOSED = "PROP_FACILITY_CLOSED";
 
     /** Property to indicate that an import store has been created */
     public static final String PROP_IMPORTSTORE_CREATED = "PROP_IMPORTSTORE_CREATED";
@@ -131,7 +143,7 @@ public class Gateway {
 
     /** Property to indicate that a stateless service has been created */
     public static final String PROP_STATELESS_SERVICE_CREATED = "PROP_STATELESS_SERVICE_CREATED";
-
+    
     /** Reference to a {@link Logger} */
     private Logger log;
 
@@ -169,7 +181,7 @@ public class Gateway {
     
     /** Flag to indicate that executor threads should be shutdown on disconnect */
     private boolean executorShutdownOnDisconnect = false;
-    
+
     /**
      * Creates a new Gateway instance
      * @param log A {@link Logger}
@@ -242,10 +254,24 @@ public class Gateway {
      */
     public ExperimenterData connect(LoginCredentials c)
             throws DSOutOfServiceException {
-        client client = createSession(c);
-        loggedInUser = login(client, c);
-        connected = true;
-        return loggedInUser;
+        client client = null;
+        try {
+            client = createSession(c);
+            loggedInUser = login(client, c);
+            connected = true;
+            return loggedInUser;
+        } catch (CannotCreateSessionException e) {
+            throw new DSOutOfServiceException("Could not initialize session", e);
+        } catch (PermissionDeniedException e) {
+            throw new DSOutOfServiceException("Login credentials not valid", e);
+        } catch (ServerError e) {
+            throw new DSOutOfServiceException(e.getMessage(), e);
+        } catch (SocketException e) {
+            throw new DSOutOfServiceException(e.getMessage(), e);
+        } catch (DNSException e) {
+            throw new DSOutOfServiceException("Can't resolve hostname "
+                    + c.getServer().getHostname(), e);
+        }
     }
 
     /**
@@ -294,7 +320,8 @@ public class Gateway {
         }
         Facility.clear();
         groupConnectorMap.clear();
-        keepAliveExecutor.shutdown();
+        if (keepAliveExecutor != null)
+            keepAliveExecutor.shutdown();
         connected = false;
         if (cacheService != null)
             cacheService.shutDown();
@@ -375,15 +402,15 @@ public class Gateway {
      * @param user
      *            The user to get the session ID for
      * @return See above
+     * @throws DSOutOfServiceException
+     *             If the connection is broken, or not logged in
      */
-    public String getSessionId(ExperimenterData user) {
-        try {
-            Connector c = getConnector(new SecurityContext(user.getGroupId()),
-                    false, false);
-            if (c != null) {
-                return c.getClient().getSessionId();
-            }
-        } catch (DSOutOfServiceException e) {
+    public String getSessionId(ExperimenterData user)
+            throws DSOutOfServiceException {
+        Connector c = getConnector(new SecurityContext(user.getGroupId()),
+                false, false);
+        if (c != null) {
+            return c.getClient().getSessionId();
         }
         return null;
     }
@@ -977,97 +1004,117 @@ public class Gateway {
      *            The login credentials
      * @return The client
      * @throws DSOutOfServiceException
+     *             Thrown if the service cannot be initialized.
+     * @throws ServerError
+     *             If a general server problem occurred
+     * @throws PermissionDeniedException
+     *             If the access was denied
+     * @throws CannotCreateSessionException
+     *             If the session couldn't be created
      */
     private client createSession(LoginCredentials c)
-            throws DSOutOfServiceException {
+            throws DSOutOfServiceException, CannotCreateSessionException,
+            PermissionDeniedException, ServerError {
         client secureClient = null;
 
-        try {
-            // client must be cleaned up by caller.
-            List<String> args = c.getArguments();
-            String username;
-            if (args != null) {
-                secureClient = new client(args.toArray(new String[args.size()]));
-                username = secureClient.getProperty("omero.user");
-            } else {
-                username = c.getUser().getUsername();
-                if (c.getServer().getPort() > 0)
-                    secureClient = new client(c.getServer().getHostname(), c
-                            .getServer().getPort());
-                else
-                    secureClient = new client(c.getServer().getHostname());
-            }
-            secureClient.setAgent(c.getApplicationName());
-            ServiceFactoryPrx entryEncrypted;
-            boolean session = true;
-            ServiceFactoryPrx guestSession = null;
+        List<String> args = c.getArguments();
+        String username;
+        if (args != null) {
+            secureClient = new client(args.toArray(new String[args.size()]));
+            username = secureClient.getProperty("omero.user");
+        } else {
+            username = c.getUser().getUsername();
+            if (c.getServer().getPort() > 0)
+                secureClient = new client(c.getServer().getHostname(), c
+                        .getServer().getPort());
+            else
+                secureClient = new client(c.getServer().getHostname());
+        }
+        secureClient.setAgent(c.getApplicationName());
+        ServiceFactoryPrx entryEncrypted = null;
+        
+        boolean connected = false;
+        if (isSessionID(username)) {
             try {
-                // Check if it is a session first
-                guestSession = secureClient.createSession(
-                        "guest", "guest");
-                this.pcs.firePropertyChange(PROP_SESSION_CREATED, null, secureClient.getSessionId());
-                guestSession.getSessionService().getSession(username);
-            } catch (Exception e) {
-                // thrown if it is not a session or session has expired.
-                session = false;
-            } finally {
-                String id = secureClient.getSessionId();
-                secureClient.closeSession();
-                this.pcs.firePropertyChange(PROP_SESSION_CLOSED, null, id);
-            }
-            if (session) {
                 entryEncrypted = secureClient.joinSession(username);
-            } else {
+                connected = true;
+            } catch (Exception e) {
+                // Although username looks like a session ID it apparently isn't
+                // one.
+                log.warn(this, new LogMessage("Could not join session "
+                        + username + " , trying username/password login next.",
+                        e));
+            }
+        }
+        if (!connected) {
+            try {
                 if (args != null) {
                     entryEncrypted = secureClient.createSession();
                 } else {
                     entryEncrypted = secureClient.createSession(c.getUser()
                             .getUsername(), c.getUser().getPassword());
                 }
+            } catch (Exception e1) {
+                // close the session again before passing on the exception
+                secureClient.closeSession();
+                throw e1;
             }
-            this.pcs.firePropertyChange(PROP_SESSION_CREATED, null, secureClient.getSessionId());
-            serverVersion = entryEncrypted.getConfigService().getVersion();
+        }
 
-            if (c.isCheckNetwork()) {
-                try {
-                    String ip = InetAddress.getByName(
-                            c.getServer().getHostname()).getHostAddress();
-                    networkChecker = new NetworkChecker(ip, log);
-                } catch (Exception e) {
-                    if (log != null)
-                        log.warn(this, new LogMessage(
+        this.pcs.firePropertyChange(PROP_SESSION_CREATED, null,
+                secureClient.getSessionId());
+        serverVersion = entryEncrypted.getConfigService().getVersion();
+
+        if (c.isCheckNetwork()) {
+            try {
+                String ip = InetAddress.getByName(c.getServer().getHostname())
+                        .getHostAddress();
+                networkChecker = new NetworkChecker(ip, log);
+            } catch (Exception e) {
+                if (log != null)
+                    log.warn(this, new LogMessage(
                             "Failed to get inet address: "
                                     + c.getServer().getHostname(), e));
-                }
             }
+        }
 
-            Runnable r = new Runnable() {
-                public void run() {
-                    try {
-                        keepSessionAlive();
-                    } catch (Throwable t) {
-                        if (log != null)
-                            log.warn(
+        Runnable r = new Runnable() {
+            public void run() {
+                try {
+                    keepSessionAlive();
+                } catch (Throwable t) {
+                    if (log != null)
+                        log.warn(
                                 this,
                                 new LogMessage(
                                         "Exception while keeping the services alive",
                                         t));
-                    }
                 }
-            };
-            keepAliveExecutor = new ScheduledThreadPoolExecutor(1);
-            keepAliveExecutor.scheduleWithFixedDelay(r, 60, 60,
-                    TimeUnit.SECONDS);
-        } catch (Throwable e) {
-            if (secureClient != null) {
-                secureClient.__del__();
             }
-            throw new DSOutOfServiceException(
-                    "Can't connect to OMERO. OMERO info not valid", e);
-        }
+        };
+        keepAliveExecutor = new ScheduledThreadPoolExecutor(1);
+        keepAliveExecutor.scheduleWithFixedDelay(r, 60, 60, TimeUnit.SECONDS);
+        
         return secureClient;
     }
 
+    /**
+     * Checks if a String could be an ICE session ID.
+     * 
+     * @param s
+     *            The String to check
+     * @return <code>true</code> if it could be a session ID, <code>false</code>
+     *         otherwise.
+     */
+    private boolean isSessionID(String s) {
+        try {
+            UUID.fromString(s);
+        } catch (Exception e) {
+            return false;
+        }
+        return true;
+    }
+    
     /**
      * Logs in a certain user
      * 
@@ -1077,6 +1124,7 @@ public class Gateway {
      *            The login credentials
      * @return The user which is logged in
      * @throws DSOutOfServiceException
+     *             Thrown if the service cannot be initialized.
      */
     private ExperimenterData login(client client, LoginCredentials cred)
             throws DSOutOfServiceException {
@@ -1085,7 +1133,24 @@ public class Gateway {
         SecurityContext ctx = null;
         try {
             ServiceFactoryPrx entryEncrypted = client.getSession();
-            IAdminPrx prx = entryEncrypted.getAdminService();
+            
+            // version check
+            ResourceBundle bundle = ResourceBundle.getBundle("omero");
+            String clientVersion = bundle.getString("omero.version");
+            IConfigPrx conf = entryEncrypted.getConfigService();
+            String serverVersion = conf.getVersion();
+            if (StringUtils.isNotEmpty(clientVersion)
+                    && StringUtils.isNotEmpty(serverVersion)) {
+                String[] vc = clientVersion.split("\\.");
+                String[] vs = serverVersion.split("\\.");
+                if (!vc[0].equals(vs[0]) || !vc[1].equals(vs[1]))
+                    throw new DSOutOfServiceException("Client version "
+                            + clientVersion
+                            + " is not compatible with server version "
+                            + serverVersion);
+            }
+            
+            IAdminPrx prx = entryEncrypted.getAdminService(); 
             String userName = prx.getEventContext().userName;
             ExperimenterData exp = (ExperimenterData) PojoMapper
                     .asDataObject(prx.lookupExperimenter(userName));
@@ -1141,9 +1206,12 @@ public class Gateway {
             this.pcs.firePropertyChange(Gateway.PROP_CONNECTOR_CREATED, null, client.getSessionId());
             groupConnectorMap.put(ctx.getGroupID(), connector);
             return exp;
-        } catch (Throwable e) {
+        } catch (DSOutOfServiceException e) {
+            throw e;
+        } 
+        catch (Throwable e) {
             throw new DSOutOfServiceException(
-                    "Cannot log in. User credentials not valid", e);
+                    "Cannot log in. Login credentials not valid", e);
         }
     }
 
@@ -1152,6 +1220,7 @@ public class Gateway {
      * session.
      * 
      * @throws DSOutOfServiceException
+     *             Thrown if the service cannot be initialized.
      */
     private void keepSessionAlive() throws DSOutOfServiceException {
         // Check if network is up before keeping service otherwise
@@ -1167,7 +1236,9 @@ public class Gateway {
             c = i.next();
             if (c.needsKeepAlive()) {
                 if (!c.keepSessionAlive()) {
-                    throw new DSOutOfServiceException("Network not available");
+                    // Session has died, e. g. due to server restart.
+                    // Remove connectors, so new ones will be created as requested.
+                    groupConnectorMap.removeAll(c.getGroupID());
                 }
             }
         }
@@ -1183,6 +1254,7 @@ public class Gateway {
      * @param groupID
      *            The new group of the user
      * @throws DSOutOfServiceException
+     *             Thrown if the service cannot be initialized.
      */
     private void changeCurrentGroup(SecurityContext ctx, ExperimenterData exp,
             long groupID) throws DSOutOfServiceException {
@@ -1297,11 +1369,7 @@ public class Gateway {
             return;
 
         for (Connector c : clist) {
-            try {
-                c.close(isNetworkUp(true));
-            } catch (Throwable e) {
-                new Exception("Cannot close the connector", e);
-            }
+            c.close(isNetworkUp(true));
         }
     }
 
@@ -1453,9 +1521,10 @@ public class Gateway {
                             ConnectionStatus.NETWORK);
                 }
                 if (!c.keepSessionAlive()) {
-                    throw new DSOutOfServiceException(
-                            "Network down. Session not alive",
-                            ConnectionStatus.LOST_CONNECTION);
+                    // Session has died, e. g. due to server restart.
+                    // Remove connectors, so a new ones will be created.
+                    groupConnectorMap.removeAll(c.getGroupID());
+                    c = null;
                 }
             }
         }
@@ -1491,19 +1560,17 @@ public class Gateway {
      * Shuts down the connectors created while creating/importing data for other
      * users.
      *
-     * @param ctx The {@link SecurityContext}
-     * @throws Exception
-     *             Thrown if the connector cannot be closed.
+     * @param ctx
+     *            The {@link SecurityContext}
+     * @throws DSOutOfServiceException
+     *             If the connection is broken, or not logged in
      */
-    public void shutDownDerivedConnector(SecurityContext ctx) throws Exception {
+    public void shutDownDerivedConnector(SecurityContext ctx)
+            throws DSOutOfServiceException {
         Connector c = getConnector(ctx, true, true);
         if (c == null)
             return;
-        try {
-            c.closeDerived(isNetworkUp(true));
-        } catch (Throwable e) {
-            new Exception("Cannot close the derived connectors", e);
-        }
+        c.closeDerived(isNetworkUp(true));
     }
 
     /**
@@ -1535,6 +1602,23 @@ public class Gateway {
     }
 
     /**
+     * Returns the {@link ITypesPrx} service.
+     * 
+     * @param ctx
+     *            The {@link SecurityContext}
+     * @return See above.
+     * @throws DSOutOfServiceException
+     *             Thrown if the service cannot be initialized.
+     */
+    public ITypesPrx getTypesService(SecurityContext ctx)
+            throws DSOutOfServiceException {
+        Connector c = getConnector(ctx, true, false);
+        if (c != null)
+            return c.getTypesService();
+        return null;
+    }
+    
+    /**
      * Create a {@link Connector} for a particular {@link SecurityContext}
      * 
      * @param ctx
@@ -1551,16 +1635,25 @@ public class Gateway {
         Connector c = null;
         try {
             ctx.setServerInformation(login.getServer());
-            // client will be cleaned up by connector
-            client client = new client(login.getServer().getHostname(), login
-                    .getServer().getPort());
-            ServiceFactoryPrx prx = client.createSession(login.getUser()
-                    .getUsername(), login.getUser().getPassword());
 
-            if (ctx.getGroupID() >= 0)
-                prx.setSecurityContext(new ExperimenterGroupI(ctx.getGroupID(),
-                        false));
-            
+            client client;
+            ServiceFactoryPrx prx;
+            if (login.getArguments() != null) {
+                List<String> args = login.getArguments();
+                client = new client(
+                        args.toArray(new String[args.size()]));
+                prx = client.createSession();
+            } else {
+                client = new client(login.getServer().getHostname(),
+                        login.getServer().getPort());
+                prx = client.createSession(login.getUser().getUsername(), login
+                        .getUser().getPassword());
+            }
+            if (ctx.getGroupID() >= 0) {
+                prx.setSecurityContext(new ExperimenterGroupI(ctx.getGroupID(), false));
+            } else {
+                throw new IllegalArgumentException("must set security context with a valid group ID");
+            }
             c = new Connector(ctx, client, prx, login.isEncryption(), log);
             for (PropertyChangeListener l : this.pcs
                     .getPropertyChangeListeners())
@@ -1574,5 +1667,38 @@ public class Gateway {
             }
         }
         return c;
+    }
+
+    /**
+     * Get the read-only status of the server.
+     * Warning: This is <em>experimental API</em> that is subject to change.
+     * @param ctx the {@link SecurityContext} to use for the query
+     * @return {@code true} if the server is wholly in read-write mode,
+     *         {@code false} if the server is wholly in read-only mode,
+     *         otherwise {@code null}
+     * @throws DSOutOfServiceException if the status query failed
+     */
+    public Boolean canCreate(SecurityContext ctx) throws DSOutOfServiceException {
+        final Map<String, String> properties;
+        try {
+            final String keyRegex = "^omero\\.cluster\\.read_only\\.runtime\\.";
+            properties = getConfigService(ctx).getConfigValues(keyRegex);
+        } catch (ServerError se) {
+            throw new DSOutOfServiceException("failed to query read-only configuration values", se);
+        }
+        final Set<String> values = ImmutableSet.copyOf(properties.values());
+        if (values.isEmpty()) {
+            return true;
+        } else if (values.size() == 1) {
+            return values.contains("false");
+        } else {
+            return null;
+        }
+    }
+
+    @Override
+    public void close() throws Exception {
+        if (connected)
+            disconnect();
     }
 }

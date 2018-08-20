@@ -47,6 +47,9 @@ dbhelpers.IMAGES = {
         'weblitz_test_priv_image_tiny3', 'tinyTest.d3d.dv', 'testds3'),
     'bigimg': dbhelpers.ImageEntry(
         'weblitz_test_priv_image_big', 'big.tiff', 'testds3'),
+    '32float': dbhelpers.ImageEntry(
+        'weblitz_test_priv_image_32float',
+        '32bitfloat&pixelType=float&sizeX=8192&sizeY=8192.fake', 'testds3'),
 }
 
 
@@ -66,7 +69,7 @@ class TestDBHelper(object):
             if rp:
                 dbhelpers.ROOT.passwd = rp
         finally:
-            gateway.seppuku()
+            gateway.close()
 
         self.prepTestDB(onlyUsers=skipTestDB, skipImages=skipTestImages)
         self.doDisconnect()
@@ -84,7 +87,7 @@ class TestDBHelper(object):
     def doDisconnect(self):
         if self._has_connected and self.gateway:
             self.doConnect()
-            self.gateway.seppuku()
+            self.gateway.close()
             assert not self.gateway.isConnected(), 'Can not disconnect'
         self.gateway = None
         self._has_connected = False
@@ -118,7 +121,7 @@ class TestDBHelper(object):
 
         try:
             if self.gateway is not None:
-                self.gateway.seppuku()
+                self.gateway.close()
         finally:
             failure = False
             for tmpfile in self.tmpfiles:
@@ -166,6 +169,10 @@ class TestDBHelper(object):
 
     def getBigTestImage(self, dataset=None, autocreate=False):
         return dbhelpers.getImage(self.gateway, 'bigimg', forceds=dataset,
+                                  autocreate=autocreate)
+
+    def get32FloatTestImage(self, dataset=None, autocreate=False):
+        return dbhelpers.getImage(self.gateway, '32float', forceds=dataset,
                                   autocreate=autocreate)
 
     def prepTestDB(self, onlyUsers=False, skipImages=True):

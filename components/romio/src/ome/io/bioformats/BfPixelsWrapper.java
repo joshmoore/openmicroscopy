@@ -46,7 +46,14 @@ public class BfPixelsWrapper {
         this.path = path;
         this.reader = reader; // don't re-memoize
         reader.setFlattenedResolutions(false);
-        reader.setId(path);
+        try {
+            // An exception here could conceivably leave
+            // files dangling.
+            reader.setId(path);
+        } catch (RuntimeException|IOException|FormatException e) {
+            reader.close();
+            throw e;
+        }
     }
 
     public byte[] getMessageDigest() throws IOException {
@@ -463,6 +470,10 @@ public class BfPixelsWrapper {
 
     public boolean isSigned() {
         return FormatTools.isSigned(reader.getPixelType());
+    }
+
+    public boolean isLittleEndian() {
+        return reader.isLittleEndian();
     }
 
     /**

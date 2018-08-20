@@ -1,6 +1,6 @@
 /*
  *------------------------------------------------------------------------------
- *  Copyright (C) 2015-2016 University of Dundee. All rights reserved.
+ *  Copyright (C) 2015-2017 University of Dundee. All rights reserved.
  *
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -151,7 +151,7 @@ public class RatingTaskPaneUI extends AnnotationTaskPaneUI implements
         JButton unrateButton = new JButton(icons.getIcon(IconManager.MINUS_12));
         UIUtilities.unifiedButtonLookAndFeel(unrateButton);
         unrateButton.setBackground(UIUtilities.BACKGROUND_COLOR);
-        unrateButton.setToolTipText("Unrate.");
+        unrateButton.setToolTipText("Delete rating");
         unrateButton.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 rating.setValue(0);
@@ -183,9 +183,14 @@ public class RatingTaskPaneUI extends AnnotationTaskPaneUI implements
 
     @Override
     List<AnnotationData> getAnnotationsToSave() {
-        if (selectedValue != originalValue)
-            return Collections.<AnnotationData>singletonList(new RatingAnnotationData(selectedValue));
-        else
+        if (selectedValue != originalValue) {
+            RatingAnnotationData ra = model.getUserRatingData();
+            if (ra == null)
+                ra = new RatingAnnotationData(selectedValue);
+            else
+                ra.setRating(selectedValue);
+            return Collections.<AnnotationData> singletonList(ra);
+        } else
             return Collections.emptyList();
     }
 
@@ -204,4 +209,12 @@ public class RatingTaskPaneUI extends AnnotationTaskPaneUI implements
         rating.setEnabled(model.canAddAnnotationLink());
     }
 
+    @Override
+    int getUnfilteredAnnotationCount() {
+        if (model.isMultiSelection()) {
+            return model.getRatingCount(EditorModel.ME);
+        } else {
+            return model.getRatingCount(EditorModel.ALL);
+        }
+    }
 }

@@ -86,8 +86,8 @@ import Ice.Current;
  *</code>
  *
  * For more information, see <a
- * href="http://trac.openmicroscopy.org.uk/ome/wiki/ClientDesign">
- * http://trac.openmicroscopy.org.uk/ome/wiki/ClientDesign </a>
+ * href="https://trac.openmicroscopy.org.uk/ome/wiki/ClientDesign">
+ * https://trac.openmicroscopy.org.uk/ome/wiki/ClientDesign </a>
  *
  * @author Josh Moore, josh at glencoesoftware.com
  * @since 3.0-Beta3
@@ -580,16 +580,6 @@ public class client {
      */
     public String getCategory() {
         return getRouter(getCommunicator()).getCategoryForClient();
-    }
-
-    /**
-     * @see #getSession()
-     * @return the current active session
-     * @deprecated use {@link #getSession()} instead, to be removed in 5.3
-     */
-    @Deprecated
-    public ServiceFactoryPrx getServiceFactory() {
-        return getSession();
     }
 
     /**

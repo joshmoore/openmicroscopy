@@ -20,28 +20,33 @@ import stat
 import platform
 import datetime
 import Ice
+import time
 
 from glob import glob
+from math import ceil
 from path import path
 
 import omero
 import omero.config
 
+from omero.grid import RawAccessRequest
+
 from omero.cli import admin_only
 from omero.cli import CLI
 from omero.cli import DirectoryType
 from omero.cli import NonZeroReturnCode
-from omero.cli import VERSION
+from omero.cli import DiagnosticsControl
 from omero.cli import UserGroupControl
 
 from omero.plugins.prefs import \
-    WriteableConfigControl, with_config, with_rw_config
+    WriteableConfigControl, with_config
 from omero.install.windows_warning import windows_warning, WINDOWS_WARNING
 
 from omero_ext import portalocker
 from omero_ext.which import whichall
-from omero_ext.argparse import FileType, SUPPRESS
+from omero_ext.argparse import FileType
 from omero_version import ice_compatibility
+
 
 try:
     import pywintypes
@@ -77,7 +82,9 @@ if platform.system() == 'Windows':
     HELP += ("\n\n%s" % WINDOWS_WARNING)
 
 
-class AdminControl(WriteableConfigControl, UserGroupControl):
+class AdminControl(DiagnosticsControl,
+                   WriteableConfigControl,
+                   UserGroupControl):
 
     def _complete(self, text, line, begidx, endidx):
         """
@@ -95,6 +102,7 @@ class AdminControl(WriteableConfigControl, UserGroupControl):
 
     def _configure(self, parser):
         sub = parser.sub()
+        self._add_diagnostics(parser, sub)
         self.actions = {}
 
         class Action(object):
@@ -162,15 +170,19 @@ already be running. This may automatically restart some server components.""")
         fixpyramids = Action(
             "fixpyramids",
             "Remove empty pyramid pixels files (admins only)").parser
-        # See cleanse options below
 
-        diagnostics = Action(
-            "diagnostics",
-            ("Run a set of checks on the current, "
-             "preferably active server")).parser
-        diagnostics.add_argument(
-            "--no-logs", action="store_true",
-            help="Skip log parsing")
+        removepyramids = Action(
+            "removepyramids",
+            """Remove pyramid pixels files (admins only) according to endianness.
+By default pyramids with big and little-endianness will be deleted.
+To delete pyramids with little-endianness equals to true use --endian=little.
+
+Examples:
+  bin/omero admin removepyramids --dry-run
+  bin/omero admin removepyramids --dry-run --endian=little
+  bin/omero admin removepyramids --dry-run --imported-after YYYY-mm-dd
+            """).parser
+        # See cleanse options below
 
         email = Action(
             "email",
@@ -216,6 +228,7 @@ Examples:
         email.add_argument(
             "--inactive", action="store_true",
             help="Do not filter inactive users.")
+        self._add_wait(email)
         self.add_user_and_group_arguments(email,
                                           action="append",
                                           exclusive=False)
@@ -252,7 +265,7 @@ Command-line tool for re-indexing the database. This command must be run on the
 machine where the FullText directory is located. In most cases, you will want
 to disable the background indexer before running most of these commands.
 
-See http://www.openmicroscopy.org/site/support/omero/sysadmins/search.html
+See https://docs.openmicroscopy.org/latest/omero/sysadmins/search.html
 for more information.
 
 Examples:
@@ -336,29 +349,6 @@ dt_socket,address=8787,suspend=y" \\
             "--finish", action="store_true",
             help="Re-enables the background indexer after for indexing")
 
-        ports = Action("ports", SUPPRESS).parser
-        ports.add_argument(
-            "--prefix",
-            help="Adds a prefix to each port ON TOP OF any other settings")
-        ports.add_argument(
-            "--registry", default="4061",
-            help="Registry port. (default: %(default)s)")
-        ports.add_argument(
-            "--tcp", default="4063",
-            help="The tcp port to be used by Glacier2 (default: %(default)s)")
-        ports.add_argument(
-            "--ssl", default="4064",
-            help="The ssl port to be used by Glacier2 (default: %(default)s)")
-        ports.add_argument(
-            "--webserver", default="4080",
-            help="The web application server port (default: %(default)s)")
-        ports.add_argument(
-            "--revert", action="store_true",
-            help="Used to rollback from the given settings to the defaults")
-        ports.add_argument(
-            "--skipcheck", action="store_true",
-            help="Skips the check if the server is already running")
-
         sessionlist = Action(
             "sessionlist", "List currently running sessions").parser
         sessionlist.add_login_arguments()
@@ -391,8 +381,26 @@ location.
                 help="Print out which files would be deleted")
             x.add_argument(
                 "data_dir", type=DirectoryType(),
-                help="omero.data.dir directory value (e.g. /OMERO")
+                help="omero.data.dir directory value e.g. /OMERO")
             x.add_login_arguments()
+
+        removepyramids.add_argument(
+            "--dry-run", action="store_true",
+            help="Print out which files would be deleted")
+        removepyramids.add_argument(
+            "--endian", choices=("little", "big", "both"), default="both",
+            help="Delete pyramid with given endianness. "
+            "If not specified, all will be removed.")
+        removepyramids.add_argument(
+            "--imported-after", metavar="DATE",
+            help="Delete pyramid imported after a given date. "
+            "Expected format YYYY-mm-dd")
+        removepyramids.add_argument(
+            "--limit", metavar="MAX_NUMBER",
+            help="Set the limit of pyramids to remove in one call. "
+            "Values greater than 500 (default) are not supported")
+        removepyramids.add_login_arguments()
+        self._add_wait(removepyramids)
 
         Action("checkwindows", "Run simple check of the local installation "
                "(Windows-only)")
@@ -402,6 +410,20 @@ location.
 
         Action(
             "checkupgrade", "Check whether a server upgrade is available")
+
+        log = Action("log", "Add a custom log message to "
+                            "the server log").parser
+        log.add_argument(
+            "--level",
+            help="The log level: trace, debug, info, warn or error "
+                 "(default: info)", default="info")
+        log.add_argument(
+            "repo",
+            help="The repo uuid (e.g. ScriptRepo)")
+        log.add_argument(
+            "message",
+            help="The log message to add")
+        log.add_login_arguments()
 
         self.actions["ice"].add_argument(
             "argument", nargs="*",
@@ -712,7 +734,7 @@ present, the user will enter a console""")
         First checks for a valid installation, then checks the grid,
         then registers the action: "node HOST start"
         """
-        self.check_access(config=config)
+        self.check_access(mask=os.R_OK, config=config)
         self.checkice()
         self.check_node(args)
 
@@ -957,7 +979,7 @@ present, the user will enter a console""")
         else:
             self.ctx.call(command)
 
-    @admin_only
+    @admin_only(full_admin=True)
     @with_config
     def fixpyramids(self, args, config):
         self.check_access()
@@ -968,6 +990,30 @@ present, the user will enter a console""")
                     admin_service=client.sf.getAdminService(),
                     query_service=client.sf.getQueryService(),
                     config_service=client.sf.getConfigService())
+
+    @admin_only(full_admin=True)
+    def removepyramids(self, args):
+        from omero.util.cleanse import removepyramids
+        client = self.ctx.conn(args)
+        client.getSessionId()
+        wait = args.wait if args.wait > 0 else 25
+        limit = args.limit if args.limit > 0 else 500
+        if args.endian == "both":
+            little = None
+        elif args.endian == "little":
+            little = omero.rtypes.rbool(True)
+        else:
+            little = omero.rtypes.rbool(False)
+        # check time
+        value = None
+        if args.imported_after is not None:
+            date = time.strptime(args.imported_after, "%Y-%m-%d")
+            value = omero.rtypes.rtime(time.mktime(date)*1000)
+        removepyramids(client=client,
+                       little_endian=little,
+                       dry_run=args.dry_run,
+                       imported_after=value,
+                       limit=limit, wait=wait)
 
     @with_config
     def jvmcfg(self, args, config):
@@ -1085,6 +1131,8 @@ present, the user will enter a console""")
     @with_config
     def diagnostics(self, args, config):
 
+        self._diagnostics_banner("admin")
+
         from xml.etree.ElementTree import XML
         from omero.install.jvmcfg import read_settings
 
@@ -1109,60 +1157,12 @@ present, the user will enter a console""")
         omero_temp_dir = os.path.abspath(
             os.path.join(omero_temp_dir, os.path.pardir, os.path.pardir))
 
-        self.ctx.out("""
-%s
-OMERO Diagnostics %s
-%s
-        """ % ("="*80, VERSION, "="*80))
-
-        def sz_str(sz):
-            for x in ["KB", "MB", "GB"]:
-                sz /= 1000
-                if sz < 1000:
-                    break
-            sz = "%.1f %s" % (sz, x)
-            return sz
-
-        def item(cat, msg):
-            cat = cat + ":"
-            cat = "%-12s" % cat
-            self.ctx.out(cat, False)
-            msg = "%-30s " % msg
-            self.ctx.out(msg, False)
-
-        def exists(p):
-            if p.isdir():
-                if not p.exists():
-                    self.ctx.out("doesn't exist")
-                else:
-                    self.ctx.out("exists")
-            else:
-                if not p.exists():
-                    self.ctx.out("n/a")
-                else:
-                    warn = 0
-                    err = 0
-                    for l in p.lines():
-                        # ensure errors/warnings search is case-insensitive
-                        lcl = l.lower()
-                        found_err = lcl.find("error") >= 0
-                        found_warn = lcl.find("warn") >= 0
-
-                        if found_err:
-                            err += 1
-                        elif found_warn:
-                            warn += 1
-                    msg = ""
-                    if warn or err:
-                        msg = " errors=%-4s warnings=%-4s" % (err, warn)
-                    self.ctx.out("%-12s %s" % (sz_str(p.size), msg))
-
         def version(cmd):
             """
             Returns a true response only
             if a valid version was found.
             """
-            item("Commands", "%s" % " ".join(cmd))
+            self._item("Commands", "%s" % " ".join(cmd))
             try:
                 p = self.ctx.popen(cmd)
             except OSError:
@@ -1231,7 +1231,7 @@ OMERO Diagnostics %s
             self.ctx.out(
                 "No icegridadmin available: Cannot check server list")
         else:
-            item("Server", "icegridnode")
+            self._item("Server", "icegridnode")
             p = self.ctx.popen(self._cmd("-e", "server list"))  # popen
             rv = p.wait()
             io = p.communicate()
@@ -1246,7 +1246,7 @@ OMERO Diagnostics %s
                 servers = io[0].split()
                 servers.sort()
                 for s in servers:
-                    item("Server", "%s" % s)
+                    self._item("Server", "%s" % s)
                     p2 = self.ctx.popen(
                         self._cmd("-e", "server state %s" % s))  # popen
                     p2.wait()
@@ -1265,7 +1265,7 @@ OMERO Diagnostics %s
                 omesvcs = tuple((sname, fname) for sname, fname, status
                                 in services if "OMERO" in fname)
                 for sname, fname in omesvcs:
-                    item("Server", fname)
+                    self._item("Server", fname)
                     hsc = win32service.OpenService(
                         hscm, sname, win32service.SC_MANAGER_ALL_ACCESS)
                     logonuser = win32service.QueryServiceConfig(hsc)[7]
@@ -1281,18 +1281,18 @@ OMERO Diagnostics %s
 
             log_dir = self.ctx.dir / "var" / "log"
             self.ctx.out("")
-            item("Log dir", "%s" % log_dir.abspath())
+            self._item("Log dir", "%s" % log_dir.abspath())
             if not log_dir.exists():
                 self.ctx.out("")
                 self.ctx.out("No logs available")
                 return
             else:
-                exists(log_dir)
+                self._exists(log_dir)
 
             known_log_files = [
                 "Blitz-0.log", "Tables-0.log", "Processor-0.log",
                 "Indexer-0.log", "FileServer.log", "MonitorServer.log",
-                "DropBox.log", "TestDropBox.log", "OMEROweb.log"]
+                "DropBox.log", "TestDropBox.log"]
             files = log_dir.files()
             files = set([x.basename() for x in files])
             # Adding known names just in case
@@ -1301,9 +1301,9 @@ OMERO Diagnostics %s
             files = list(files)
             files.sort()
             for x in files:
-                item("Log files", x)
-                exists(log_dir / x)
-            item("Log files", "Total size")
+                self._item("Log files", x)
+                self._exists(log_dir / x)
+            self._item("Log files", "Total size")
             sz = 0
             for x in log_dir.walkfiles():
                 sz += x.size
@@ -1340,8 +1340,8 @@ OMERO Diagnostics %s
                         lno = fileinput.filelineno()
                         for k, v in issues.items():
                             if k.match(line):
-                                item('Parsing %s' % file,
-                                     "[line:%s] %s" % (lno, v))
+                                self._item('Parsing %s' % file,
+                                           "[line:%s] %s" % (lno, v))
                                 self.ctx.out("")
                                 break
             except:
@@ -1353,8 +1353,8 @@ OMERO Diagnostics %s
         self.ctx.out("")
 
         def env_val(val):
-            item("Environment", "%s=%s"
-                 % (val, os.environ.get(val, "(unset)")))
+            self._item("Environment", "%s=%s"
+                       % (val, os.environ.get(val, "(unset)")))
             self.ctx.out("")
         env_val("OMERO_HOME")
         env_val("OMERO_NODE")
@@ -1383,8 +1383,8 @@ OMERO Diagnostics %s
             applications.sort()
             for s in applications:
                 def port_val(port_type, value):
-                    item("%s %s port" % (s, port_type),
-                         "%s" % value or "Not found")
+                    self._item("%s %s port" % (s, port_type),
+                               "%s" % value or "Not found")
                     self.ctx.out("")
                 p2 = self.ctx.popen(
                     self._cmd("-e", "application describe %s" % s))
@@ -1406,7 +1406,7 @@ OMERO Diagnostics %s
             if dir_size and dir_path_exists:
                 dir_size = self.getdirsize(omero_temp_dir)
                 dir_size = "   (Size: %s)" % dir_size
-            item("OMERO %s dir" % dir_name, "'%s'" % dir_path)
+            self._item("OMERO %s dir" % dir_name, "'%s'" % dir_path)
             self.ctx.out("Exists? %s\tIs writable? %s%s" %
                          (dir_path_exists, is_writable,
                           dir_size))
@@ -1416,24 +1416,8 @@ OMERO Diagnostics %s
         if memory:
             for k, v in sorted(memory.items()):
                 sb = " ".join([str(x) for x in v])
-                item("JVM settings", " %s" % (k[0].upper() + k[1:]))
+                self._item("JVM settings", " %s" % (k[0].upper() + k[1:]))
                 self.ctx.out("%s" % sb)
-
-        # OMERO.web diagnostics
-        self.ctx.out("")
-        from omero.plugins.web import WebControl
-        try:
-            WebControl().status(args)
-        except Exception, e:
-            try:
-                self.ctx.out("OMERO.web error: %s" % e.message[1].message)
-            except:
-                self.ctx.out("OMERO.web not installed!")
-        try:
-            import django
-            self.ctx.out("Django version: %s" % django.get_version())
-        except:
-            self.ctx.err("Django not installed!")
 
     def email(self, args):
         client = self.ctx.conn(args)
@@ -1460,9 +1444,13 @@ OMERO Diagnostics %s
             everyone=args.everyone,
             inactive=args.inactive)
 
+        ms = 500
+        wait = args.wait if args.wait > 0 else 25
+        loops = ceil(wait * 1000.0 / ms)
+
         try:
             cb = client.submit(
-                req, loops=10, ms=500,
+                req, loops=loops, ms=ms,
                 failonerror=True, failontimeout=True)
         except omero.CmdError, ce:
             err = ce.err
@@ -1549,7 +1537,7 @@ OMERO Diagnostics %s
 
         if config is not None:
             omero_data_dir = self._get_data_dir(config)
-            self.can_access(omero_data_dir)
+            self.can_access(omero_data_dir, mask)
 
         for p in os.listdir(var):
             subpath = os.path.join(var, p)
@@ -1780,20 +1768,19 @@ OMERO Diagnostics %s
                            stdout=sys.stdout, stderr=sys.stderr)
         self.ctx.rv = p.wait()
 
-    @with_rw_config
-    def ports(self, args, config):
-        self.ctx.err(
-            "WARNING: the admin ports subcommand is deprecated. Changes will"
-            " be overwritten the next time the configuration files are"
-            " regenerated. Use the omero.ports.xxx configuration properties"
-            " instead.")
-
-    @admin_only
+    @admin_only(full_admin=True)
     def cleanse(self, args):
         self.check_access()
         from omero.util.cleanse import cleanse
         cleanse(data_dir=args.data_dir, client=self.ctx.conn(args),
                 dry_run=args.dry_run)
+
+    @admin_only(full_admin=False)
+    def log(self, args):
+        client = self.ctx.conn(args)
+        req = RawAccessRequest(command='log', path=args.level,
+                               repoUuid=args.repo, args=[args.message])
+        client.submit(req).loop(100, 100)
 
     def sessionlist(self, args):
         client = self.ctx.conn(args)

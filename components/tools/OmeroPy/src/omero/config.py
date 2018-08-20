@@ -207,7 +207,7 @@ class ConfigXml(object):
                                  "Browse Data via Projects, Tags etc"}],
                             ["History", "history",
                                 {"title": "History"}],
-                            ["Help", "http://help.openmicroscopy.org/",
+                            ["Help", "https://help.openmicroscopy.org/",
                                 {"target": "new", "title":
                                     "Open OMERO user guide in a new tab"}]]
                         toplinks = defaultlinks + toplinks
@@ -224,7 +224,7 @@ class ConfigXml(object):
         immediately do the upgrade.
         """
         if version == "4.2.0":
-            # http://trac.openmicroscopy.org.uk/ome/ticket/2613
+            # https://trac.openmicroscopy.org/ome/ticket/2613
             # Remove any reference to the ${omero.dollar} workaround
             # then map anything of the form: ${...} to @{...}
             if props:

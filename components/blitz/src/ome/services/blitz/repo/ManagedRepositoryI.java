@@ -61,6 +61,7 @@ import ome.util.checksum.ChecksumProviderFactoryImpl;
 import ome.util.checksum.ChecksumType;
 import omero.ResourceError;
 import omero.ServerError;
+import omero.ValidationException;
 import omero.grid.ImportLocation;
 import omero.grid.ImportProcessPrx;
 import omero.grid.ImportSettings;
@@ -150,6 +151,8 @@ public class ManagedRepositoryI extends PublicRepositoryI
 
     private final long userGroupId;
 
+    private final Set<String> managedRepoUuids;
+
     /**
      * Creates a {@link ProcessContainer} internally that will not be managed
      * by background threads. Used primarily during testing.
@@ -158,7 +161,7 @@ public class ManagedRepositoryI extends PublicRepositoryI
      */
     public ManagedRepositoryI(String template, RepositoryDao dao) throws Exception {
         this(template, dao, new ProcessContainer(), new ChecksumProviderFactoryImpl(),
-                ALL_CHECKSUM_ALGORITHMS, FilePathRestrictionInstance.UNIX_REQUIRED.name, null, new Roles());
+                ALL_CHECKSUM_ALGORITHMS, FilePathRestrictionInstance.UNIX_REQUIRED.name, null, new Roles(), new HashSet<String>());
     }
 
     public ManagedRepositoryI(String template, RepositoryDao dao,
@@ -167,8 +170,9 @@ public class ManagedRepositoryI extends PublicRepositoryI
             String checksumAlgorithmSupported,
             String pathRules,
             String rootSessionUuid,
-            Roles roles) throws ServerError {
+            Roles roles, Set<String> managedRepoUuids) throws ServerError {
         super(dao, checksumProviderFactory, checksumAlgorithmSupported, pathRules);
+        this.managedRepoUuids = managedRepoUuids;
 
         int splitPoint = template.lastIndexOf("//");
         if (splitPoint < 0) {
@@ -193,6 +197,12 @@ public class ManagedRepositoryI extends PublicRepositoryI
     @Override
     public Ice.Object tie() {
         return new _ManagedRepositoryTie(this);
+    }
+
+    @Override
+    public void initialize(FileMaker fileMaker, Long id, String repoUuid) throws ValidationException {
+        super.initialize(fileMaker, id, repoUuid);
+        managedRepoUuids.add(repoUuid);
     }
 
     //
@@ -664,7 +674,7 @@ public class ManagedRepositoryI extends PublicRepositoryI
          */
         @SuppressWarnings("unused")  /* used by create() via Method.invoke */
         public String expandUser(String prefix, String suffix) {
-            return prefix + ctx.userName + suffix;
+            return prefix + serverPaths.getPathSanitizer().apply(ctx.userName) + suffix;
         }
 
         /**
@@ -688,7 +698,7 @@ public class ManagedRepositoryI extends PublicRepositoryI
          */
         @SuppressWarnings("unused")  /* used by create() via Method.invoke */
         public String expandGroup(String prefix, String suffix) {
-            return prefix + ctx.groupName + suffix;
+            return prefix + serverPaths.getPathSanitizer().apply(ctx.groupName) + suffix;
         }
 
         /**
@@ -1409,11 +1419,12 @@ public class ManagedRepositoryI extends PublicRepositoryI
         final EventContext ec = IceMapper.convert(effectiveEventContext);
         final FsFile rootOwnedPath = expandTemplateRootOwnedPath(ec, sf);
         final List<CheckedPath> pathsToFix = new ArrayList<CheckedPath>();
-        final List<CheckedPath> pathsForRoot;
+        List<CheckedPath> pathsForRoot;
 
         /* if running as root then the paths must be root-owned */
+        final ome.system.EventContext currentEventContext = adminService.getEventContext();
         final long rootId = adminService.getSecurityRoles().getRootId();
-        if (adminService.getEventContext().getCurrentUserId() == rootId) {
+        if (currentEventContext.getCurrentUserId() == rootId) {
             pathsForRoot = ImmutableList.copyOf(paths);
         } else {
             pathsForRoot = ImmutableList.of();
@@ -1427,8 +1438,12 @@ public class ManagedRepositoryI extends PublicRepositoryI
                 throw new ResourceError(null, null, "Cannot re-create root!");
             }
 
-            /* check that the path is consistent with the root-owned template path directories */
-            if (!isConsistentPrefixes(rootOwnedPath.getComponents(), checked.fsFile.getComponents())) {
+            if (isConsistentPrefixes(rootOwnedPath.getComponents(), checked.fsFile.getComponents())) {
+                /* the path is consistent with the root-owned template path directories for import */
+            } else if (currentEventContext.isCurrentUserAdmin()) {
+                /* the path violates the root-owned template path but the current user is an administrator */
+                pathsForRoot = ImmutableList.copyOf(paths);
+            } else {
                 throw new omero.ValidationException(null, null,
                         "cannot create directory \"" + checked.fsFile
                         + "\" with template path's root-owned \"" + rootOwnedPath + "\"");

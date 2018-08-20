@@ -60,9 +60,15 @@ if __name__ == '__main__':
     print "   Username:", user.getName()
     print "   Full Name:", user.getFullName()
 
+    # Check if you are an Administrator
+    print "   Is Admin:", conn.isAdmin()
+    if not conn.isFullAdmin():
+        # If 'Restricted Administrator' show privileges
+        print conn.getCurrentAdminPrivileges()
+
     print "Member of:"
     for g in conn.getGroupsMemberOf():
-        print "   ID:", g.getName(), " Name:", g.getId()
+        print "   ID:", g.getId(), " Name:", g.getName()
     group = conn.getGroupFromContext()
     print "Current group: ", group.getName()
 
@@ -70,21 +76,21 @@ if __name__ == '__main__':
     owners, members = group.groupSummary()
     print "   Group owners:"
     for o in owners:
-        print "     ID: %s %s Name: %s" % (
+        print "     ID: %s UserName: %s Name: %s" % (
             o.getId(), o.getOmeName(), o.getFullName())
     print "   Group members:"
     for m in members:
-        print "     ID: %s %s Name: %s" % (
+        print "     ID: %s UserName: %s Name: %s" % (
             m.getId(), m.getOmeName(), m.getFullName())
 
     print "Owner of:"
     for g in conn.listOwnedGroups():
-        print "   ID: ", g.getName(), " Name:", g.getId()
+        print "   ID: ", g.getId(), " Name:", g.getName()
 
     # New in OMERO 5
     print "Admins:"
     for exp in conn.getAdministrators():
-        print "   ID: %s %s Name: %s" % (
+        print "   ID: %s UserName: %s Name: %s" % (
             exp.getId(), exp.getOmeName(), exp.getFullName())
 
     # The 'context' of our current session
@@ -94,4 +100,4 @@ if __name__ == '__main__':
     # Close connection
     # ================
     # When you are done, close the session to free up server resources.
-    conn._closeSession()
+    conn.close()

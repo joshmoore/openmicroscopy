@@ -1,14 +1,13 @@
 /*
- *   $Id$
- *  Copyright 2006-2015 University of Dundee. All rights reserved.
+ *  Copyright 2006-2017 University of Dundee. All rights reserved.
  *   Use is subject to license terms supplied in LICENSE.txt
  */
-
 package ome.logic;
 
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -26,6 +25,7 @@ import ome.annotations.NotNull;
 import ome.annotations.RolesAllowed;
 import ome.api.IPixels;
 import ome.api.IRenderingSettings;
+import ome.api.RawPixelsStore;
 import ome.api.ServiceInterface;
 import ome.conditions.ConcurrencyException;
 import ome.conditions.ResourceError;
@@ -44,9 +44,12 @@ import ome.model.core.Image;
 import ome.model.core.LogicalChannel;
 import ome.model.core.Pixels;
 import ome.model.display.ChannelBinding;
+import ome.model.display.CodomainMapContext;
 import ome.model.display.QuantumDef;
 import ome.model.display.RenderingDef;
+import ome.model.display.ReverseIntensityContext;
 import ome.model.enums.Family;
+import ome.model.enums.PixelsType;
 import ome.model.enums.RenderingModel;
 import ome.model.screen.PlateAcquisition;
 import ome.model.screen.Screen;
@@ -92,6 +95,9 @@ public class RenderingSettingsImpl extends AbstractLevel2Service implements
     /** Reference to the service used to retrieve the pixels metadata. */
     protected transient IPixels pixelsMetadata;
  
+    /** Reference to the raw pixels store. */
+    private RawPixelsStore rawPixelsStore;
+    
     /**
      * Returns the min/max depending on the pixels type if the values
      * have not seen stored.
@@ -396,33 +402,50 @@ public class RenderingSettingsImpl extends AbstractLevel2Service implements
 
     /**
      * Retrieves all rendering settings associated with a given set of Pixels.
-     * @param pixels List of Pixels to retrieve settings for.
-     * @param userId User ID of the owner of the settings to query for.
+     * 
+     * @param pixels
+     *            List of Pixels to retrieve settings for.
+     * @param ownerId
+     *            User ID of the owner of the settings to query for. Pass
+     *            <code>-1</code> to load the rendering settings of the Pixels
+     *            owner instead.
      * @return A map of &lt;Pixels.Id,RenderingDef&gt; for the list of Pixels
-     * given. 
+     *         given.
      */
     private Map<Long, RenderingDef> loadRenderingSettings(List<Pixels> pixels,
-                                                          Long ownerId)
-    {
-        StopWatch s1 = new Slf4JStopWatch(
-                "omero.loadRenderingSettingsByUser");
+            Long ownerId) {
+        StopWatch s1 = new Slf4JStopWatch("omero.loadRenderingSettingsByUser");
         Set<Long> pixelsIds = new HashSet<Long>();
-        for (Pixels p : pixels)
-        {
+        for (Pixels p : pixels) {
             pixelsIds.add(p.getId());
         }
-        Parameters p = new Parameters();
-        p.addIds(pixelsIds);
-        p.addId(ownerId);
-        String sql = PixelsImpl.RENDERING_DEF_QUERY_PREFIX +
-            "rdef.pixels.id in (:ids) and " +
-            "rdef.details.owner.id = :id";
+
+        Parameters p;
+        String sql;
+        if (ownerId >= 0) {
+            // Load the rendering settings of the specified owner
+            p = new Parameters();
+            p.addIds(pixelsIds);
+            p.addId(ownerId);
+            sql = PixelsImpl.RENDERING_DEF_QUERY_PREFIX
+                    + "rdef.pixels.id in (:ids) and "
+                    + "rdef.details.owner.id = :id";
+        } else {
+            // Load the rendering settings of the pixels owner
+            p = new Parameters();
+            p.addIds(pixelsIds);
+
+            sql = PixelsImpl.RENDERING_DEF_QUERY_PREFIX
+                    + "rdef.pixels.id in (:ids) and "
+                    + "rdef.details.owner.id = rdef.pixels.details.owner.id";
+        }
+
         Map<Long, RenderingDef> settingsMap = new HashMap<Long, RenderingDef>();
         List<RenderingDef> settingsList = iQuery.findAllByQuery(sql, p);
-        for (RenderingDef settings : settingsList)
-        {
+        for (RenderingDef settings : settingsList) {
             settingsMap.put(settings.getPixels().getId(), settings);
         }
+
         s1.stop();
         return settingsMap;
     }
@@ -804,6 +827,9 @@ public class RenderingSettingsImpl extends AbstractLevel2Service implements
             channelBinding.setAlpha(defaultColor[ColorsFactory.ALPHA_INDEX]);
 
             channelBinding.setNoiseReduction(false);
+            //Set the lookuptable if set during import
+            channelBinding.setLookupTable(channel.getLookupTable());
+            channelBinding.clearSpatialDomainEnhancement();
             i++;
         }
         if (count > 0 && count != m.size()) {
@@ -885,6 +911,22 @@ public class RenderingSettingsImpl extends AbstractLevel2Service implements
         if (planeDef == null) {
             throw new NullPointerException("No plane definition.");
         }
+        
+        Map<Integer, double[]> realMinMax = null;
+        
+        StatsInfo stats = pixels.getPrimaryChannel().getStatsInfo();
+        
+        // if there are no stats available the channel window start/end must be set to 
+        // reasonable (real min/max) values (note: that only affects non-pyramid images)
+        if (stats == null) {
+            int[] channels = new int[pixels.sizeOfChannels()];
+            for (int i = 0; i < channels.length; i++)
+                channels[i] = i;
+            
+            rawPixelsStore.setPixelsId(pixels.getId(), true);
+            realMinMax = rawPixelsStore.findMinMax(channels);
+        }
+        
         StatsFactory sf = new StatsFactory();
         ChannelBinding cb;
         double min, max;
@@ -896,17 +938,24 @@ public class RenderingSettingsImpl extends AbstractLevel2Service implements
             // of the channels linked to the pixels set.
         	
             cb = cbs.get(w);
-            sf.computeLocationStats(pixels, buf, planeDef, w);
-            cb.setNoiseReduction(sf.isNoiseReduction());
-            min = sf.getInputStart();
-            max = sf.getInputEnd();
-        	if (Math.abs(min-max) < EPSILON) {
-        		qs = quantumFactory.getStrategy(qDef, pixels);
-        		min = qs.getPixelsTypeMin();
-        		max = qs.getPixelsTypeMax();
-        	}
-            cb.setInputStart(new Double(min));
-            cb.setInputEnd(new Double(max));
+            
+            if (realMinMax == null || realMinMax.isEmpty()) {
+                // use global min/max according to pixeltype
+                sf.computeLocationStats(pixels, buf, planeDef, w);
+                min = sf.getInputStart();
+                max = sf.getInputEnd();
+                if (Math.abs(min - max) < EPSILON) {
+                    qs = quantumFactory.getStrategy(qDef, pixels);
+                    min = qs.getPixelsTypeMin();
+                    max = qs.getPixelsTypeMax();
+                }
+                cb.setInputStart(min);
+                cb.setInputEnd(max);
+            } else {
+                // use real min/max value of the pixels
+                cb.setInputStart(realMinMax.get(w)[0]);
+                cb.setInputEnd(realMinMax.get(w)[1]);
+            }
         }
     }
     
@@ -942,7 +991,34 @@ public class RenderingSettingsImpl extends AbstractLevel2Service implements
         }
         return cbs;
     }
-    
+
+    /**
+     * Copies the context.
+     *
+     * @param ctx The context to copy.
+     * @param l The list of context already linked to the image if any.
+     * @return See above.
+     */
+    private CodomainMapContext copyContext(CodomainMapContext ctx, List<CodomainMapContext> l)
+    {
+        CodomainMapContext c;
+        if (l != null) {
+            Iterator<CodomainMapContext> i = l.iterator();
+            while (i.hasNext()) {
+                c = i.next();
+                if (ctx.getClass().equals(c.getClass())) {
+                    return null;
+                }
+            }
+        }
+        if (ctx instanceof ReverseIntensityContext) {
+            ReverseIntensityContext nc =  new ReverseIntensityContext();
+            nc.setReverse(((ReverseIntensityContext) ctx).getReverse());
+            return nc;
+        }
+        return null;
+    }
+
     /**
      * Applies rendering settings from a source set of pixels and settings to
      * a destination set of pixels and settings.
@@ -1003,6 +1079,7 @@ public class RenderingSettingsImpl extends AbstractLevel2Service implements
         Iterator<ChannelBinding> i = settingsFrom.iterateWaveRendering();
         Iterator<ChannelBinding> iTo = settingsTo.iterateWaveRendering();
         ChannelBinding binding, bindingTo;
+        CodomainMapContext ctx;
         while (i.hasNext())
         {
             binding = i.next();
@@ -1025,8 +1102,22 @@ public class RenderingSettingsImpl extends AbstractLevel2Service implements
             bindingTo.setBlue(binding.getBlue());
             bindingTo.setGreen(binding.getGreen());
             bindingTo.setRed(binding.getRed());
+            // lut used
+            bindingTo.setLookupTable(binding.getLookupTable());
+            List<CodomainMapContext> original = bindingTo.collectSpatialDomainEnhancement(null);
+            Iterator<CodomainMapContext> j = binding.iterateSpatialDomainEnhancement();
+            //clear if no binding for new one
+            if (binding.sizeOfSpatialDomainEnhancement() == 0) {
+                bindingTo.clearSpatialDomainEnhancement();
+            }
+            while (j.hasNext()) {
+                ctx = copyContext(j.next(), original);
+                if (ctx != null) {
+                    bindingTo.addCodomainMapContext(ctx);
+                }
+            }
         }
-        
+
         // Increment the version of the rendering settings so that we 
         // can have some notification that either the RenderingDef 
         // object itself or one of its children in the object graph has 
@@ -1095,6 +1186,17 @@ public class RenderingSettingsImpl extends AbstractLevel2Service implements
     public void setPixelsData(PixelsService dataService) {
         getBeanHelper().throwIfAlreadySet(this.pixelsData, dataService);
         pixelsData = dataService;
+    }
+    
+    /**
+     * Sets injector. For use during configuration. Can only be called once.
+     * 
+     * @param rawPixelsStore
+     *            The value to set.
+     */
+    public void setRawPixelsStore(RawPixelsStore rawPixelsStore) {
+        getBeanHelper().throwIfAlreadySet(this.rawPixelsStore, rawPixelsStore);
+        this.rawPixelsStore = rawPixelsStore;
     }
 
     /**
@@ -1165,6 +1267,11 @@ public class RenderingSettingsImpl extends AbstractLevel2Service implements
     			List<Pixels> list = new ArrayList<Pixels>(1);
     			list.add(pixelsFrom);
     			Map<Long, RenderingDef> map = loadRenderingSettings(list);
+    			if (!map.containsKey(from)) {
+    			    // user doesn't have own rendering settings, load the rendering
+    			    // settings of the image owner instead
+    			    map = loadRenderingSettings(list, -1l);
+    			}
             	settingsFrom = map.get(from);
     		}
     	}
@@ -1260,22 +1367,17 @@ public class RenderingSettingsImpl extends AbstractLevel2Service implements
     @RolesAllowed("user")
     public boolean applySettingsToPixels(long from, long to)
     {
-        Pixels pixelsFrom = pixelsMetadata.retrievePixDescription(from);
-        Pixels pixelsTo = pixelsMetadata.retrievePixDescription(to);
-        List<Pixels> pixelsList = new ArrayList<Pixels>(2);
-        pixelsList.add(pixelsFrom);
-        pixelsList.add(pixelsTo);
-        Map<Long, RenderingDef> settingsMap = loadRenderingSettings(pixelsList);
-        RenderingDef settingsFrom = settingsMap.get(from);
-        RenderingDef settingsTo = settingsMap.get(to);
-        settingsTo = applySettings(pixelsFrom, pixelsTo,
-        		                   settingsFrom, settingsTo);
-        if (settingsTo == null)
+        Set<Long> nodeIds = new HashSet<Long>();
+        nodeIds.add(to);
+        List<Pixels> pixels = loadPixels(nodeIds);
+        Long imageID = pixels.get(0).getImage().getId();
+        Map<Boolean, List<Long>> returnValue =
+            applySettingsToSet(from, Pixels.class, nodeIds);
+        if (returnValue.get(Boolean.TRUE).contains(imageID))
         {
-        	return false;
+            return true;
         }
-        iUpdate.saveObject(settingsTo);
-        return true;
+        return false;
     }
 
     /**

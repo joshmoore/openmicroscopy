@@ -54,10 +54,12 @@ class BaseSearch(BaseController):
                useAcquisitionDate, date=None):
 
         # If fields contains 'annotation', we really want to search files too
+        # docs.openmicroscopy.org/latest/omero/developers/Modules/Search.html
         fields = set(fields)
-        if "annotation" in fields:
+        if "annotation" in fields or "file" in fields:
             fields = fields.union(("file.name", "file.path", "file.format",
                                    "file.contents"))
+            fields.discard("file")      # Not supported
         fields = list(fields)
 
         if 'plates' in onlyTypes:
@@ -103,13 +105,21 @@ class BaseSearch(BaseController):
         self.containers = {}
         resultCount = 0
         self.searchError = None
+        self.iids = []
 
         try:
             for dt in onlyTypes:
                 dt = str(dt)
                 if dt in ['projects', 'datasets', 'images', 'screens',
-                          'plateacquisitions', 'plates']:
+                          'plateacquisitions', 'plates', 'wells']:
                     self.containers[dt] = doSearch(dt)
+                    if dt == "wells":
+                        for well in self.containers[dt]:
+                            well.name = "%s - %s" %\
+                                        (well.listParents()[0].name,
+                                         well.getWellPos())
+                    if dt == 'images':
+                        self.iids = [i.id for i in self.containers[dt]]
                     # If we get a full page of results, we know there are more
                     if len(self.containers[dt]) == batchSize:
                         self.moreResults = True

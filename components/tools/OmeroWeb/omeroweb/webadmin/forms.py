@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-# Copyright (c) 2008-2014 University of Dundee.
+# Copyright (c) 2008-2018 University of Dundee.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -28,9 +28,10 @@ try:
 except:
     pass
 
-from django.conf import settings
 from django import forms
 from django.forms.widgets import Textarea
+from django.utils.encoding import force_unicode
+from django.utils.safestring import mark_safe
 
 from omeroweb.connector import Server
 
@@ -53,7 +54,7 @@ class LoginForm(NonASCIIForm):
         self.fields['server'] = ServerModelChoiceField(
             Server, empty_label=None)
 
-        self.fields.keyOrder = ['server', 'username', 'password', 'ssl']
+        self.fields.keyOrder = ['server', 'username', 'password']
 
     username = forms.CharField(
         max_length=50, widget=forms.TextInput(attrs={
@@ -61,16 +62,9 @@ class LoginForm(NonASCIIForm):
     password = forms.CharField(
         max_length=50,
         widget=forms.PasswordInput(attrs={'size': 22, 'autocomplete': 'off'}))
-    ssl = forms.BooleanField(
-        required=False,
-        help_text='<img src="%swebgateway/img/nuvola_encrypted_grey16.png"'
-        ' title="Real-time encrypted data transfer can be turned on by'
-        ' checking the box, but it will slow down the data access. Turning'
-        ' it off does not affect the connection to the server which is always'
-        ' secure." alt="SSL"/>' % settings.STATIC_URL)
 
     def clean_username(self):
-        if (self.cleaned_data['username'] in ('guest')):
+        if (self.cleaned_data['username'] == 'guest'):
             raise forms.ValidationError("Guest account is not supported.")
         return self.cleaned_data['username']
 
@@ -85,13 +79,44 @@ class ForgottonPasswordForm(NonASCIIForm):
         widget=forms.TextInput(attrs={'size': 28, 'autocomplete': 'off'}))
 
 
+ROLE_CHOICES = (
+    ('user', 'User'),
+    ('administrator', 'Administrator'),
+    ('restricted_administrator', 'Administrator with restricted privileges')
+)
+
+
+class RoleRenderer(forms.RadioSelect.renderer):
+    """Allows disabling of 'administrator' Radio button."""
+    def render(self):
+        midList = []
+        for x, wid in enumerate(self):
+            disabled = self.attrs.get('disabled')
+            if ROLE_CHOICES[x][0] == 'administrator':
+                if hasattr(self, 'disable_admin'):
+                    disabled = getattr(self, 'disable_admin')
+            if disabled:
+                wid.attrs['disabled'] = True
+            midList.append(u'<li>%s</li>' % force_unicode(wid))
+        finalList = mark_safe(u'<ul id="id_role">\n%s\n</ul>'
+                              % u'\n'.join([u'<li>%s</li>'
+                                           % w for w in midList]))
+        return finalList
+
+
 class ExperimenterForm(NonASCIIForm):
 
     def __init__(self, name_check=False, email_check=False,
-                 experimenter_is_me_or_system=False, *args, **kwargs):
+                 experimenter_is_me_or_system=False,
+                 experimenter_me=False,
+                 can_modify_user=True,
+                 user_privileges=[],
+                 experimenter_root=False,
+                 *args, **kwargs):
         super(ExperimenterForm, self).__init__(*args, **kwargs)
         self.name_check = name_check
         self.email_check = email_check
+        self.user_privileges = user_privileges
 
         try:
             self.fields['other_groups'] = GroupModelMultipleChoiceField(
@@ -117,6 +142,18 @@ class ExperimenterForm(NonASCIIForm):
                 self.fields['default_group'] = GroupModelChoiceField(
                     queryset=list(), empty_label=u"", required=False)
 
+        # 'Role' is disabled if experimenter is 'admin' or self,
+        # so required=False to avoid validation error.
+        self.fields['role'] = forms.ChoiceField(
+            choices=ROLE_CHOICES,
+            widget=forms.RadioSelect(renderer=RoleRenderer),
+            required=False,
+            initial='user')
+        # If current user is restricted Admin, can't create full Admin
+        restricted_admin = "ReadSession" not in self.user_privileges
+        self.fields['role'].widget.renderer.disable_admin = \
+            restricted_admin or experimenter_root
+
         if ('with_password' in kwargs['initial'] and
                 kwargs['initial']['with_password']):
             self.fields['password'] = forms.CharField(
@@ -131,32 +168,59 @@ class ExperimenterForm(NonASCIIForm):
             fields_key_order = [
                 'omename', 'password', 'confirmation', 'first_name',
                 'middle_name', 'last_name', 'email', 'institution',
-                'administrator', 'active', 'default_group', 'other_groups']
+                'role', 'active', 'other_groups', 'default_group']
         else:
             fields_key_order = [
                 'omename', 'first_name', 'middle_name', 'last_name',
-                'email', 'institution', 'administrator', 'active',
-                'default_group', 'other_groups']
+                'email', 'institution', 'role', 'active',
+                'other_groups', 'default_group']
+
+        ordered_fields = [(k, self.fields[k]) for k in fields_key_order]
+
+        roles = [('Sudo', 'Sudo'),
+                 # combine WriteFile/ManagedRepo/Owned roles into 'Write'
+                 ('Write', 'Write Data'),
+                 # combine DeleteFile/ManagedRepo/Owned roles into 'Delete'
+                 ('Delete', 'Delete Data'),
+                 ('Chgrp', 'Chgrp'),
+                 ('Chown', 'Chown'),
+                 ('ModifyGroup', 'Create and Edit Groups'),
+                 ('ModifyUser', 'Create and Edit Users'),
+                 ('ModifyGroupMembership', 'Add Users to Groups'),
+                 ('Script', 'Upload Scripts')]
+        for role in roles:
+            # If current user is light-admin, ignore privileges they don't have
+            # So they can't add/remove these from experimenter
+            # We don't disable them - (not in form data and will be removed)
+            ordered_fields.append(
+                (role[0], forms.BooleanField(
+                    required=False,
+                    label=role[1],
+                    widget=forms.CheckboxInput(
+                        attrs={'class': 'privilege',
+                               'disabled': role[0] not in user_privileges})
+                ))
+            )
 
         # Django 1.8: Form.fields uses OrderedDict from the collections module.
-        # Django 1.6: Form.fields uses SortedDict for form.fields.keyOrder.
-        if hasattr(self.fields, 'keyOrder'):
-            self.fields.keyOrder = fields_key_order
-        else:
-            self.fields = OrderedDict(
-                (k, self.fields[k])
-                for k in fields_key_order)
+        self.fields = OrderedDict(ordered_fields)
 
-        if experimenter_is_me_or_system:
+        if experimenter_me or experimenter_root:
             self.fields['omename'].widget.attrs['readonly'] = True
+            name = "yourself"
+            if experimenter_root:
+                name = "'root' user"
             self.fields['omename'].widget.attrs['title'] = \
-                "Changing of system username would be un-doable"
-            self.fields['administrator'].widget.attrs['disabled'] = True
-            self.fields['administrator'].widget.attrs['title'] = \
-                "Removal of your own admin rights would be un-doable"
+                "You can't edit Username of %s" % name
+            self.fields['role'].widget.attrs['disabled'] = True
             self.fields['active'].widget.attrs['disabled'] = True
             self.fields['active'].widget.attrs['title'] = \
-                "You cannot disable yourself"
+                "You cannot disable %s" % name
+
+        # If we can't modify user, ALL fields are disabled
+        if not can_modify_user:
+            for field in self.fields.values():
+                field.widget.attrs['disabled'] = True
 
     omename = OmeNameField(
         max_length=250,
@@ -177,15 +241,16 @@ class ExperimenterForm(NonASCIIForm):
         max_length=250,
         widget=forms.TextInput(attrs={'size': 30, 'autocomplete': 'off'}),
         required=False)
-    administrator = forms.BooleanField(required=False)
+
     active = forms.BooleanField(required=False)
 
     def clean_confirmation(self):
-        if (self.cleaned_data.get('password') or
-                self.cleaned_data.get('confirmation')):
+        if self.cleaned_data.get('password'):
             if len(self.cleaned_data.get('password')) < 3:
                 raise forms.ValidationError(
                     'Password must be at least 3 characters long.')
+        if (self.cleaned_data.get('password') or
+                self.cleaned_data.get('confirmation')):
             if (self.cleaned_data.get('password') !=
                     self.cleaned_data.get('confirmation')):
                 raise forms.ValidationError('Passwords do not match')
@@ -228,49 +293,62 @@ PERMISSION_CHOICES = (
 
 class GroupForm(NonASCIIForm):
 
-    def __init__(self, name_check=False, group_is_current_or_system=False,
-                 *args, **kwargs):
+    def __init__(self, name_check=False, group_is_system=False,
+                 can_modify_group=True, can_add_member=True, *args, **kwargs):
         super(GroupForm, self).__init__(*args, **kwargs)
+
         self.name_check = name_check
-        try:
-            if kwargs['initial']['owners']:
-                pass
-            self.fields['owners'] = ExperimenterModelMultipleChoiceField(
-                queryset=kwargs['initial']['experimenters'],
-                initial=kwargs['initial']['owners'], required=False)
-        except:
-            self.fields['owners'] = ExperimenterModelMultipleChoiceField(
-                queryset=kwargs['initial']['experimenters'], required=False)
+        if can_modify_group:
 
-        try:
-            if kwargs['initial']['members']:
-                pass
-            self.fields['members'] = ExperimenterModelMultipleChoiceField(
-                queryset=kwargs['initial']['experimenters'],
-                initial=kwargs['initial']['members'], required=False)
-        except:
-            self.fields['members'] = ExperimenterModelMultipleChoiceField(
-                queryset=kwargs['initial']['experimenters'], required=False)
+            self.fields['name'] = forms.CharField(
+                max_length=100,
+                widget=forms.TextInput(attrs={'size': 25,
+                                              'autocomplete': 'off'}))
+            self.fields['description'] = forms.CharField(
+                max_length=250, required=False,
+                widget=forms.TextInput(attrs={'size': 25,
+                                              'autocomplete': 'off'}))
+        if can_add_member:
+            try:
+                if kwargs['initial']['owners']:
+                    pass
+                self.fields['owners'] = ExperimenterModelMultipleChoiceField(
+                    queryset=kwargs['initial']['experimenters'],
+                    initial=kwargs['initial']['owners'], required=False)
+            except:
+                self.fields['owners'] = ExperimenterModelMultipleChoiceField(
+                    queryset=kwargs['initial']['experimenters'],
+                    required=False)
 
-        self.fields['permissions'] = forms.ChoiceField(
-            choices=PERMISSION_CHOICES, widget=forms.RadioSelect(),
-            required=True, label="Permissions")
+            try:
+                if kwargs['initial']['members']:
+                    pass
+                self.fields['members'] = ExperimenterModelMultipleChoiceField(
+                    queryset=kwargs['initial']['experimenters'],
+                    initial=kwargs['initial']['members'], required=False)
+            except:
+                self.fields['members'] = ExperimenterModelMultipleChoiceField(
+                    queryset=kwargs['initial']['experimenters'],
+                    required=False)
 
-        if group_is_current_or_system:
+        if can_modify_group:
+            self.fields['permissions'] = forms.ChoiceField(
+                choices=PERMISSION_CHOICES, widget=forms.RadioSelect(),
+                required=True, label="Permissions")
+
+        if group_is_system:
             self.fields['name'].widget.attrs['readonly'] = True
             self.fields['name'].widget.attrs['title'] = \
-                "Changing of system groupname would be un-doable"
+                "Changing of system group name would be un-doable"
 
         self.fields.keyOrder = [
             'name', 'description', 'owners', 'members', 'permissions']
 
-    name = forms.CharField(
-        max_length=100,
-        widget=forms.TextInput(attrs={'size': 25, 'autocomplete': 'off'}))
-    description = forms.CharField(
-        max_length=250,
-        widget=forms.TextInput(attrs={'size': 25, 'autocomplete': 'off'}),
-        required=False)
+        # If we can't modify group, disable fields
+        if not can_modify_group:
+            for name, field in self.fields.items():
+                if name not in ('owners', 'members'):
+                    field.widget.attrs['disabled'] = True
 
     def clean_name(self):
         if self.name_check:

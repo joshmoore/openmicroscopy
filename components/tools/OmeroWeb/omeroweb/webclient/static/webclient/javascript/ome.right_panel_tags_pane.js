@@ -80,18 +80,13 @@ var TagPane = function TagPane($element, opts) {
     });
     $('#add_tags_form').ajaxForm({
         beforeSubmit: function(data) {
-            $("#tagann_spinner").show();
-            // $("#add_tags_form").dialog( "close" );
+            showSpinner();
         },
         success: function(data) {
-            // hide in case it was submitted via 'Enter'
-            $("#add_tags_form").dialog( "close" );
             // update the list of tags: Re-render tag pane...
             self.render();
-            // show_batch_msg("Tags added to Objects");
         },
         error: function(data) {
-            $("#tagann_spinner").hide();
         }
     });
 
@@ -105,7 +100,15 @@ var TagPane = function TagPane($element, opts) {
     });
 
     var compareParentName = function(a, b){
+        if (!a.parent.name || !b.parent.name) {
+            return 1;
+        }
         return a.parent.name.toLowerCase() > b.parent.name.toLowerCase() ? 1 : -1;
+    };
+
+    var showSpinner = function() {
+        // added to $tags_container, so will get removed on render();
+        $tags_container.append('<img src="' + WEBCLIENT.URLS.static_webgateway + 'img/spinner.gif">');
     };
 
     this.render = function render() {
@@ -121,7 +124,10 @@ var TagPane = function TagPane($element, opts) {
             });
             request = request.join("&");
 
-            $.getJSON(WEBCLIENT.URLS.webindex + "api/annotations/?type=tag&" + request, function(data){
+            var annsUrl = WEBCLIENT.URLS.webindex + "api/annotations/?type=tag&" + request
+            // set high limit on number of results (default is 200)
+            annsUrl += '&limit=10000'
+            $.getJSON(annsUrl, function(data){
 
                 // manipulate data...
                 // make an object of eid: experimenter

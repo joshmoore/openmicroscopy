@@ -2,7 +2,7 @@
  * org.openmicroscopy.shoola.util.ui.treetable.TreeTable 
  *
   *------------------------------------------------------------------------------
- *  Copyright (C) 2006-2007 University of Dundee. All rights reserved.
+ *  Copyright (C) 2006-2017 University of Dundee. All rights reserved.
  *
  *
  * 	This program is free software; you can redistribute it and/or modify
@@ -29,6 +29,7 @@ import java.awt.event.MouseListener;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+
 import javax.swing.DefaultCellEditor;
 import javax.swing.Icon;
 import javax.swing.JCheckBox;
@@ -39,11 +40,11 @@ import javax.swing.event.TreeExpansionListener;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.tree.TreePath;
 
+
 //Third-party libraries
 import org.jdesktop.swingx.JXTreeTable;
 import org.jdesktop.swingx.decorator.Highlighter;
 import org.jdesktop.swingx.decorator.HighlighterFactory;
-import org.jdesktop.swingx.table.ColumnHeaderRenderer;
 import org.jdesktop.swingx.treetable.MutableTreeTableNode;
 import org.jdesktop.swingx.treetable.TreeTableModel;
 
@@ -108,22 +109,10 @@ public class OMETreeTable
 	/** Tree expansion listener. */
 	protected TreeExpansionListener	treeExpansionListener;
 
-	/** The mouse listener. */
-	//protected MouseListener			mouseListener;
-	
-	/** Initializes the table. */
-	private void initialize()
-	{
-		ColumnHeaderRenderer l = 
-			(ColumnHeaderRenderer) getTableHeader().getDefaultRenderer();
-		l.setHorizontalAlignment(SwingConstants.CENTER);
-	}
-	
 	/** Creates a new instance. */
 	public OMETreeTable()
 	{
 		super();
-		initialize();
 	}
 	
 	/**
@@ -135,7 +124,6 @@ public class OMETreeTable
 	{
 		super(model);
 		setTableModel(model);
-		initialize();
 	}
 	
 	/**
@@ -363,18 +351,19 @@ public class OMETreeTable
 			((OMETreeNode) node).setExpanded(true);
 	}
 
-	/**
-	 * Helper method to get the node at row.
-	 * 
-	 * @param row The selected row.
-	 * @return See above.
-	 */
-	public OMETreeNode getNodeAtRow(int row)
-	{
-		TreePath path = getPathForRow(row);
-		if (path == null) return null;
-		return (OMETreeNode) path.getLastPathComponent();
-	}
+    /**
+     * Helper method to get the node at row.
+     * 
+     * @param row
+     *            The selected row.
+     * @return See above.
+     */
+    public OMETreeNode getNodeAtRow(int row) {
+        TreePath path = getPathForRow(row);
+        if (path == null)
+            return null;
+        return (OMETreeNode) path.getLastPathComponent();
+    }
 	
 	/**
 	 * Gets the row a node is at.
@@ -449,7 +438,7 @@ public class OMETreeTable
 			(MutableTreeTableNode) getTreeTableModel().getRoot();
 		if (root == null) return;
 		for (MutableTreeTableNode node : ((OMETreeNode) root).getChildList())
-			((OMETreeNode) node).setExpanded(true);
+			((OMETreeNode) node).setExpanded(false);
 	}
 	
 	/**

@@ -1,9 +1,6 @@
 /*
- *   $Id$
- *
  *   Copyright 2010 Glencoe Software, Inc. All rights reserved.
  *   Use is subject to license terms supplied in LICENSE.txt
- *
  */
 
 #ifndef OMERO_API_IQUERY_ICE
@@ -166,7 +163,7 @@ module omero {
                  * select this from SomeModelClass this ...
                  * </pre>
                  *
-                 * though the alias "this" is unimportant. Do not try to
+                 * though the alias <i>this</i> is unimportant. Do not try to
                  * return multiple classes in one call like:
                  *
                  * <pre>
@@ -242,7 +239,8 @@ module omero {
                  * <li>
                  *     {@link omero.model.Permissions} instances are
                  *     serialized to an {@link omero.RMap} containing the
-                 *     keys: perms, canAnnotate, canEdit, canLink, canDelete
+                 *     keys: perms, canAnnotate, canEdit, canLink, canDelete,
+                 *     canChgrp, canChown
                  * </li>
                  * <li>
                  *     The quantity types like {@link omero.model.Length} are

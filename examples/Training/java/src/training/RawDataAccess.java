@@ -1,6 +1,6 @@
 /*
  *------------------------------------------------------------------------------
- *  Copyright (C) 2006-2016 University of Dundee & Open Microscopy Environment.
+ *  Copyright (C) 2006-2017 University of Dundee & Open Microscopy Environment.
  *  All rights reserved.
  *
  *
@@ -23,6 +23,7 @@ package training;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import omero.api.RawPixelsStorePrx;
 import omero.gateway.Gateway;
@@ -91,21 +92,18 @@ public class RawDataAccess
     private void retrievePlane()
             throws Exception
     {
-        RawDataFacility rdf = gateway.getFacility(RawDataFacility.class);
-        //To retrieve the image, see above.
-        PixelsData pixels = image.getDefaultPixels();
-        int sizeZ = pixels.getSizeZ();
-        int sizeT = pixels.getSizeT();
-        int sizeC = pixels.getSizeC();
-        try {
+        try (RawDataFacility rdf = gateway.getFacility(RawDataFacility.class)) {
+            // To retrieve the image, see above.
+            PixelsData pixels = image.getDefaultPixels();
+            int sizeZ = pixels.getSizeZ();
+            int sizeT = pixels.getSizeT();
+            int sizeC = pixels.getSizeC();
             Plane2D p;
-            for (int z = 0; z < sizeZ; z++) 
-                for (int t = 0; t < sizeT; t++) 
-                    for (int c = 0; c < sizeC; c++) 
+            for (int z = 0; z < sizeZ; z++)
+                for (int t = 0; t < sizeT; t++)
+                    for (int c = 0; c < sizeC; c++)
                         p = rdf.getPlane(ctx, pixels, z, t, c);
-        } catch (Exception e) {
-            throw new Exception("Cannot read the plane", e);
-        } 
+        }
     }
 
 // Retrieve tile
@@ -118,13 +116,12 @@ public class RawDataAccess
     private void retrieveTile()
             throws Exception
     {
-        RawDataFacility rdf = gateway.getFacility(RawDataFacility.class);
-        //To retrieve the image, see above.
-        PixelsData pixels = image.getDefaultPixels();
-        int sizeZ = pixels.getSizeZ();
-        int sizeT = pixels.getSizeT();
-        int sizeC = pixels.getSizeC();
-        try {
+        try (RawDataFacility rdf = gateway.getFacility(RawDataFacility.class)) {
+            //To retrieve the image, see above.
+            PixelsData pixels = image.getDefaultPixels();
+            int sizeZ = pixels.getSizeZ();
+            int sizeT = pixels.getSizeT();
+            int sizeC = pixels.getSizeC();
             //tile = (50, 50, 10, 10)  x, y, width, height of tile
             int x = 0;
             int y = 0;
@@ -139,9 +136,7 @@ public class RawDataAccess
                     }
                 }
             }
-        } catch (Exception e) {
-            throw new Exception("Cannot read the tiles", e);
-        } 
+        }
     }
 
 // Retrieve stack
@@ -221,6 +216,51 @@ public class RawDataAccess
         }
     }
 
+ // Retrieve histogram
+ // ==================
+
+    /**
+     * Retrieve the histogram
+     */
+    private void retrieveHistogram() throws Exception {
+        try (RawDataFacility rdf = gateway.getFacility(RawDataFacility.class)) {
+            PixelsData pixels = image.getDefaultPixels();
+            int[] channels = new int[] { 0 };
+            int binCount = 256;
+            Map<Integer, int[]> histdata = rdf.getHistogram(ctx, pixels,
+                    channels, binCount, false, null);
+            int[] histogram = histdata.get(0);
+            printHistogram(histogram);
+        }
+    }
+     
+    /**
+     * Print a histogram to stdout
+     * 
+     * @param data
+     *            The histogram data
+     */
+    private void printHistogram(int[] data) {
+        int max = 0;
+        for (int d : data)
+            max = Math.max(max, d);
+
+        int step = max / 100;
+
+        for (int i = 0; i < data.length; i++) {
+            String s = String.format("%1$ 4d |", i);
+            int x = data[i];
+            StringBuilder bar = new StringBuilder();
+            do {
+                bar.append("]");
+                x -= step;
+            } while (x > 0);
+            while (bar.length() <= 100)
+                bar.append(" ");
+            System.out.println(s + bar + " " + data[i]);
+        }
+    }
+     
     /**
      * end-code
      */
@@ -241,6 +281,7 @@ public class RawDataAccess
             retrieveTile();
             retrieveStack();
             retrieveHypercube();
+            retrieveHistogram();
         } catch (Exception e) {
             e.printStackTrace();
         } finally {

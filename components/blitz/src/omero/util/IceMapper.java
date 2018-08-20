@@ -1,14 +1,12 @@
 /*
- *   $Id$
- *
  *   Copyright 2007-2014 Glencoe Software, Inc. All rights reserved.
  *   Use is subject to license terms supplied in LICENSE.txt
- *
  */
 
 package omero.util;
 
 import static omero.rtypes.rbool;
+import static omero.rtypes.rclass;
 import static omero.rtypes.rdouble;
 import static omero.rtypes.rfloat;
 import static omero.rtypes.rint;
@@ -29,6 +27,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -36,6 +35,7 @@ import java.util.Set;
 import ome.conditions.InternalException;
 import ome.model.IObject;
 import ome.model.ModelBased;
+import ome.model.enums.AdminPrivilege;
 import ome.services.blitz.util.ConvertToBlitzExceptionMessage;
 import ome.system.OmeroContext;
 import ome.system.Principal;
@@ -45,6 +45,8 @@ import ome.util.ModelMapper;
 import ome.util.ReverseModelMapper;
 import ome.util.Utils;
 import omeis.providers.re.RGBBuffer;
+import omeis.providers.re.codomain.CodomainMapContext;
+import omeis.providers.re.codomain.ReverseIntensityContext;
 import omeis.providers.re.data.PlaneDef;
 import omeis.providers.re.data.RegionDef;
 import omero.ApiUsageException;
@@ -419,6 +421,10 @@ public class IceMapper extends ome.util.ModelMapper implements
             Boolean b = (Boolean) o;
             omero.RBool bool = rbool(b.booleanValue());
             return bool;
+        } else if (o instanceof Class) {
+            Class c = (Class) o;
+            omero.RClass rc = rclass(c.getName());
+            return rc;
         } else if (o instanceof Date) {
             Date date = (Date) o;
             omero.RTime time = rtime(date.getTime());
@@ -479,6 +485,8 @@ public class IceMapper extends ome.util.ModelMapper implements
             rv.put("canDelete", rbool(!p.isDisallowDelete()));
             rv.put("canEdit", rbool(!p.isDisallowEdit()));
             rv.put("canLink", rbool(!p.isDisallowLink()));
+            rv.put("canChgrp", rbool(!p.isDisallowChgrp()));
+            rv.put("canChown", rbool(!p.isDisallowChown()));
             return rmap(rv);
         } else if (o instanceof ome.model.units.Unit) {
             ome.model.units.Unit u = (ome.model.units.Unit) o;
@@ -539,9 +547,15 @@ public class IceMapper extends ome.util.ModelMapper implements
         ec.groupName = ctx.getCurrentGroupName();
         ec.userId = ctx.getCurrentUserId();
         ec.userName = ctx.getCurrentUserName();
+        ec.sudoerId = ctx.getCurrentSudoerId() == null ? null : rlong(ctx.getCurrentSudoerId());
+        ec.sudoerName = ctx.getCurrentSudoerName() == null ? null : rstring(ctx.getCurrentSudoerName());
         ec.leaderOfGroups = ctx.getLeaderOfGroupsList();
         ec.memberOfGroups = ctx.getMemberOfGroupsList();
         ec.isAdmin = ctx.isCurrentUserAdmin();
+        ec.adminPrivileges = new ArrayList<>(ctx.getCurrentAdminPrivileges().size());
+        for (final AdminPrivilege privilege : ctx.getCurrentAdminPrivileges()) {
+            ec.adminPrivileges.add(privilege.getValue());
+        }
         // ticket:2265 Removing from public interface
         // ec.isReadOnly = ctx.isReadOnly();
         ec.groupPermissions = convert(ctx.getCurrentGroupPermissions());
@@ -562,12 +576,31 @@ public class IceMapper extends ome.util.ModelMapper implements
     /**
      * Converts the passed Ice Object and returns the converted object.
      * 
+     * @param ctx The object to convert
+     * @return See above.
+     * @throws omero.ApiUsageException Thrown if the slice is unknown.
+     */
+    public CodomainMapContext convert(omero.romio.CodomainMapContext ctx)
+    {
+        if (!(ctx instanceof omero.romio.ReverseIntensityMapContext)) {
+            return null;
+        }
+        return new ReverseIntensityContext();
+    }
+
+    /**
+     * Converts the passed Ice Object and returns the converted object.
+     * 
      * @param def The object to convert
      * @return See above.
      * @throws omero.ApiUsageException Thrown if the slice is unknown.
      */
     public static PlaneDef convert(omero.romio.PlaneDef def)
             throws omero.ApiUsageException {
+        if (def == null) {
+            return null;
+        }
+        
         PlaneDef pd = new PlaneDef(def.slice, def.t);
         pd.setStride(def.stride);
         omero.romio.RegionDef r = def.region;
@@ -696,6 +729,10 @@ public class IceMapper extends ome.util.ModelMapper implements
 
         if (o.leaves != null) {
             options.leaves= o.leaves.getValue();
+        }
+
+        if (o.cacheable != null) {
+            options.cacheable = o.cacheable.getValue();
         }
 
         if (o.acquisitionData != null) {
@@ -899,7 +936,7 @@ public class IceMapper extends ome.util.ModelMapper implements
      * {@link ArrayList}s will be returned. The need for this arose from the
      * decision to have no {@link Set}s in the Ice Java mapping.
      * 
-     * @see <a href="http://trac.openmicroscopy.org/ome/ticket/684">Trac ticket #684</a>
+     * @see <a href="https://trac.openmicroscopy.org/ome/ticket/684">Trac ticket #684</a>
      */
     public Collection reverse(Collection source, Class targetType) { // FIXME
         // throws
@@ -1177,6 +1214,8 @@ public class IceMapper extends ome.util.ModelMapper implements
             return convert((omero.romio.PlaneDef) arg);
         } else if (Object[].class.isAssignableFrom(p)) {
             return reverseArray((List) arg, p);
+        } else if (CodomainMapContext.class.isAssignableFrom(p)) {
+            return convert((omero.romio.CodomainMapContext) arg);
         } else {
             throw new ApiUsageException(null, null, "Can't handle input " + p);
         }
@@ -1208,6 +1247,22 @@ public class IceMapper extends ome.util.ModelMapper implements
             return map(new ArrayList((Set) o)); // Necessary since Ice
             // doesn't support Sets.
         } else if (Collection.class.isAssignableFrom(type)) {
+            Collection l = (Collection) o;
+            //not part of the model so map "manually"
+            if (l.size() > 0) {
+                Object ho = l.iterator().next();
+                if (ho instanceof CodomainMapContext) {
+                    List result = new ArrayList();
+                    Iterator i = l.iterator();
+                    while (i.hasNext()) {
+                        Object t = reverse((CodomainMapContext) i.next());
+                        if (t != null) {
+                            result.add(t);
+                        }
+                    }
+                    return result;
+                }
+            }
             return map((Collection) o);
         } else if (IObject.class.isAssignableFrom(type)) {
             return map((Filterable) o);
@@ -1219,6 +1274,14 @@ public class IceMapper extends ome.util.ModelMapper implements
             throw new ApiUsageException(null, null, "Can't handle output "
                     + type);
         }
+    }
+
+    private omero.model.CodomainMapContext reverse(CodomainMapContext ctx)
+    {
+        if (ctx instanceof ReverseIntensityContext) {
+            return new omero.model.ReverseIntensityContextI();
+        }
+        return null;
     }
 
     /**

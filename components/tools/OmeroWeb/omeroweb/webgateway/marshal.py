@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 #
-# Copyright (C) 2012-2014 University of Dundee & Open Microscopy Environment.
+# Copyright (C) 2012-2016 University of Dundee & Open Microscopy Environment.
 # All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -27,12 +27,37 @@ import traceback
 logger = logging.getLogger(__name__)
 
 from omero.rtypes import unwrap
+from omero_marshal import get_encoder
 
 # OMERO.insight point list regular expression
 INSIGHT_POINT_LIST_RE = re.compile(r'points\[([^\]]+)\]')
 
 # OME model point list regular expression
 OME_MODEL_POINT_LIST_RE = re.compile(r'([\d.]+),([\d.]+)')
+
+
+def eventContextMarshal(event_context):
+    """
+    Marshals the omero::sys::EventContext as a dict.
+
+    @param event_context:   omero::sys::EventContext
+    @return:                Dict
+    """
+
+    ctx = {}
+    for a in ['shareId', 'sessionId', 'sessionUuid', 'userId', 'userName',
+              'sudoerId', 'sudoerName', 'groupId',
+              'groupName', 'isAdmin', 'eventId', 'eventType',
+              'memberOfGroups', 'leaderOfGroups',
+              'adminPrivileges']:
+            if (hasattr(event_context, a)):
+                ctx[a] = getattr(event_context, a)
+
+    perms = event_context.groupPermissions
+    encoder = get_encoder(perms.__class__)
+    ctx['groupPermissions'] = encoder.encode(perms)
+
+    return ctx
 
 
 def channelMarshal(channel):
@@ -43,14 +68,23 @@ def channelMarshal(channel):
     @return:            Dict
     """
 
-    return {'emissionWave': channel.getEmissionWave(),
+    chan = {'emissionWave': channel.getEmissionWave(),
             'label': channel.getLabel(),
             'color': channel.getColor().getHtml(),
+            # 'reverseIntensity' is deprecated. Use 'inverted'
+            'inverted': channel.isInverted(),
+            'reverseIntensity': channel.isInverted(),
+            'family': unwrap(channel.getFamily()),
+            'coefficient': unwrap(channel.getCoefficient()),
             'window': {'min': channel.getWindowMin(),
                        'max': channel.getWindowMax(),
                        'start': channel.getWindowStart(),
                        'end': channel.getWindowEnd()},
             'active': channel.isActive()}
+    lut = channel.getLut()
+    if lut and len(lut) > 0:
+        chan['lut'] = lut
+    return chan
 
 
 def imageMarshal(image, key=None, request=None):
@@ -73,13 +107,14 @@ def imageMarshal(image, key=None, request=None):
         # ImageWrapper.getDataset() with shares in mind.
         # -- Tue Sep  6 10:48:47 BST 2011 (See #6660)
         parents = image.listParents()
-        if parents is not None and len(parents) == 1:
-            if parents[0].OMERO_CLASS == 'Dataset':
-                ds = parents[0]
-            elif parents[0].OMERO_CLASS == 'WellSample':
-                wellsample = parents[0]
-                if wellsample.well is not None:
-                    well = wellsample.well
+        if parents is not None:
+            datasets = [p for p in parents if p.OMERO_CLASS == 'Dataset']
+            well_smpls = [p for p in parents if p.OMERO_CLASS == 'WellSample']
+            if len(datasets) == 1:
+                ds = datasets[0]
+            if len(well_smpls) == 1:
+                if well_smpls[0].well is not None:
+                    well = well_smpls[0].well
     except omero.SecurityViolation, e:
         # We're in a share so the Image's parent Dataset cannot be loaded
         # or some other permissions related issue has tripped us up.
@@ -258,10 +293,10 @@ def shapeMarshal(shape):
         # TODO: support for mask
     elif shape_type == omero.model.EllipseI:
         rv['type'] = 'Ellipse'
-        rv['cx'] = shape.getCx().getValue()
-        rv['cy'] = shape.getCy().getValue()
-        rv['rx'] = shape.getRx().getValue()
-        rv['ry'] = shape.getRy().getValue()
+        rv['x'] = shape.getX().getValue()
+        rv['y'] = shape.getY().getValue()
+        rv['radiusX'] = shape.getRadiusX().getValue()
+        rv['radiusY'] = shape.getRadiusY().getValue()
     elif shape_type == omero.model.PolylineI:
         rv['type'] = 'PolyLine'
         rv['points'] = stringToSvg(shape.getPoints().getValue())
@@ -273,8 +308,8 @@ def shapeMarshal(shape):
         rv['y2'] = shape.getY2().getValue()
     elif shape_type == omero.model.PointI:
         rv['type'] = 'Point'
-        rv['cx'] = shape.getCx().getValue()
-        rv['cy'] = shape.getCy().getValue()
+        rv['x'] = shape.getX().getValue()
+        rv['y'] = shape.getY().getValue()
     elif shape_type == omero.model.PolygonI:
         rv['type'] = 'Polygon'
         # z = closed line
@@ -296,8 +331,15 @@ def shapeMarshal(shape):
         set_if('fontStyle', shape.getFontStyle())
         set_if('fontFamily', shape.getFontFamily())
 
-    set_if('transform', shape.getTransform(),
-           func=lambda a: a is not None and a != 'None')
+    if shape.getTransform() is not None:
+        transform = shape.getTransform()
+        tm = [unwrap(transform.a00),
+              unwrap(transform.a10),
+              unwrap(transform.a01),
+              unwrap(transform.a11),
+              unwrap(transform.a02),
+              unwrap(transform.a12)]
+        rv['transform'] = 'matrix(%s)' % (' '.join([str(t) for t in tm]))
     fill_color = unwrap(shape.getFillColor())
     if fill_color is not None:
         rv['fillColor'], rv['fillAlpha'] = rgb_int2css(fill_color)
@@ -307,6 +349,10 @@ def shapeMarshal(shape):
     if shape.getStrokeWidth() is not None:
         # FIXME: units ignored for stroke width
         set_if('strokeWidth', shape.getStrokeWidth().getValue())
+    if hasattr(shape, 'getMarkerStart') and shape.getMarkerStart() is not None:
+        rv['markerStart'] = shape.getMarkerStart().getValue()
+    if hasattr(shape, 'getMarkerEnd') and shape.getMarkerEnd() is not None:
+        rv['markerEnd'] = shape.getMarkerEnd().getValue()
     return rv
 
 
@@ -335,9 +381,11 @@ def rgb_int2css(rgbint):
     converts a bin int number into css colour and alpha fraction.
     E.g. -1006567680 to '#00ff00', 0.5
     """
-    alpha = rgbint // 256 // 256 // 256 % 256
-    alpha = float(alpha) / 256
-    r, g, b = (rgbint // 256 // 256 % 256, rgbint // 256 % 256, rgbint % 256)
+    alpha = rgbint % 256
+    alpha = float(alpha) / 255
+    b = rgbint / 256 % 256
+    g = rgbint / 256 / 256 % 256
+    r = rgbint / 256 / 256 / 256 % 256
     return "#%02x%02x%02x" % (r, g, b), alpha
 
 
@@ -346,9 +394,11 @@ def rgb_int2rgba(rgbint):
     converts a bin int number into (r, g, b, alpha) tuple.
     E.g. 1694433280 to (255, 0, 0, 0.390625)
     """
-    alpha = rgbint // 256 // 256 // 256 % 256
-    alpha = float(alpha) / 256
-    r, g, b = (rgbint // 256 // 256 % 256, rgbint // 256 % 256, rgbint % 256)
+    alpha = rgbint % 256
+    alpha = float(alpha) / 255
+    b = rgbint / 256 % 256
+    g = rgbint / 256 / 256 % 256
+    r = rgbint / 256 / 256 / 256 % 256
     return (r, g, b, alpha)
 
 

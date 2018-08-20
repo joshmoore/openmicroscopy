@@ -36,7 +36,6 @@ from omeroweb.custom_forms import NonASCIIForm
 from custom_forms import MetadataModelChoiceField
 from custom_forms import AnnotationModelMultipleChoiceField
 from custom_forms import ObjectModelMultipleChoiceField
-from omeroweb.webadmin.custom_forms import ExperimenterModelChoiceField
 from omeroweb.webadmin.custom_forms import ExperimenterModelMultipleChoiceField
 from omeroweb.webadmin.custom_forms import GroupModelMultipleChoiceField
 from omeroweb.webadmin.custom_forms import GroupModelChoiceField
@@ -143,6 +142,9 @@ class ContainerForm(NonASCIIForm):
         widget=forms.TextInput(attrs={'size': 45}))
     description = forms.CharField(
         widget=forms.Textarea(attrs={'rows': 2, 'cols': 49}),
+        required=False)
+    owner = forms.CharField(
+        widget=forms.HiddenInput,
         required=False)
 
 
@@ -338,43 +340,6 @@ class FilesAnnotationForm(BaseAnnotationForm):
 class CommentAnnotationForm(BaseAnnotationForm):
     comment = forms.CharField(
         widget=forms.Textarea(attrs={'rows': 2, 'cols': 39}))
-
-
-class UsersForm(forms.Form):
-
-    def __init__(self, *args, **kwargs):
-        super(UsersForm, self).__init__(*args, **kwargs)
-        try:
-            empty_label = kwargs['initial']['empty_label']
-        except:
-            empty_label = '---------'
-        try:
-            menu = kwargs['initial']['menu']
-        except:
-            menu = '----------'
-        try:
-            user = kwargs['initial']['user']
-        except:
-            user = None
-        users = kwargs['initial']['users']
-
-        self.fields['experimenter'] = ExperimenterModelChoiceField(
-            queryset=users,
-            initial=user,
-            widget=forms.Select(attrs={
-                'onchange': (
-                    'window.location.href=\'' +
-                    reverse(viewname="load_template", args=[menu]) +
-                    '?experimenter=\''
-                    '+this.options[this.selectedIndex].value')}),
-            required=False,
-            empty_label=empty_label)
-
-        if users is None or len(users) < 2:
-            self.fields['experimenter'].widget.attrs['disabled'] = True
-            self.fields['experimenter'].widget.attrs['class'] = 'disabled'
-
-        self.fields.keyOrder = ['experimenter']
 
 
 class ActiveGroupForm(forms.Form):

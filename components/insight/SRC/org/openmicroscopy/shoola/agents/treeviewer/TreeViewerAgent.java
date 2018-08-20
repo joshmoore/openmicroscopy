@@ -1,6 +1,6 @@
 /*
  *------------------------------------------------------------------------------
- *  Copyright (C) 2006-2014 University of Dundee. All rights reserved.
+ *  Copyright (C) 2006-2017 University of Dundee. All rights reserved.
  *
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -146,6 +146,88 @@ public class TreeViewerAgent
 		return b.booleanValue();
 	}
 	
+    /**
+     * Returns <code>true</code> if the currently logged in user is allowed
+     * to move objects to/from groups, <code>false</code> otherwise.
+     * 
+     * @return See above.
+     */
+    public static boolean isMoveGroup() {
+        Boolean b = (Boolean) registry.lookup(LookupNames.PRIV_MOVE_GROUP);
+        if (b == null)
+            b = Boolean.FALSE;
+
+        return isAdministrator() && b.booleanValue();
+    }
+
+    /**
+     * Returns <code>true</code> if the currently logged in user is allowed
+     * to edit groups, <code>false</code> otherwise.
+     * 
+     * @return See above.
+     */
+    public static boolean isEditGroup() {
+        Boolean b = (Boolean) registry.lookup(LookupNames.PRIV_EDIT_GROUP);
+        if (b == null)
+            b = Boolean.FALSE;
+
+        return isAdministrator() && b.booleanValue();
+    }
+    
+    /**
+     * Returns <code>true</code> if the currently logged in user is allowed
+     * to to add users to groups, <code>false</code> otherwise.
+     * 
+     * @return See above.
+     */
+    public static boolean isAddToGroup() {
+        Boolean b = (Boolean) registry.lookup(LookupNames.PRIV_GROUP_ADD);
+        if (b == null)
+            b = Boolean.FALSE;
+
+        return isAdministrator() && b.booleanValue();
+    }
+
+    /**
+     * Returns <code>true</code> if the currently logged in user is allowed
+     * to edit users, <code>false</code> otherwise.
+     * 
+     * @return See above.
+     */
+    public static boolean isEditUser() {
+        Boolean b = (Boolean) registry.lookup(LookupNames.PRIV_EDIT_USER);
+        if (b == null)
+            b = Boolean.FALSE;
+
+        return isAdministrator() && b.booleanValue();
+    }
+    
+    /**
+     * Returns <code>true</code> if the currently logged in user is allowed
+     * to upload scripts, <code>false</code> otherwise.
+     * 
+     * @return See above.
+     */
+    public static boolean isUploadScript() {
+        Boolean b = (Boolean) registry.lookup(LookupNames.PRIV_UPLOAD_SCRIPT);
+        if (b == null)
+            b = Boolean.FALSE;
+
+        return isAdministrator() && b.booleanValue();
+    }
+
+    /**
+     * Returns <code>true</code> data objects can be created,
+     * <code>false</code> otherwise. This will be <code>false</code> if the
+     * server is for example read-only.
+     *
+     * @return See above.
+     */
+    public static boolean canCreate() {
+        Boolean b = (Boolean) registry.lookup(LookupNames.CAN_CREATE);
+        return b.booleanValue();
+    }
+
 	/**
 	 * Returns the context for an administrator.
 	 * 
@@ -508,7 +590,7 @@ public class TreeViewerAgent
         if (exp == null) 
             return;
         TreeViewer viewer = TreeViewerFactory.getTreeViewer(exp);
-        viewer.download(evt.getFolder(), evt.isOverride());
+        viewer.download(evt.getFolder(), evt.isOverride(), evt.getSelection());
     }
 
     /**

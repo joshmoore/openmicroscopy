@@ -19,31 +19,8 @@ clean()
     ant clean
 }
 
-get_ice()
-{
-  if [ "$TRAVIS" = "true" ]; then
-    NAME=ice
-    fold start install
-    ice=Ice-3.5.1-b1-ubuntu1204-amd64.tar.xz
-    if [ ! -f "download/$ice" ]; then
-      mkdir -p download
-      cd download
-      wget "http://downloads.openmicroscopy.org/ice/experimental/$ice"
-      cd ..
-    fi
-    tar -xvf "download/$ice"
-    ICE_HOME="$(pwd)/Ice-3.5.1-b1-ubuntu1204-amd64"
-    export SLICEPATH="${ICE_HOME}/slice"
-    export PATH="${ICE_HOME}/bin:$PATH"
-    export LD_LIBRARY_PATH="${ICE_HOME}/lib:$LD_LIBRARY_PATH"
-    export PYTHONPATH="${ICE_HOME}/python:$PYTHONPATH"
-    fold end install
-  fi
-}
-
 java_build()
 {
-    get_ice
     NAME=java_build
     fold start default
         TEST="-p" ant build-default -Dpackage-extra=false
@@ -55,7 +32,6 @@ java_build()
 
 java_test()
 {
-    get_ice
     NAME=java_test
     for dir in dsl model common rendering server blitz tools/OmeroJava
     do
@@ -73,7 +49,7 @@ java_test()
 
     # make sure that the current db script has no code-generated
     # foreign key names in it
-    dist/bin/omero db script "" "" ome -f- | grep -LiE "fk[a-z]*[0-9]+[a-z0-9]{5}" && {
+    dist/bin/omero db script --password ome -f- | grep -LiE "fk[a-z]*[0-9]+[a-z0-9]{5}" && {
         echo generated FKs found
         exit 2
     } || {
@@ -88,7 +64,6 @@ py_flake8()
 
 py_build()
 {
-    get_ice
     NAME=py_build
     fold start default
         ant build-default -Dpackage-extra=false
@@ -97,7 +72,6 @@ py_build()
 
 py_test()
 {
-    get_ice
     NAME=py_test
     for dir in OmeroPy OmeroFS OmeroWeb
     do
@@ -127,7 +101,6 @@ py_test()
 
 build_cpp()
 {
-    get_ice
     (
         cd components/tools/OmeroCpp
         mkdir build
@@ -146,9 +119,26 @@ build_cpp()
     )
 }
 
+integration()
+{
+    fold start integration
+    if [ "x$TRAVIS_BRANCH" == "x" ]; then
+        FILES=$(git diff --name-only origin/develop...HEAD)
+    else
+        FILES=$(git diff --name-only HEAD...$TRAVIS_BRANCH)
+    fi
+    for x in $(echo "$FILES" | grep OmeroPy/test/integration); do
+        TEST=${x#components/tools/OmeroPy/}
+        export PYTHONPATH=$PYTHONPATH:../target/lib/python
+        ( cd components/tools/OmeroPy/;
+          python setup.py test -t $TEST -m "not broken"
+        )
+    done
+    fold end integration
+}
+
 if [ $# -eq 0 ]
 then
-    get_ice
     clean
     java_build
     py_build
@@ -175,6 +165,8 @@ do
             py_build ;;
         py-test)
             py_test ;;
+        integration)
+            integration ;;
         all)
             py_flake8 java_build java_test py_test ;;
         *)

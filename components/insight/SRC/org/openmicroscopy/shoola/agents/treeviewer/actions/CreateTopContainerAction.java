@@ -1,6 +1,6 @@
 /*
  *------------------------------------------------------------------------------
- *  Copyright (C) 2006-2014 University of Dundee. All rights reserved.
+ *  Copyright (C) 2006-2017 University of Dundee. All rights reserved.
  *
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -22,6 +22,7 @@ package org.openmicroscopy.shoola.agents.treeviewer.actions;
 
 import java.awt.event.ActionEvent;
 import javax.swing.Action;
+import javax.swing.tree.TreeNode;
 
 import org.openmicroscopy.shoola.agents.treeviewer.IconManager;
 import org.openmicroscopy.shoola.agents.treeviewer.TreeViewerAgent;
@@ -204,7 +205,7 @@ public class CreateTopContainerAction
             break;
         default:
             if (browser.getBrowserType() != Browser.ADMIN_EXPLORER)
-                setEnabled(true);
+                setEnabled(TreeViewerAgent.canCreate());
             else onDisplayChange(browser.getLastSelectedDisplay());
         }
     }
@@ -215,23 +216,44 @@ public class CreateTopContainerAction
      */
     protected void onDisplayChange(TreeImageDisplay selectedDisplay)
     {
-        setEnabled(false);
-        if (nodeType == GROUP) {
-            setEnabled(TreeViewerAgent.isAdministrator());
+        if (!TreeViewerAgent.canCreate()) {
+            setEnabled(false);
             return;
         }
-        if (nodeType != EXPERIMENTER) {
+        setEnabled(false);
+        if (nodeType == GROUP) {
+            setEnabled(TreeViewerAgent.isEditGroup());
+            return;
+        }
+        if (nodeType == EXPERIMENTER) {
+            setEnabled(TreeViewerAgent.isEditUser());
+            return;
+        }
+        if (model.getDisplayMode() == TreeViewer.EXPERIMENTER_DISPLAY
+                && (nodeType == TAG || nodeType == TAG_SET)
+                && selectedDisplay != null) {
+            TreeNode[] nodes = selectedDisplay.getPath();
+            if (nodes.length > 2) {
+                TreeNode expNode = nodes[2];
+                if (((TreeImageDisplay) expNode).getUserObject() instanceof ExperimenterData) {
+                    ExperimenterData exp = (ExperimenterData) ((TreeImageDisplay) expNode)
+                            .getUserObject();
+                    setEnabled(exp.getId() == TreeViewerAgent.getUserDetails()
+                            .getId());
+                }
+            }
+        } else if (nodeType != EXPERIMENTER) {
             if (selectedDisplay != null) {
                 Object ho = selectedDisplay.getUserObject();
                 if (ho instanceof ExperimenterData) {
                     long id = TreeViewerAgent.getUserDetails().getId();
                     ExperimenterData exp = (ExperimenterData) ho;
-                    setEnabled(exp.getId() == id);
+                    setEnabled(exp.getId() == id || TreeViewerAgent.isEditUser());
                     return;
                 }
                 if (ho instanceof GroupData) {
                     setEnabled(model.getDisplayMode() ==
-                            TreeViewer.GROUP_DISPLAY);
+                            TreeViewer.GROUP_DISPLAY && TreeViewerAgent.isEditGroup());
                     return;
                 }
                 setEnabled(model.canLink(ho));
@@ -246,7 +268,7 @@ public class CreateTopContainerAction
                 Object ho = selectedDisplay.getUserObject();
                 if (ho instanceof GroupData) {
                     TreeImageDisplay[] selected = browser.getSelectedDisplays();
-                    setEnabled(selected.length == 1);
+                    setEnabled(selected.length == 1 && TreeViewerAgent.isEditGroup());
                 } else setEnabled(false);
             }
         }
@@ -317,8 +339,8 @@ public class CreateTopContainerAction
                         String ns = tag.getNameSpace();
                         if (ns != null &&
                                 TagAnnotationData.INSIGHT_TAGSET_NS.equals(
-                                        ns));
-                        withParent = model.canLink(tag);
+                                        ns))
+                            withParent = model.canLink(tag);
                     }
                 }
             }

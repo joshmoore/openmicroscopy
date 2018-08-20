@@ -9,7 +9,7 @@
 
 """
 
-from test.integration.clitest.cli import CLITest
+from omero.testlib.cli import CLITest
 from omero.plugins.script import ScriptControl
 from omero.util.temp_files import create_path
 
@@ -59,7 +59,6 @@ class TestScript(CLITest):
         newId = self.cli.get("script.file.id")
         self.cli.invoke(self.args + ["list", "user"], strict=True)
         replaceArgs = self.args + ["replace", str(newId), str(p)]
-        print replaceArgs
         self.cli.invoke(replaceArgs, strict=True)
 
     def testReplaceOfficial(self):

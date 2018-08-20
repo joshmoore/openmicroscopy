@@ -1,14 +1,14 @@
-    /*
- *   $Id$
- *
- *   Copyright 2006-2014 University of Dundee. All rights reserved.
+/*
+ *   Copyright 2006-2018 University of Dundee. All rights reserved.
  *   Use is subject to license terms supplied in LICENSE.txt
  */
 
 package ome.logic;
 
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -22,7 +22,9 @@ import javax.persistence.Table;
 import com.google.common.base.Predicates;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterators;
+import com.google.common.collect.Sets;
 
+import org.apache.commons.collections.CollectionUtils;
 import org.hibernate.Criteria;
 import org.hibernate.HibernateException;
 import org.hibernate.Session;
@@ -56,7 +58,9 @@ import ome.model.annotations.FileAnnotation;
 import ome.model.core.Image;
 import ome.model.core.OriginalFile;
 import ome.model.core.Pixels;
+import ome.model.enums.AdminPrivilege;
 import ome.model.enums.ChecksumAlgorithm;
+import ome.model.internal.NamedValue;
 import ome.model.internal.Permissions;
 import ome.model.meta.Experimenter;
 import ome.model.meta.ExperimenterGroup;
@@ -72,6 +76,7 @@ import ome.security.auth.PasswordProvider;
 import ome.security.auth.PasswordUtil;
 import ome.security.auth.RoleProvider;
 import ome.security.basic.BasicSecuritySystem;
+import ome.security.basic.LightAdminPrivileges;
 import ome.services.query.Definitions;
 import ome.services.query.Query;
 import ome.services.query.QueryParameterDef;
@@ -127,6 +132,8 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
 
     protected final ChecksumProviderFactory cpf;
 
+    protected final LightAdminPrivileges adminPrivileges;
+
     protected OmeroContext context;
 
     public void setApplicationContext(ApplicationContext ctx)
@@ -138,7 +145,7 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
             MailSender mailSender, SimpleMailMessage templateMessage,
             ACLVoter aclVoter, PasswordProvider passwordProvider,
             RoleProvider roleProvider, LdapImpl ldapUtil, PasswordUtil passwordUtil,
-            ChmodStrategy chmod, ChecksumProviderFactory cpf) {
+            ChmodStrategy chmod, ChecksumProviderFactory cpf, LightAdminPrivileges adminPrivileges) {
         this.sql = sql;
         this.osf = osf;
         this.mailSender = mailSender;
@@ -150,6 +157,7 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
         this.passwordUtil = passwordUtil;
         this.chmod = chmod;
         this.cpf = cpf;
+        this.adminPrivileges = adminPrivileges;
     }
 
     public Class<? extends ServiceInterface> getServiceInterface() {
@@ -479,7 +487,7 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
             file.setName(filename);
             file.setPath(filename); // FIXME this should be something like /users/<name>/photo
             file.setSize((long) data.length);
-            file.setHasher(new ChecksumAlgorithm("SHA1-160"));
+            file.setHasher(new ChecksumAlgorithm(ChecksumAlgorithm.VALUE_SHA1_160));
             file.setHash(cpf.getProvider(ChecksumType.SHA1).putBytes(data)
                     .checksumAsString());
             file.setMimetype(mimetype);
@@ -501,7 +509,7 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
             file = iUpdate.saveAndReturnObject(file);
         }
 
-        RawFileStore rfs = (RawFileStore) context.getBean("internal-ome.api.RawFileStore");
+        final RawFileStore rfs = context.getBean("internal-ome.api.RawFileStore", RawFileStore.class);
         try {
             rfs.setFileId(file.getId());
             rfs.write(data, 0, data.length);
@@ -582,7 +590,7 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
     @Transactional(readOnly = false)
     public void updateGroup(@NotNull final
     ExperimenterGroup group) {
-        adminOrPiOfGroup(group);
+        adminOrPiOfGroups(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_MODIFY_GROUP), group);
         Permissions p = group.getDetails().getPermissions();
         if (p != null) {
             // Setting permissions is not allowed via IUpdate
@@ -634,16 +642,61 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
                 groupProxy(sec.getSecurityRoles().getUserGroupName()));
     }
 
+    // TODO: Consider adding to public API.
+    private long createSystemUserWithPassword(Experimenter newSystemUser, String password) {
+        // logged & secured via createExperimenter
+        return createExperimenterWithPassword(newSystemUser, password,
+                groupProxy(sec.getSecurityRoles().getSystemGroupName()),
+                groupProxy(sec.getSecurityRoles().getUserGroupName()));
+    }
+
+    /**
+     * Get a value suitable for {@link Experimenter#setConfig(List)} corresponding to the given light administrator privileges.
+     * @param privileges the privileges that a light administrator should have, never {@code null}
+     * @return the corresponding user configuration for that light administrator, never {@code null}
+     * @throws ApiUsageException if unknown privileges are named
+     */
+    private List<NamedValue> getRestrictedSystemUserConfig(Collection<AdminPrivilege> privileges) {
+        assertKnownPrivileges(privileges);
+        final List<NamedValue> userConfig = new ArrayList<>();
+        for (final AdminPrivilege privilege : LightAdminPrivileges.getAllPrivileges()) {
+            if (!privileges.contains(privilege)) {
+                userConfig.add(new NamedValue(adminPrivileges.getConfigNameForPrivilege(privilege), Boolean.toString(false)));
+            }
+        }
+        return userConfig;
+    }
+
+    @Override
+    @RolesAllowed("system")
+    @Transactional(readOnly = false)
+    public long createRestrictedSystemUser(Experimenter newSystemUser, List<AdminPrivilege> privileges) {
+        newSystemUser.setConfig(getRestrictedSystemUserConfig(privileges));
+        return createSystemUser(newSystemUser);
+    }
+
+    @Override
+    @RolesAllowed("system")
+    @Transactional(readOnly = false)
+    public long createRestrictedSystemUserWithPassword(Experimenter newSystemUser, List<AdminPrivilege> privileges,
+            String password) {
+        newSystemUser.setConfig(getRestrictedSystemUserConfig(privileges));
+        return createSystemUserWithPassword(newSystemUser, password);
+    }
+
     @RolesAllowed("user")
     @Transactional(readOnly = false)
     public long createExperimenter(final Experimenter experimenter,
             ExperimenterGroup defaultGroup, ExperimenterGroup... otherGroups) {
 
         adminOrPiOfNonUserGroups(defaultGroup, otherGroups);
-        
+
         long uid = roleProvider.createExperimenter(experimenter, defaultGroup, otherGroups);
         // If this method passes, then the Experimenter is valid.
         changeUserPassword(experimenter.getOmeName(), " ");
+
+        assertNoPrivilegeElevation(new Experimenter(uid, false), Collections.<AdminPrivilege>emptySet());
+
         getBeanHelper().getLogger().info(
                 "Created user with blank password: "
                 + experimenter.getOmeName());
@@ -662,6 +715,9 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
                         defaultGroup, otherGroups);
         // If this method passes, then the Experimenter is valid.
         changeUserPassword(experimenter.getOmeName(), password);
+
+        assertNoPrivilegeElevation(new Experimenter(uid, false), Collections.<AdminPrivilege>emptySet());
+
         getBeanHelper().getLogger().info(
                 "Created user with password: " + experimenter.getOmeName());
         return uid;
@@ -670,6 +726,10 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
     @RolesAllowed("system")
     @Transactional(readOnly = false)
     public long createGroup(ExperimenterGroup group) {
+        if (!getCurrentAdminPrivilegesForSession().contains(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_MODIFY_GROUP))) {
+            throwNonAdminOrPi();
+        }
+
         long gid = roleProvider.createGroup(group);
         getBeanHelper().getLogger().info("Created group: " + group.getName());
         return gid;
@@ -689,8 +749,12 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
             assertManaged(group);
         }
 
-        adminOrPiOfGroups(null, groups);
+        final Set<AdminPrivilege> targetUserPrivilegesBefore = ImmutableSet.copyOf(getAdminPrivileges(user));
+
+        adminOrPiOfGroups(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_MODIFY_GROUP_MEMBERSHIP), groups);
         roleProvider.addGroups(user, groups);
+
+        assertNoPrivilegeElevation(user, targetUserPrivilegesBefore);
 
         getBeanHelper().getLogger().info(
                 String.format("Added user %s to groups %s", userProxy(
@@ -707,7 +771,7 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
             return;
         }
 
-        adminOrPiOfGroups(null, groups);
+        adminOrPiOfGroups(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_MODIFY_GROUP_MEMBERSHIP), groups);
 
         final Roles roles = getSecurityRoles();
         final boolean removeSystemOrUser =
@@ -761,8 +825,9 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
         }
 
         EventContext ec = getSecuritySystem().getEventContext();
-        if (!ec.isCurrentUserAdmin()
-                && !ec.getCurrentUserId().equals(user.getId())) {
+        if (!(isAdmin() && getCurrentAdminPrivilegesForSession().contains(
+                adminPrivileges.getPrivilege(AdminPrivilege.VALUE_MODIFY_USER)) ||
+                ec.getCurrentUserId().equals(user.getId()))) {
             throw new SecurityViolation("User " + user.getId()
                     + " can only set own default group.");
         }
@@ -782,21 +847,21 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
     @RolesAllowed("user")
     @Transactional(readOnly = false)
     public void setGroupOwner(final ExperimenterGroup group, final Experimenter owner) {
-        adminOrPiOfGroup(group);
+        adminOrPiOfGroups(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_MODIFY_GROUP_MEMBERSHIP), group);
         toggleGroupOwner(group, owner, Boolean.TRUE);
     }
 
     @RolesAllowed("user")
     @Transactional(readOnly = false)
     public void unsetGroupOwner(final ExperimenterGroup group, final Experimenter owner) {
-        adminOrPiOfGroup(group);
+        adminOrPiOfGroups(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_MODIFY_GROUP_MEMBERSHIP), group);
         toggleGroupOwner(group, owner, Boolean.FALSE);
     }
     
     @RolesAllowed("user")
     @Transactional(readOnly = false)
     public void addGroupOwners(final ExperimenterGroup group, final Experimenter... owner) {
-        adminOrPiOfGroup(group);
+        adminOrPiOfGroups(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_MODIFY_GROUP_MEMBERSHIP), group);
         for (Experimenter o : owner) {
             toggleGroupOwner(group, o, Boolean.TRUE);
         }
@@ -805,7 +870,7 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
     @RolesAllowed("user")
     @Transactional(readOnly = false)
     public void removeGroupOwners(final ExperimenterGroup group, final Experimenter... owner) {
-        adminOrPiOfGroup(group);
+        adminOrPiOfGroups(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_MODIFY_GROUP_MEMBERSHIP), group);
         for (Experimenter o : owner) {
             toggleGroupOwner(group, o, Boolean.FALSE);
         }
@@ -905,7 +970,7 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
     @Transactional(readOnly = false)
     public void deleteGroup(ExperimenterGroup group) {
 
-        adminOrPiOfGroup(group);
+        adminOrPiOfGroups(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_MODIFY_GROUP), group);
 
         final ExperimenterGroup g = groupProxy(group.getId());
 
@@ -1007,9 +1072,9 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
      *
      * @see IAdmin#changePermissions(IObject, Permissions)
      * @see <a
-     *      href="http://trac.openmicroscopy.org.uk/ome/ticket/293">ticket:293</a>
+     *      href="https://trac.openmicroscopy.org/ome/ticket/293">ticket:293</a>
      * @see <a
-     *      href="http://trac.openmicroscopy.org.uk/ome/ticket/1434">ticket:1434</a>
+     *      href="https://trac.openmicroscopy.org/ome/ticket/1434">ticket:1434</a>
      */
     @RolesAllowed("user")
     @Transactional(readOnly = false)
@@ -1028,6 +1093,7 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
     @Transactional(readOnly = false)
     public void moveToCommonSpace(IObject... iObjects) {
         // ticket:1794
+        final AdminPrivilege modifyGroup = adminPrivileges.getPrivilege(AdminPrivilege.VALUE_MODIFY_GROUP);
         for (IObject object : iObjects) {
             if (object != null) {
                 Long id = object.getId();
@@ -1035,7 +1101,7 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
                 IObject o = iQuery.get(c, id);
                 ExperimenterGroup g = o.getDetails().getGroup();
                 if (!g.getId().equals(getSecurityRoles().getUserGroupId())) {
-                    adminOrPiOfGroup(g);
+                    adminOrPiOfGroups(modifyGroup, g);
                     internalMoveToCommonSpace(o);
                 }
             }
@@ -1111,6 +1177,14 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
                     throw new AuthenticationException(
                             "User is authenticated by LDAP server you cannot reset this password.");
                 } else {
+                    final long systemGroupId = getSecurityRoles().getSystemGroupId();
+                    for (final ExperimenterGroup group : e.linkedExperimenterGroupList()) {
+                        if (group.getId() == systemGroupId) {
+                            throw new ApiUsageException(
+                                    "Cannot reset password of administrators. Have another administrator set the new password.");
+                        }
+                    }
+
                     String passwd = passwordUtil.generateRandomPasswd();
                     sendEmail(e, passwd);
                     // changeUserPassword checks adminOrPiOfUser
@@ -1121,7 +1195,7 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
         });
     }
 
-    private boolean sendEmail(Experimenter e, String newPassword) {
+    private void sendEmail(Experimenter e, String newPassword) {
         // Create a thread safe "copy" of the template message and customize it
         SimpleMailMessage msg = new SimpleMailMessage(this.templateMessage);
         msg.setSubject("OMERO - Reset password");
@@ -1131,6 +1205,7 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
                 + newPassword);
         try {
             this.mailSender.send(msg);
+            getBeanHelper().getLogger().info("sent new password for {} to {}", e.getOmeName(), e.getEmail());
         } catch (Exception ex) {
             throw new RuntimeException(
                     "Exception: "
@@ -1142,7 +1217,6 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
                             + ". Please turn on the debug "
                             + "mode in omero.properties by the: omero.mail.debug=true");
         }
-        return true;
     }
     
     // ~ Password access
@@ -1175,7 +1249,14 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
     @RolesAllowed({"user", "HasPassword"})
     @Transactional(readOnly = false)
     public void changeUserPassword(final String user, final String newPassword) {
-        adminOrPiOfUser(userProxy(user));
+        final Experimenter targetUser = userProxy(user);
+        adminOrPiOfUser(targetUser);
+        final Set<AdminPrivilege> myPrivileges = getCurrentAdminPrivilegesForSession();
+        for (final AdminPrivilege targetPrivilege : getAdminPrivileges(targetUser)) {
+            if (!myPrivileges.contains(targetPrivilege)) {
+                throw new SecurityViolation("Cannot change the password of a more privileged user.");
+            }
+        }
         _changePassword(user, newPassword);
     }
 
@@ -1202,6 +1283,98 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
         } else {
             return result.booleanValue();
         }
+    }
+
+    // ~ Light administrator privileges
+    // =========================================================================
+
+    @Override
+    @RolesAllowed("user")
+    public List<Experimenter> getAdminsWithPrivileges(List<AdminPrivilege> privileges) {
+        assertKnownPrivileges(privileges);
+        final List<Experimenter> admins = new ArrayList<Experimenter>();
+        final long systemGroupId = getSecurityRoles().getSystemGroupId();
+        final Iterator<GroupExperimenterMap> memberships = getGroup(systemGroupId).iterateGroupExperimenterMap();
+        while (memberships.hasNext()) {
+            boolean hasPrivileges = true;
+            final Experimenter admin = userProxy(memberships.next().getChild().getId());
+            final List<AdminPrivilege> privilegesOfAdmin = getAdminPrivileges(admin);
+            for (final AdminPrivilege privilege : privileges) {
+                if (!privilegesOfAdmin.contains(privilege)) {
+                    hasPrivileges = false;
+                    break;
+                }
+            }
+            if (hasPrivileges) {
+                admins.add(admin);
+            }
+        }
+        return admins;
+    }
+
+    @Override
+    @RolesAllowed("user")
+    public List<AdminPrivilege> getCurrentAdminPrivileges() {
+        return new ArrayList<>(getCurrentAdminPrivilegesForSession());
+    }
+
+    @Override
+    @RolesAllowed("user")
+    public List<AdminPrivilege> getAdminPrivileges(Experimenter user) {
+        if (!getMemberOfGroupIds(user).contains(getSecurityRoles().getSystemGroupId())) {
+            return Collections.emptyList();
+        }
+        final List<NamedValue> userConfig = userProxy(user.getId()).getConfig();
+        final List<AdminPrivilege> privileges = new ArrayList<AdminPrivilege>(LightAdminPrivileges.getAllPrivileges());
+        if (CollectionUtils.isNotEmpty(userConfig)) {
+            for (final NamedValue configProperty : userConfig) {
+                if (!Boolean.parseBoolean(configProperty.getValue())) {
+                    privileges.remove(adminPrivileges.getPrivilegeForConfigName(configProperty.getName()));
+                }
+            }
+        }
+        return privileges;
+    }
+
+    @Override
+    @RolesAllowed("system")
+    @Transactional(readOnly = false)
+    public void setAdminPrivileges(Experimenter user, List<AdminPrivilege> privileges) {
+        assertKnownPrivileges(privileges);
+        final Set<AdminPrivilege> targetUserPrivilegesBefore = ImmutableSet.copyOf(getAdminPrivileges(user));
+
+        final Set<AdminPrivilege> privilegesToRemove = new HashSet<AdminPrivilege>(LightAdminPrivileges.getAllPrivileges());
+        privilegesToRemove.removeAll(privileges);
+
+        if (user.getId() == getSecurityRoles().getRootId() && !privilegesToRemove.isEmpty()) {
+            throw new ApiUsageException("cannot remove light administrator privileges from the root user");
+        }
+
+        user = userProxy(user.getId());
+        final List<NamedValue> userConfig;
+        if (user.getConfig() == null) {
+            userConfig = new ArrayList<NamedValue>();
+            user.setConfig(userConfig);
+        } else {
+            userConfig = user.getConfig();
+            for (final NamedValue configProperty : userConfig) {
+                final AdminPrivilege currentPrivilege = adminPrivileges.getPrivilegeForConfigName(configProperty.getName());
+                if (currentPrivilege != null) {
+                    final boolean hasPrivilege = privileges.contains(currentPrivilege);
+                    if (hasPrivilege != Boolean.parseBoolean(configProperty.getValue())) {
+                        configProperty.setValue(Boolean.toString(hasPrivilege));
+                    }
+                    privilegesToRemove.remove(currentPrivilege);
+                }
+            }
+        }
+        for (final AdminPrivilege privilege : privilegesToRemove) {
+            userConfig.add(new NamedValue(adminPrivileges.getConfigNameForPrivilege(privilege), Boolean.toString(false)));
+        }
+        iUpdate.saveObject(user);
+
+        assertNoPrivilegeElevation(user, targetUserPrivilegesBefore);
+
     }
 
     // ~ Security context
@@ -1397,29 +1570,19 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
     }
 
     private void adminOrPiOfUser(Experimenter user) {
-        if (!isAdmin() && ! isPiOf(user)) {
+        if (!(isAdmin() && getCurrentAdminPrivilegesForSession().contains(
+                adminPrivileges.getPrivilege(AdminPrivilege.VALUE_MODIFY_USER)) || isPiOf(user))) {
             throwNonAdminOrPi();
         }
     }
 
-    private void adminOrPiOfGroup(ExperimenterGroup group) {
-        if (!isAdmin() && ! isPiOf(group)) {
-            throwNonAdminOrPi();
-        }
-    }
-
-    private void adminOrPiOfGroups(ExperimenterGroup group, ExperimenterGroup ... groups) {
-        if (!isAdmin()) {
-            if (!isPiOf(group)) {
-                throwNonAdminOrPi();
-            } else {
-                for (ExperimenterGroup g : groups) {
-                    if (!isPiOf(g)) {
-                        throwNonAdminOrPi();
-                    }
+    private void adminOrPiOfGroups(AdminPrivilege overridingPrivilege, ExperimenterGroup... groups) {
+        if (!(isAdmin() && getCurrentAdminPrivilegesForSession().contains(overridingPrivilege))) {
+            for (final ExperimenterGroup group : groups) {
+                if (!isPiOf(group)) {
+                    throwNonAdminOrPi();
                 }
             }
-
         }
     }
 
@@ -1438,8 +1601,40 @@ public class AdminImpl extends AbstractLevel2Service implements LocalAdmin,
                 nonUserGroupGroups.add(eg);
             }
         }
-        adminOrPiOfGroups(defaultGroup,
-                nonUserGroupGroups.toArray(new ExperimenterGroup[0]));
+        final AdminPrivilege modifyUser = adminPrivileges.getPrivilege(AdminPrivilege.VALUE_MODIFY_USER);
+        adminOrPiOfGroups(modifyUser, defaultGroup);
+        adminOrPiOfGroups(modifyUser, nonUserGroupGroups.toArray(new ExperimenterGroup[0]));
     }
 
+    /**
+     * @param privileges the privileges that are expected to be among those of the {@link AdminPrivilege} enumeration values
+     * @throws ApiUsageException if passed an unknown privilege
+     */
+    private void assertKnownPrivileges(Iterable<AdminPrivilege> privileges) {
+        for (final AdminPrivilege privilege : privileges) {
+            if (adminPrivileges.getPrivilege(privilege.getValue()) == null) {
+                throw new ApiUsageException("unknown light administrator privilege: " + privilege.getValue());
+            }
+        }
+    }
+
+    /**
+     * Assert that a user's current light administrator privileges are not now elevated beyond those of the present user.
+     * @param user an experimenter
+     * @param privilegesInitial the experimenter's previous privileges
+     */
+    private void assertNoPrivilegeElevation(Experimenter user, Set<AdminPrivilege> privilegesInitial) {
+        final Set<AdminPrivilege> privilegesNow = ImmutableSet.copyOf(getAdminPrivileges(user));
+        final Set<AdminPrivilege> privilegesGained = Sets.difference(privilegesNow, privilegesInitial);
+        if (!Sets.difference(privilegesGained, getCurrentAdminPrivilegesForSession()).isEmpty()) {
+            throw new SecurityViolation("cannot give administrator privileges that current user does not have");
+        }
+    }
+
+    /**
+     * @return the light administrator privileges that apply to the current session
+     */
+    private Set<AdminPrivilege> getCurrentAdminPrivilegesForSession() {
+        return isAdmin() ? getEventContextQuiet().getCurrentAdminPrivileges() : Collections.<AdminPrivilege>emptySet();
+    }
 }

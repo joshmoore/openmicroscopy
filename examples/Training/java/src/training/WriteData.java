@@ -1,6 +1,6 @@
 /*
  *------------------------------------------------------------------------------
- *  Copyright (C) 2006-2016 University of Dundee & Open Microscopy Environment.
+ *  Copyright (C) 2006-2017 University of Dundee & Open Microscopy Environment.
  *  All rights reserved.
  *
  *
@@ -26,6 +26,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 
@@ -48,6 +49,7 @@ import omero.model.FileAnnotationI;
 import omero.model.IObject;
 import omero.model.ImageAnnotationLink;
 import omero.model.ImageAnnotationLinkI;
+import omero.model.NamedValue;
 import omero.model.OriginalFile;
 import omero.model.OriginalFileI;
 import omero.model.ProjectAnnotationLink;
@@ -59,10 +61,13 @@ import omero.model.TagAnnotation;
 import omero.model.TagAnnotationI;
 import omero.model.enums.ChecksumAlgorithmSHA1160;
 import omero.sys.ParametersI;
+import omero.gateway.model.DataObject;
 import omero.gateway.model.DatasetData;
 import omero.gateway.model.ExperimenterData;
 import omero.gateway.model.FileAnnotationData;
 import omero.gateway.model.ImageData;
+import omero.gateway.model.MapAnnotationData;
+import omero.gateway.model.ProjectData;
 import omero.gateway.model.TagAnnotationData;
 
 /** 
@@ -134,23 +139,24 @@ public class WriteData
             throws Exception
     {
         DataManagerFacility dm = gateway.getFacility(DataManagerFacility.class);
+        
         //Using IObject directly
         Dataset dataset = new DatasetI();
         dataset.setName(omero.rtypes.rstring("new Name 1"));
         dataset.setDescription(omero.rtypes.rstring("new description 1"));
-        //Using the pojo
-        DatasetData datasetData = new DatasetData();
-        datasetData.setName("new Name 2");
-        datasetData.setDescription("new description 2");
         ProjectDatasetLink link = new ProjectDatasetLinkI();
         link.setChild(dataset);
         link.setParent(new ProjectI(projectId, false));
         IObject r = dm.saveAndReturnObject(ctx, link);
-        //With pojo
-        link = new ProjectDatasetLinkI();
-        link.setChild(datasetData.asDataset());
-        link.setParent(new ProjectI(projectId, false));
-        r = dm.saveAndReturnObject(ctx, link);
+        
+        //Using the pojo
+        DatasetData datasetData = new DatasetData();
+        datasetData.setName("new Name 2");
+        datasetData.setDescription("new description 2");
+        BrowseFacility b = gateway.getFacility(BrowseFacility.class);
+        ProjectData projectData = b.getProjects(ctx, Collections.singleton(projectId)).iterator().next();
+        datasetData.setProjects(Collections.singleton(projectData));
+        DataObject r2 = dm.saveAndReturnObject(ctx, datasetData);
     }
 
 // Create tag
@@ -179,6 +185,33 @@ public class WriteData
         link.setChild(tagData.asAnnotation());
         link.setParent(new ProjectI(projectId, false));
         r = dm.saveAndReturnObject(ctx, link);
+    }
+
+// Create Map annotation
+// =====================
+
+    /** 
+     * Creates a map annotation and links to the specified project.
+     * @param projectId The omero project identifier
+     * @throws Exception
+     */
+    private void createMapAnnotationandLinkToProject(long projectId)
+            throws Exception
+    {
+        List<NamedValue> result = new ArrayList<NamedValue>();
+        result.add(new NamedValue("mitomycin-A", "20mM"));
+        result.add(new NamedValue("PBS", "10mM"));
+        result.add(new NamedValue("incubation", "5min"));
+        result.add(new NamedValue("temperature", "37"));
+        result.add(new NamedValue("Organism", "Homo sapiens"));
+        MapAnnotationData data = new MapAnnotationData();
+        data.setContent(result);
+        data.setDescription("Training Example");
+        //Use the following namespace if you want the annotation to be editable
+        //in the webclient and insight
+        data.setNameSpace(MapAnnotationData.NS_CLIENT_CREATED);
+        DataManagerFacility fac = gateway.getFacility(DataManagerFacility.class);
+        fac.attachAnnotation(ctx, data, new ProjectData(new ProjectI(projectId, false)));
     }
 
 // Create file annotation
@@ -214,12 +247,9 @@ public class WriteData
         originalFile = (OriginalFile) dm.saveAndReturnObject(ctx, originalFile);
         // Initialize the service to load the raw data
         RawFileStorePrx rawFileStore = null;
-        FileInputStream stream = null;
-        try {
+        try (FileInputStream stream = new FileInputStream(file)) {
             rawFileStore = gateway.getRawFileService(ctx);
             rawFileStore.setFileId(originalFile.getId().getValue());
-            // open file and read stream.
-            stream = new FileInputStream(file);
             long pos = 0;
             int rlen;
             byte[] buf = new byte[INC];
@@ -235,9 +265,8 @@ public class WriteData
             throw new Exception("Cannot read data", e);
         } finally {
             if (rawFileStore != null) rawFileStore.close();
-            if (stream != null) stream.close();
-            if (file != null) file.delete();
         }
+        file.delete();
         //now we have an original File in DB and raw data uploaded.
         // We now need to link the Original file to the image using 
         // the File annotation object. That's the way to do it.
@@ -359,6 +388,7 @@ public class WriteData
             loadAnnotationsLinkedToImage();
             createNewDataset(projectId);
             createNewTag(projectId);
+            createMapAnnotationandLinkToProject(projectId);
         } catch (Exception e) {
             e.printStackTrace();
         } finally {

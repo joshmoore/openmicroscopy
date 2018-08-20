@@ -113,6 +113,7 @@ module omero {
              **/
             omero::api::RawFileStore* file(string path, string mode) throws ServerError;
 
+            ["deprecate:may be wholly removed in next major version"]
             omero::api::RawPixelsStore*  pixels(string path) throws ServerError;
 
             omero::api::RawFileStore* fileById(long id) throws ServerError;
@@ -540,6 +541,7 @@ module omero {
          * testing and diagnosis rather than actual client
          * functionality.
          **/
+        ["deprecate:Not intended for use by production clients. Functionality to be moved from Ice to microservices."]
         class RawAccessRequest extends omero::cmd::Request {
             string repoUuid;
             string command;

@@ -9,7 +9,6 @@ Resource            ../../resources/web/webadmin.txt
 Resource            ../../resources/config.txt
 
 Suite Setup         Open Browser To Login Page      ${WEBADMIN WELCOME URL}     ${WEBADMIN LOGIN URL}
-Suite Teardown      Close all browsers
 
 *** Test Cases ***
 
@@ -18,7 +17,6 @@ Login Page
     
     Page Should Contain Image       xpath=//div[contains(@class, 'login-logos')]/img
     Page Should Contain Element     id_server
-    Page Should Contain Checkbox    id_ssl
     Page Should Contain Element     id_username
     Page Should Contain Element     id_password
     Page Should Contain Button      xpath=//input[@value='Login']
@@ -32,7 +30,7 @@ Valid Login
     
     Go To                   ${WEBADMIN WELCOME URL}
     Location Should Be      ${WEBADMIN LOGIN URL}           # redirect confirms logout
-    Log In As               ${ROOT USERNAME}                ${ROOT PASSWORD}    ${SERVER_ID}    ${True}
+    Log In As               ${ROOT USERNAME}                ${ROOT PASSWORD}    ${SERVER_ID}
     Page Should Be Open     ${USERS URL}                    OMERO Users
     Log Out
 
@@ -54,3 +52,16 @@ Invalid Login
     Page Should Be Open     ${WEBADMIN LOGIN URL}           OMERO.web - Login
     Page Should Contain     This field is required.
 
+Guest Login
+
+    Go To                   ${LOGIN URL}
+    # Check that 'g' is not mistaken for 'guest' https://github.com/openmicroscopy/openmicroscopy/pull/4686
+    Log In As               g                               secret                  ${SERVER_ID}
+    Page Should Be Open     ${LOGIN URL}                    OMERO.web - Login
+    Page Should Contain     Error: Connection not available, please check your user name and password.
+    Go To                   ${LOGIN URL}
+    Log In As               guest                           secret                  ${SERVER_ID}
+    Page Should Be Open     ${LOGIN URL}                    OMERO.web - Login
+    Page Should Contain     Guest account is not supported.
+
+[Teardown]    Close Browser

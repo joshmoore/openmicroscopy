@@ -1,8 +1,7 @@
 /*
- *   Copyright 2006 University of Dundee. All rights reserved.
+ *   Copyright 2006-2017 University of Dundee. All rights reserved.
  *   Use is subject to license terms supplied in LICENSE.txt
  */
-
 package ome.services;
 
 import java.awt.Dimension;
@@ -11,6 +10,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,6 +36,7 @@ import ome.model.core.Pixels;
 import ome.model.display.ChannelBinding;
 import ome.model.display.QuantumDef;
 import ome.model.display.RenderingDef;
+//import ome.model.display.ReverseIntensityContext;
 import ome.model.enums.Family;
 import ome.model.enums.RenderingModel;
 import ome.model.roi.Mask;
@@ -50,15 +51,20 @@ import ome.util.ShallowCopy;
 import omeis.providers.re.RGBBuffer;
 import omeis.providers.re.Renderer;
 import omeis.providers.re.RenderingEngine;
+import omeis.providers.re.codomain.CodomainChain;
 import omeis.providers.re.codomain.CodomainMapContext;
+import omeis.providers.re.codomain.ReverseIntensityContext;
 import omeis.providers.re.data.PlaneDef;
 import omeis.providers.re.data.RegionDef;
+import omeis.providers.re.lut.LutProvider;
 import omeis.providers.re.quantum.QuantizationException;
 import omeis.providers.re.quantum.QuantumFactory;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.hibernate.Session;
+import org.perf4j.StopWatch;
+import org.perf4j.slf4j.Slf4JStopWatch;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -146,6 +152,9 @@ public class RenderingBean implements RenderingEngine, Serializable {
     /** Reference to the compression service. */
     private final LocalCompress compressionSrv;
 
+    /** Reference to the helper used to retrieve luts.*/
+    private final LutProvider lutProvider;
+
     /** Notification that the bean has just returned from passivation. */
     private transient boolean wasPassivated = false;
 
@@ -171,13 +180,16 @@ public class RenderingBean implements RenderingEngine, Serializable {
      *          Reference to the executor.
      * @param secSys
      *          Reference to the security system.
+     * @param lutProvider
+     *          Reference to the lookup table provider.
      */
     public RenderingBean(PixelsService dataService, LocalCompress compress,
-            Executor ex, SecuritySystem secSys) {
+            Executor ex, SecuritySystem secSys, LutProvider lutProvider) {
         this.ex = ex;
         this.secSys = secSys;
         this.pixDataSrv = dataService;
         this.compressionSrv = compress;
+        this.lutProvider = lutProvider;
     }
 
     @RolesAllowed("user")
@@ -404,7 +416,7 @@ public class RenderingBean implements RenderingEngine, Serializable {
             // Loading last to try to ensure that the buffer will get closed.
             PixelBuffer buffer = getPixelBuffer();
             renderer = new Renderer(quantumFactory, renderingModels, pixelsObj,
-                    rendDefObj, buffer);
+                    rendDefObj, buffer, lutProvider);
         } finally {
             rwl.writeLock().unlock();
         }
@@ -585,6 +597,9 @@ public class RenderingBean implements RenderingEngine, Serializable {
                     projectedSizeC += 1;
                 }
             }
+            if (projectedSizeC == 0) {
+                projectedSizeC = 1;
+            }
             Pixels projectedPixels = new Pixels();
             projectedPixels.setSizeX(pixelsObj.getSizeX());
             projectedPixels.setSizeY(pixelsObj.getSizeY());
@@ -752,6 +767,99 @@ public class RenderingBean implements RenderingEngine, Serializable {
 
     /**
      * Implemented as specified by the {@link RenderingEngine} interface.
+     *
+     * @see RenderingEngine#updateSettings(RenderingDef)
+     */
+    @RolesAllowed("user")
+    public void updateSettings(RenderingDef settings) {
+        if (settings == null) {
+            return;
+        }
+
+        // Emulate setModel(RenderingModel)
+        RenderingModel model = settings.getModel();
+        if (model != null) {
+            setModel(model);
+        }
+        // Emulate setDefaultZ(int)
+        Integer defaultZ = settings.getDefaultZ();
+        if (defaultZ != null) {
+            setDefaultZ(settings.getDefaultZ());
+        }
+        // Emulate setDefaultT(int)
+        Integer defaultT = settings.getDefaultT();
+        if (defaultT != null) {
+            setDefaultT(settings.getDefaultT());
+        }
+        QuantumDef quantumDef = settings.getQuantization();
+        if (quantumDef != null) {
+            // Emulate setQuantumStrategy(int)
+            Integer bitResolution = quantumDef.getBitResolution();
+            if (bitResolution != null) {
+                setQuantumStrategy(bitResolution);
+            }
+            // Emulate setCodmainInterval(int, int)
+            Integer start = quantumDef.getCdStart();
+            Integer end = quantumDef.getCdEnd();
+            if (start != null && end != null) {
+                setCodomainInterval(start, end);
+            }
+        }
+        for (int w = 0; w < settings.sizeOfWaveRendering(); w++) {
+            if (w >= this.pixelsObj.getSizeC()) {
+                // Skip application of settings for channels which are beyond
+                // the currently looked up Image's number of channels.
+                break;
+            }
+
+            ChannelBinding cb = settings.getChannelBinding(w);
+            if (cb == null) {
+                continue;
+            }
+            // Emulate setActive(boolean)
+            Boolean active = cb.getActive();
+            if (active != null) {
+                setActive(w, active);
+            }
+            // Emulate setChannelWindow(int, double, double)
+            Double start = cb.getInputStart();
+            Double end = cb.getInputEnd();
+            if (start != null && end != null) {
+                setChannelWindow(w, start, end);
+            }
+            // Emulate setQuantizationMap(int, Family, double, boolean)
+            Family family = cb.getFamily();
+            Double coefficient = cb.getCoefficient();
+            Boolean noiseReduction = cb.getNoiseReduction();
+            if (family != null && coefficient != null
+                    && noiseReduction != null) {
+                setQuantizationMap(w, family, coefficient, noiseReduction);
+            }
+            // Emulate setRGBA(int, int, int, int, int)
+            Integer red = cb.getRed();
+            Integer green = cb.getGreen();
+            Integer blue = cb.getBlue();
+            Integer alpha = cb.getAlpha();
+            if (red != null && green != null && blue != null && alpha != null) {
+                setRGBA(w, red, green, blue, alpha);
+            }
+            // Emulate setChannelLookupTable(int, String)
+            String lookupTable = cb.getLookupTable();
+            if (lookupTable != null) {
+                setChannelLookupTable(w, lookupTable);
+            }
+            // Emulate addCodomainMapToChannel(CodomainMapContext, int)
+            for (int i = 0; i < cb.sizeOfSpatialDomainEnhancement(); i++) {
+                ome.model.display.CodomainMapContext ctx = cb.getCodomainMapContext(i);
+                if (ctx != null) {
+                    addCodomainMapToChannel(reverse(ctx), w);
+                }
+            }
+        }
+    }
+
+    /**
+     * Implemented as specified by the {@link RenderingEngine} interface.
      * 
      * @see RenderingEngine#saveCurrentSettings()
      */
@@ -759,6 +867,39 @@ public class RenderingBean implements RenderingEngine, Serializable {
     @Transactional(readOnly = false)
     public void saveCurrentSettings() {
         internalSave(!requestedRenderingDef && !settingsBelongToCurrentUser());
+    }
+
+    /**
+     * Copies the context.
+     *
+     * @param ctx The context to copy.
+     * @return See above.
+     */
+    private ome.model.display.CodomainMapContext copyContext(ome.model.display.CodomainMapContext ctx,
+            Collection<ome.model.display.CodomainMapContext> saved, boolean saveAs)
+    {
+        if (ctx == null) {
+            return null;
+        }
+        if (!saveAs && ctx.getId() != null && ctx.getId().longValue() >= 0) {
+            return ctx;
+        }
+        if (saved != null) {
+            Iterator<ome.model.display.CodomainMapContext> j = saved.iterator();
+            ome.model.display.CodomainMapContext cmc;
+            while (j.hasNext()) {
+                cmc = j.next();
+                if (cmc.getClass().equals(ctx.getClass())) {
+                    return cmc;
+                }
+            }
+        }
+        if (ctx instanceof ome.model.display.ReverseIntensityContext) {
+            ome.model.display.ReverseIntensityContext nc =  new ome.model.display.ReverseIntensityContext();
+            nc.setReverse(((ome.model.display.ReverseIntensityContext) ctx).getReverse());
+            return nc;
+        }
+        return null;
     }
 
     private long internalSave(boolean saveAs) {
@@ -773,6 +914,10 @@ public class RenderingBean implements RenderingEngine, Serializable {
             // itself or one of its children in the object graph has been
             // updated. FIXME: This should be implemented using IUpdate.touch()
             // or similar once that functionality exists.
+            RenderingDef saved = null;
+            if (!saveAs) {
+                saved = retrieveRndSettings(pixelsObj.getId());
+            }
             RenderingDef old = rendDefObj;
             rendDefObj = createNewRenderingDef(pixelsObj);
             if (!saveAs) {
@@ -804,8 +949,15 @@ public class RenderingBean implements RenderingEngine, Serializable {
             // headaches.
             Family family;
             int index = 0;
-            ChannelBinding cb;
-            for (ChannelBinding binding : old.unmodifiableWaveRendering()) {
+            ChannelBinding cb, scb;
+            Collection<ChannelBinding> bindings = old.unmodifiableWaveRendering();
+            ChannelBinding[] savedBindings = new ChannelBinding[bindings.size()];
+            if (saved != null) {
+                savedBindings = (ChannelBinding[]) saved.unmodifiableWaveRendering().toArray(
+                        new ChannelBinding[bindings.size()]);
+            }
+            for (ChannelBinding binding : bindings) {
+                scb = savedBindings[index];
                 family = new Family(binding.getFamily().getId(), false);
                 cb = rendDefObj.getChannelBinding(index);
                 cb.setFamily(family);
@@ -821,7 +973,27 @@ public class RenderingBean implements RenderingEngine, Serializable {
                 cb.setInputEnd(binding.getInputEnd());
                 cb.setCoefficient(binding.getCoefficient());
                 cb.setNoiseReduction(binding.getNoiseReduction());
+                cb.setLookupTable(binding.getLookupTable());
                 //binding.setFamily(unloadedFamily);
+                //Codomain save
+                cb.clearSpatialDomainEnhancement();
+                Collection<ome.model.display.CodomainMapContext> ctx =
+                        binding.unmodifiableSpatialDomainEnhancement();
+                Collection<ome.model.display.CodomainMapContext> octx = null;
+                if (!saveAs) {
+                    octx = scb.unmodifiableSpatialDomainEnhancement();
+                }
+                Iterator<ome.model.display.CodomainMapContext> i = ctx.iterator();
+                ome.model.display.CodomainMapContext nc;
+                cb.clearSpatialDomainEnhancement();
+                List<Class<?>> types = new ArrayList<Class<?>>();
+                while (i.hasNext()) {
+                    nc = copyContext(i.next(), octx, saveAs);
+                    if (nc != null && !types.contains(nc.getClass())) {
+                        types.add(nc.getClass());
+                        cb.addCodomainMapContext(nc);
+                    }
+                }
                 index++;
             }
             
@@ -1034,14 +1206,16 @@ public class RenderingBean implements RenderingEngine, Serializable {
 
     @RolesAllowed("user")
     public void setChannelLookupTable(int w, String lookup) {
+        StopWatch t0 = new Slf4JStopWatch(
+                "omero.rendering_bean.setChannelLookupTable");
         rwl.readLock().lock();
 
         try {
             errorIfNullRenderingDef();
-            ChannelBinding[] cb = renderer.getChannelBindings();
-            cb[w].setLookupTable(lookup);
+            renderer.setChannelLookupTable(w, lookup);
         } finally {
             rwl.readLock().unlock();
+            t0.stop();
         }
     }
 
@@ -1183,12 +1357,19 @@ public class RenderingBean implements RenderingEngine, Serializable {
 
     /** Implemented as specified by the {@link RenderingEngine} interface. */
     @RolesAllowed("user")
+    @Deprecated
     public void addCodomainMap(CodomainMapContext mapCtx) {
         rwl.writeLock().lock();
 
         try {
             errorIfInvalidState();
-            renderer.getCodomainChain().add(mapCtx.copy());
+            ChannelBinding[] cb = renderer.getChannelBindings();
+            for (int i = 0; i < pixelsObj.getSizeC(); i++) {
+              boolean b = renderer.getCodomainChain(i).add(mapCtx);
+              if (b) {
+                  cb[i].addCodomainMapContext(convert(mapCtx));
+              }
+            }
         } finally {
             rwl.writeLock().unlock();
         }
@@ -1196,11 +1377,70 @@ public class RenderingBean implements RenderingEngine, Serializable {
 
     /** Implemented as specified by the {@link RenderingEngine} interface. */
     @RolesAllowed("user")
+    public void addCodomainMapToChannel(CodomainMapContext mapCtx, int w) {
+        rwl.writeLock().lock();
+
+        try {
+            errorIfInvalidState();
+            boolean b = renderer.getCodomainChain(w).add(mapCtx);
+            if (b) {
+                ChannelBinding[] cb = renderer.getChannelBindings();
+                cb[w].addCodomainMapContext(convert(mapCtx));
+            }
+        } finally {
+            rwl.writeLock().unlock();
+        }
+    }
+
+    /**
+     * Converts the codomain context into the corresponding ome.model object.
+     *
+     * @param mapCtx The context to convert.
+     * @return See above.
+     */
+    private ome.model.display.CodomainMapContext convert(CodomainMapContext mapCtx)
+    {
+        if (mapCtx instanceof ReverseIntensityContext) {
+            ome.model.display.ReverseIntensityContext c = new ome.model.display.ReverseIntensityContext();
+            c.setReverse(true);
+            return c;
+        }
+        return null;
+    }
+
+    /**
+     * Reverse the ome.model object into the corresponding codomain context.
+     * @param ctx The context to convert.
+     * @return See above.
+     */
+    private CodomainMapContext reverse(ome.model.display.CodomainMapContext ctx)
+    {
+        if (ctx instanceof ome.model.display.ReverseIntensityContext) {
+            return new ReverseIntensityContext();
+        }
+        return null;
+    }
+
+    /** Implemented as specified by the {@link RenderingEngine} interface. */
+    @RolesAllowed("user")
+    @Deprecated
     public void removeCodomainMap(CodomainMapContext mapCtx) {
         rwl.writeLock().lock();
         try {
             errorIfInvalidState();
-            renderer.getCodomainChain().remove(mapCtx.copy());
+            ChannelBinding[] cb = renderer.getChannelBindings();
+            for (int i = 0; i < pixelsObj.getSizeC(); i++) {
+                boolean b = renderer.getCodomainChain(i).remove(mapCtx.copy());
+                if (b) {
+                    cb[i].clearSpatialDomainEnhancement();
+                    CodomainChain chain = renderer.getCodomainChain(i);
+                    List<CodomainMapContext> l = chain.getContexts();
+                    Iterator<CodomainMapContext> j = l.iterator();
+                    while (j.hasNext()) {
+                        cb[i].addCodomainMapContext(convert(j.next()));
+                    }
+                }
+            }
         } finally {
             rwl.writeLock().unlock();
         }
@@ -1208,12 +1448,38 @@ public class RenderingBean implements RenderingEngine, Serializable {
 
     /** Implemented as specified by the {@link RenderingEngine} interface. */
     @RolesAllowed("user")
+    public void removeCodomainMapFromChannel(CodomainMapContext mapCtx, int w) {
+        rwl.writeLock().lock();
+        try {
+            errorIfInvalidState();
+            boolean b = renderer.getCodomainChain(w).remove(mapCtx.copy());
+            if (b) {
+                ChannelBinding[] cb = renderer.getChannelBindings();
+                cb[w].clearSpatialDomainEnhancement();
+
+                CodomainChain chain = renderer.getCodomainChain(w);
+                List<CodomainMapContext> l = chain.getContexts();
+                Iterator<CodomainMapContext> i = l.iterator();
+                while (i.hasNext()) {
+                    cb[w].addCodomainMapContext(convert(i.next()));
+                }
+            }
+        } finally {
+            rwl.writeLock().unlock();
+        }
+    }
+
+    /** Implemented as specified by the {@link RenderingEngine} interface. */
+    @RolesAllowed("user")
+    @Deprecated
     public void updateCodomainMap(CodomainMapContext mapCtx) {
         rwl.writeLock().lock();
 
         try {
             errorIfInvalidState();
-            renderer.getCodomainChain().update(mapCtx.copy());
+            for (int i = 0; i < pixelsObj.getSizeC(); i++) {
+                renderer.getCodomainChain(i).update(mapCtx.copy());
+            }
         } finally {
             rwl.writeLock().unlock();
         }
@@ -1226,12 +1492,14 @@ public class RenderingBean implements RenderingEngine, Serializable {
      */
     @RolesAllowed("user")
     public void setActive(int w, boolean active) {
+        StopWatch t0 = new Slf4JStopWatch("omero.rendering_bean.setActive");
         try {
             rwl.writeLock().lock();
             errorIfInvalidState();
             renderer.setActive(w, active);
         } finally {
             rwl.writeLock().unlock();
+            t0.stop();
         }
     }
 
@@ -1242,6 +1510,8 @@ public class RenderingBean implements RenderingEngine, Serializable {
      */
     @RolesAllowed("user")
     public void setChannelWindow(int w, double start, double end) {
+        StopWatch t0 = new Slf4JStopWatch(
+                "omero.rendering_bean.setChannelWindow");
         rwl.writeLock().lock();
 
         try {
@@ -1249,6 +1519,7 @@ public class RenderingBean implements RenderingEngine, Serializable {
             renderer.setChannelWindow(w, start, end);
         } finally {
             rwl.writeLock().unlock();
+            t0.stop();
         }
     }
 
@@ -1259,12 +1530,15 @@ public class RenderingBean implements RenderingEngine, Serializable {
      */
     @RolesAllowed("user")
     public void setCodomainInterval(int start, int end) {
+        StopWatch t0 = new Slf4JStopWatch(
+                "omero.rendering_bean.setCodomainInterval");
         rwl.writeLock().lock();
         try {
             errorIfInvalidState();
             renderer.setCodomainInterval(start, end);
         } finally {
             rwl.writeLock().unlock();
+            t0.stop();
         }
     }
 
@@ -1275,6 +1549,7 @@ public class RenderingBean implements RenderingEngine, Serializable {
      */
     @RolesAllowed("user")
     public void setDefaultT(int t) {
+        StopWatch t0 = new Slf4JStopWatch("omero.rendering_bean.setDefaultT");
         rwl.writeLock().lock();
 
         try {
@@ -1282,6 +1557,7 @@ public class RenderingBean implements RenderingEngine, Serializable {
             renderer.setDefaultT(t);
         } finally {
             rwl.writeLock().unlock();
+            t0.stop();
         }
     }
 
@@ -1292,6 +1568,7 @@ public class RenderingBean implements RenderingEngine, Serializable {
      */
     @RolesAllowed("user")
     public void setDefaultZ(int z) {
+        StopWatch t0 = new Slf4JStopWatch("omero.rendering_bean.setDefaultZ");
         rwl.writeLock().lock();
 
         try {
@@ -1299,6 +1576,7 @@ public class RenderingBean implements RenderingEngine, Serializable {
             renderer.setDefaultZ(z);
         } finally {
             rwl.writeLock().unlock();
+            t0.stop();
         }
     }
 
@@ -1309,6 +1587,7 @@ public class RenderingBean implements RenderingEngine, Serializable {
      */
     @RolesAllowed("user")
     public void setModel(RenderingModel model) {
+        StopWatch t0 = new Slf4JStopWatch("omero.rendering_bean.setModel");
         rwl.writeLock().lock();
 
         try {
@@ -1317,6 +1596,7 @@ public class RenderingBean implements RenderingEngine, Serializable {
             renderer.setModel(m);
         } finally {
             rwl.writeLock().unlock();
+            t0.stop();
         }
     }
 
@@ -1328,6 +1608,8 @@ public class RenderingBean implements RenderingEngine, Serializable {
     @RolesAllowed("user")
     public void setQuantizationMap(int w, Family family, double coefficient,
             boolean noiseReduction) {
+        StopWatch t0 = new Slf4JStopWatch(
+                "omero.rendering_bean.setQuantizationMap");
         rwl.writeLock().lock();
 
         try {
@@ -1336,6 +1618,7 @@ public class RenderingBean implements RenderingEngine, Serializable {
             renderer.setQuantizationMap(w, f, coefficient, noiseReduction);
         } finally {
             rwl.writeLock().unlock();
+            t0.stop();
         }
     }
 
@@ -1346,6 +1629,8 @@ public class RenderingBean implements RenderingEngine, Serializable {
      */
     @RolesAllowed("user")
     public void setQuantumStrategy(int bitResolution) {
+        StopWatch t0 = new Slf4JStopWatch(
+                "omero.rendering_bean.setQuantumStrategy");
         rwl.writeLock().lock();
 
         try {
@@ -1353,6 +1638,7 @@ public class RenderingBean implements RenderingEngine, Serializable {
             renderer.setQuantumStrategy(bitResolution);
         } finally {
             rwl.writeLock().unlock();
+            t0.stop();
         }
     }
 
@@ -1363,6 +1649,7 @@ public class RenderingBean implements RenderingEngine, Serializable {
      */
     @RolesAllowed("user")
     public void setRGBA(int w, int red, int green, int blue, int alpha) {
+        StopWatch t0 = new Slf4JStopWatch("omero.rendering_bean.setRGBA");
         rwl.writeLock().lock();
 
         try {
@@ -1370,6 +1657,7 @@ public class RenderingBean implements RenderingEngine, Serializable {
             renderer.setRGBA(w, red, green, blue, alpha);
         } finally {
             rwl.writeLock().unlock();
+            t0.stop();
         }
     }
 
@@ -1517,6 +1805,23 @@ public class RenderingBean implements RenderingEngine, Serializable {
         }
     }
 
+    /**
+     * Implemented as specified by the {@link RenderingEngine} interface.
+     * 
+     * @see RenderingEngine#getCodomainMapContext(int)
+     */
+    @RolesAllowed("user")
+    public List<CodomainMapContext> getCodomainMapContext(int w) {
+        rwl.readLock().lock();
+        try {
+            errorIfInvalidState();
+            ChannelBinding[] cb = renderer.getChannelBindings();
+            return cb[w].collectSpatialDomainEnhancement(null);
+        } finally {
+            rwl.readLock().unlock();
+        }
+    }
+    
     /**
      * Validates the plane definition.
      * @param pd Plane definition to validate.
@@ -1895,7 +2200,7 @@ public class RenderingBean implements RenderingEngine, Serializable {
 
     private PixelBuffer getPixelBuffer() {
         return (PixelBuffer) ex.execute(null, new Executor.SimpleWork(this, "getPixelBuffer") {
-            @Transactional(readOnly = false) // ticket:5232
+            @Transactional(readOnly = true) // ticket:5232
             public Object doWork(Session session, ServiceFactory sf) {
                 return pixDataSrv.getPixelBuffer(pixelsObj, false);
             }

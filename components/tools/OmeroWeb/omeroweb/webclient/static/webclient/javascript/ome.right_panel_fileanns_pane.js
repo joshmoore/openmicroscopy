@@ -123,6 +123,9 @@ var FileAnnsPane = function FileAnnsPane($element, opts) {
     };
 
     var compareParentName = function(a, b){
+        if (!a.parent.name || !b.parent.name) {
+            return 1;
+        }
         return a.parent.name.toLowerCase() > b.parent.name.toLowerCase() ? 1 : -1;
     };
 
@@ -162,7 +165,7 @@ var FileAnnsPane = function FileAnnsPane($element, opts) {
                     // AddedBy IDs for filtering
                     ann.addedBy = [ann.link.owner.id];
                     ann.description = _.escape(ann.description);
-                    ann.file.size = ann.file.size.filesizeformat();
+                    ann.file.size = ann.file.size !== null ? ann.file.size.filesizeformat() : "";
                     return ann;
                 });
                 // Don't show companion files

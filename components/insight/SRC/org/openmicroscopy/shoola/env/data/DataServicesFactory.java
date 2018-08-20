@@ -1,6 +1,6 @@
 /*
  *------------------------------------------------------------------------------
- *  Copyright (C) 2006-2015 University of Dundee. All rights reserved.
+ *  Copyright (C) 2006-2017 University of Dundee. All rights reserved.
  *
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -49,10 +49,12 @@ import org.openmicroscopy.shoola.env.data.events.ReloadRenderingEngine;
 import org.openmicroscopy.shoola.env.data.login.LoginService;
 import org.openmicroscopy.shoola.env.data.login.UserCredentials;
 
+import omero.ServerError;
 import omero.gateway.LoginCredentials;
 import omero.gateway.SecurityContext;
 import omero.gateway.exception.DSAccessException;
 import omero.gateway.exception.DSOutOfServiceException;
+import omero.gateway.facility.AdminFacility;
 
 import org.openmicroscopy.shoola.env.data.views.DataViewsFactory;
 import org.openmicroscopy.shoola.env.event.EventBus;
@@ -604,7 +606,6 @@ public class DataServicesFactory
             msg.println(entry.getKey()+": "+entry.getValue());
         }
         registry.getLogger().info(this, msg);
-
         registry.bind(LookupNames.CURRENT_USER_DETAILS, exp);
         registry.bind(LookupNames.IMAGE_QUALITY_LEVEL, 
         		determineImageQuality(uc.getSpeedLevel()));
@@ -632,10 +633,19 @@ public class DataServicesFactory
         Set<GroupData> available;
         List<ExperimenterData> exps = new ArrayList<ExperimenterData>();
         String ldap = null;
+        long gid = exp.getDefaultGroup().getId();
+        SecurityContext ctx = new SecurityContext(gid);
+        boolean canCreate = omeroGateway.canCreate(ctx);
+
+        if (!canCreate && LookupNames.MASTER_IMPORTER.equals(name)) {
+            registry.getUserNotifier().notifyError("Read-only server",
+                    "Cannot import on a read-only server!");
+            exitApplication(true, true);
+        }
+
         try {
             GroupData defaultGroup = null;
-            long gid = exp.getDefaultGroup().getId();
-        	SecurityContext ctx = new SecurityContext(gid);
+        	registry.bind(LookupNames.CAN_CREATE, canCreate);
         	groups = omeroGateway.getAvailableGroups(ctx, exp);
         	registry.bind(LookupNames.SYSTEM_ROLES,
                     omeroGateway.getSystemRoles(ctx));
@@ -682,6 +692,35 @@ public class DataServicesFactory
         	}
         	registry.bind(LookupNames.USERS_DETAILS, exps);
         	registry.bind(LookupNames.USER_ADMINISTRATOR, uc.isAdministrator());
+        	
+            try {
+                List<String> privs = omeroGateway.getGateway()
+                        .getAdminService(ctx).getEventContext().adminPrivileges;
+                registry.bind(LookupNames.PRIV_FULL, omeroGateway.getGateway()
+                        .getFacility(AdminFacility.class).isFullAdmin(ctx));
+                registry.bind(
+                        LookupNames.PRIV_EDIT_USER,
+                        privs.contains(omero.model.enums.AdminPrivilegeModifyUser.value));
+                registry.bind(
+                        LookupNames.PRIV_EDIT_GROUP,
+                        privs.contains(omero.model.enums.AdminPrivilegeModifyGroup.value));
+                registry.bind(LookupNames.PRIV_GROUP_ADD, privs
+                        .contains(omero.model.enums.AdminPrivilegeModifyGroupMembership.value));
+                registry.bind(LookupNames.PRIV_MOVE_GROUP, privs
+                        .contains(omero.model.enums.AdminPrivilegeChgrp.value));
+                registry.bind(LookupNames.PRIV_UPLOAD_SCRIPT, privs
+                        .contains(omero.model.enums.AdminPrivilegeWriteScriptRepo.value));
+                registry.bind(LookupNames.PRIV_SUDO, privs
+                        .contains(omero.model.enums.AdminPrivilegeSudo.value));
+            } catch (Exception e1) {
+                registry.bind(LookupNames.PRIV_FULL, false);
+                registry.bind(LookupNames.PRIV_EDIT_USER, false);
+                registry.bind(LookupNames.PRIV_EDIT_GROUP, false);
+                registry.bind(LookupNames.PRIV_GROUP_ADD, false);
+                registry.bind(LookupNames.PRIV_MOVE_GROUP, false);
+                registry.getLogger().warn(this, "Could not retrieve admin priviledges.");
+            }
+        	
 		} catch (DSAccessException e) {
 			throw new DSOutOfServiceException("Cannot retrieve groups", e);
 		} 
@@ -696,6 +735,7 @@ public class DataServicesFactory
 			agentInfo = (AgentInfo) kk.next();
 			if (agentInfo.isActive()) {
 				reg = agentInfo.getRegistry();
+				reg.bind(LookupNames.CAN_CREATE, canCreate);
 				reg.bind(LookupNames.CURRENT_USER_DETAILS, exp);
 				reg.bind(LookupNames.USER_GROUP_DETAILS, available);
 				reg.bind(LookupNames.USERS_DETAILS, exps);
@@ -704,6 +744,14 @@ public class DataServicesFactory
 				        determineImageQuality(uc.getSpeedLevel()));
 				reg.bind(LookupNames.BINARY_AVAILABLE, b);
 				reg.bind(LookupNames.HELP_ON_LINE_SEARCH, url);
+				
+				reg.bind(LookupNames.PRIV_FULL, registry.lookup(LookupNames.PRIV_FULL));
+				reg.bind(LookupNames.PRIV_EDIT_USER, registry.lookup(LookupNames.PRIV_EDIT_USER));
+				reg.bind(LookupNames.PRIV_EDIT_GROUP, registry.lookup(LookupNames.PRIV_EDIT_GROUP));
+				reg.bind(LookupNames.PRIV_MOVE_GROUP, registry.lookup(LookupNames.PRIV_MOVE_GROUP));
+				reg.bind(LookupNames.PRIV_GROUP_ADD, registry.lookup(LookupNames.PRIV_GROUP_ADD));
+				reg.bind(LookupNames.PRIV_SUDO, registry.lookup(LookupNames.PRIV_SUDO));
+				reg.bind(LookupNames.PRIV_UPLOAD_SCRIPT, registry.lookup(LookupNames.PRIV_UPLOAD_SCRIPT));
 			}
 		}
 	}
@@ -733,11 +781,17 @@ public class DataServicesFactory
      */
 	public void shutdown(SecurityContext ctx)
     { 
-		//Need to write the current group.
-		//if (!omeroGateway.isConnected()) return;
-		if (omeroGateway != null) omeroGateway.logout();
-		DataServicesFactory.registry.getCacheService().clearAllCaches();
-		PixelsServicesFactory.shutDownRenderingControls(container.getRegistry());
+        try {
+            if (omeroGateway != null)
+                omeroGateway.logout();
+            DataServicesFactory.registry.getCacheService().clearAllCaches();
+            PixelsServicesFactory.shutDownRenderingControls(container
+                    .getRegistry());
+        } catch (Exception e) {
+            LogMessage msg = new LogMessage(
+                    "Could not properly shutdown OMERO connection", e);
+            container.getRegistry().getLogger().error(this, msg);
+        }
         singleton = null;
         omeroGateway = null;
     }

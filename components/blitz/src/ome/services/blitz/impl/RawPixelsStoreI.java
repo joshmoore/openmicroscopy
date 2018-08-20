@@ -13,8 +13,10 @@ import ome.api.RawPixelsStore;
 import ome.services.blitz.util.BlitzExecutor;
 import omero.ServerError;
 import omero.api.AMD_RawPixelsStore_calculateMessageDigest;
+import omero.api.AMD_RawPixelsStore_findMinMax;
 import omero.api.AMD_RawPixelsStore_getByteWidth;
 import omero.api.AMD_RawPixelsStore_getCol;
+import omero.api.AMD_RawPixelsStore_getHistogram;
 import omero.api.AMD_RawPixelsStore_getHypercube;
 import omero.api.AMD_RawPixelsStore_getPixelsId;
 import omero.api.AMD_RawPixelsStore_getPixelsPath;
@@ -46,6 +48,7 @@ import omero.api.AMD_RawPixelsStore_setStack;
 import omero.api.AMD_RawPixelsStore_setTile;
 import omero.api.AMD_RawPixelsStore_setTimepoint;
 import omero.api._RawPixelsStoreOperations;
+import omero.romio.PlaneDef;
 import Ice.Current;
 
 /**
@@ -241,6 +244,17 @@ public class RawPixelsStoreI extends AbstractPyramidServant implements
             byte[] buf, int t, Current __current) throws ServerError {
         callInvokerOnRawArgs(__cb, __current, buf, t);
 
+    }
+    
+    public void getHistogram_async(AMD_RawPixelsStore_getHistogram __cb,
+            int[] channels, int binCount, boolean globalRange, PlaneDef plane,
+            Current __current) throws ServerError {
+        callInvokerOnRawArgs(__cb, __current, channels, binCount, globalRange, plane);
+    }
+    
+    public void findMinMax_async(AMD_RawPixelsStore_findMinMax __cb,
+            int[] channels, Current __current) throws ServerError {
+        callInvokerOnRawArgs(__cb, __current, channels);
     }
 
     public void getCol_async(AMD_RawPixelsStore_getCol __cb, int x, int z,

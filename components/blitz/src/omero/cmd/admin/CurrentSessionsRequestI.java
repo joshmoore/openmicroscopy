@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 University of Dundee & Open Microscopy Environment.
+ * Copyright (C) 2015-2018 University of Dundee & Open Microscopy Environment.
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -25,10 +25,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import ome.parameters.Parameters;
 import ome.security.basic.CurrentDetails;
 import ome.services.sessions.SessionManager;
+import ome.services.sessions.SessionProvider;
+import ome.services.util.ReadOnlyStatus;
 import ome.system.EventContext;
+import ome.system.ServiceFactory;
 import ome.system.SimpleEventContext;
 import omero.RType;
 import omero.cmd.CurrentSessionsRequest;
@@ -50,19 +52,19 @@ import com.google.common.collect.ImmutableMap;
 
 @SuppressWarnings("serial")
 public class CurrentSessionsRequestI extends CurrentSessionsRequest
-    implements IRequest {
+    implements IRequest, ReadOnlyStatus.IsAware {
 
     private final Logger log = LoggerFactory.getLogger(CurrentSessionsRequestI.class);
 
     public static class Factory extends ObjectFactoryRegistry {
         private final ObjectFactory factory;
         public Factory(final CurrentDetails current,
-                final SessionManager sessionManager) {
+                final SessionManager sessionManager, final SessionProvider sessionProvider) {
             factory = new ObjectFactory(ice_staticId()) {
                 @Override
                 public Ice.Object create(String name) {
                     return new CurrentSessionsRequestI(
-                            current, sessionManager);
+                            current, sessionManager, sessionProvider);
                 }};
             }
 
@@ -79,13 +81,18 @@ public class CurrentSessionsRequestI extends CurrentSessionsRequest
 
     protected final SessionManager manager;
 
+    protected final SessionProvider provider;
+
     protected Map<String, Map<String, Object>> contexts;
 
     public CurrentSessionsRequestI(CurrentDetails current,
-            SessionManager manager) {
+            SessionManager manager, SessionProvider provider) {
         this.current = current;
         this.manager = manager;
+        this.provider = provider;
     }
+
+    private boolean isCurrentUserGuest = false;
 
     //
     // CMD API
@@ -99,6 +106,7 @@ public class CurrentSessionsRequestI extends CurrentSessionsRequest
     public void init(Helper helper) {
         this.helper = helper;
         this.helper.setSteps(1);
+        isCurrentUserGuest = current.isCurrentUserGuest();
     }
 
     public Object step(int step) throws Cancel {
@@ -108,10 +116,18 @@ public class CurrentSessionsRequestI extends CurrentSessionsRequest
         if (contexts.isEmpty()) {
             return Collections.emptyList();
         }
-        return helper.getServiceFactory().getQueryService().
-                findAllByQuery("select s from Session s where s.uuid in (:uuid)",
-                        new Parameters().addList("uuid", new ArrayList<String>(
-                                contexts.keySet())));
+        final ServiceFactory sf = helper.getServiceFactory();
+        final List<ome.model.meta.Session> sessions = new ArrayList<>(contexts.size());
+        for (final String uuid : contexts.keySet()) {
+            final Long sessionId = provider.findSessionIdByUuid(uuid, sf);
+            if (sessionId != null) {
+                final ome.model.meta.Session session = provider.findSessionById(sessionId, sf);
+                if (session != null) {
+                    sessions.add(session);
+                }
+            }
+        }
+        return sessions;
     }
 
     @Override
@@ -127,7 +143,9 @@ public class CurrentSessionsRequestI extends CurrentSessionsRequest
         Map<String, Session> objects = new HashMap<String, Session>();
         IceMapper mapper = new IceMapper();
         for (ome.model.meta.Session obj : rv) {
-            objects.put(obj.getUuid(), (Session) mapper.map(obj));
+            if (obj.isLoaded()) {
+                objects.put(obj.getUuid(), (Session) mapper.map(obj));
+            }
         }
 
         if (helper.isLast(step)) {
@@ -135,17 +153,19 @@ public class CurrentSessionsRequestI extends CurrentSessionsRequest
             CurrentSessionsResponse rsp = new CurrentSessionsResponse();
             rsp.sessions = new ArrayList<Session>(size);
             rsp.contexts = new ArrayList<omero.sys.EventContext>(size);
-            rsp.data = new Map[size];
-            int count = 0;
+            final List<Map<String, RType>> dataMaps = new ArrayList<Map<String, RType>>(size);
             for (Map.Entry<String, Map<String, Object>> entry : contexts.entrySet()) {
                 String uuid = entry.getKey();
                 Map<String, Object> data = entry.getValue();
                 EventContext orig = new SimpleEventContext(
                         (EventContext) data.get("sessionContext"));
                 Session s = objects.get(uuid);
-                rsp.sessions.add(s);
                 if (s == null) {
                     // Non-admin
+                    if (isCurrentUserGuest) {
+                        continue;
+                    }
+                    rsp.sessions.add(s);
                     omero.sys.EventContext ec = new omero.sys.EventContext();
                     rsp.contexts.add(ec);
                     ec.userId = orig.getCurrentUserId();
@@ -153,12 +173,14 @@ public class CurrentSessionsRequestI extends CurrentSessionsRequest
                     ec.groupId = orig.getCurrentGroupId();
                     ec.groupName = orig.getCurrentGroupName();
                     ec.isAdmin = orig.isCurrentUserAdmin();
-                    rsp.data[count++] = new HashMap<String, RType>();
+                    dataMaps.add(Collections.<String, RType>emptyMap());
                 } else {
+                    rsp.sessions.add(s);
                     rsp.contexts.add(IceMapper.convert(orig));
-                    rsp.data[count++] = parseData(rsp, data);
+                    dataMaps.add(parseData(rsp, data));
                 }
             }
+            rsp.data = dataMaps.toArray(new Map[dataMaps.size()]);
             helper.setResponseIfNull(rsp);
         }
     }
@@ -168,6 +190,9 @@ public class CurrentSessionsRequestI extends CurrentSessionsRequest
         for (Map.Entry<String, Object> entry2 : data.entrySet()) {
             String key2 = entry2.getKey();
             Object obj2 = entry2.getValue();
+            if ("class".equals(key2) || "sessionContext".equals(key2)) {
+                continue;
+            }
             RType wrapped = null;
             try {
                 if (key2.endsWith("Time")) {
@@ -181,8 +206,6 @@ public class CurrentSessionsRequestI extends CurrentSessionsRequest
             }
             parsed.put(key2, wrapped);
         }
-        parsed.remove("sessionContext");
-        parsed.remove("class");
         return parsed;
     }
 
@@ -190,4 +213,8 @@ public class CurrentSessionsRequestI extends CurrentSessionsRequest
         return helper.getResponse();
     }
 
+    @Override
+    public boolean isReadOnly(ReadOnlyStatus readOnly) {
+        return true;
+    }
 }

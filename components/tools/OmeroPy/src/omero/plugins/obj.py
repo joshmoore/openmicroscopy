@@ -39,7 +39,7 @@ from omero.rtypes import rlong
 
 class TxField(object):
 
-    ARG_RE = re.compile(("(?P<FIELD>[a-zA-Z]+)"
+    ARG_RE = re.compile(("(?P<FIELD>[a-zA-Z][a-zA-Z0-9]*)"
                          "(?P<OPER>[@])?="
                          "(?P<VALUE>.*)"))
 
@@ -553,10 +553,18 @@ Bash examples:
         if not args.command:
             if args.file:
                 path = args.file
-                for line in fileinput.input([path]):
-                    line = line.strip()
-                    if line and not line.startswith("#"):
-                        actions.append(self.parse(state, line=line))
+                fi = None
+                try:
+                    fi = fileinput.FileInput([path])
+                    for line in fi:
+                        line = line.strip()
+                        if line and not line.startswith("#"):
+                            actions.append(self.parse(state, line=line))
+                except IOError:
+                    self.ctx.die(337, "Cannot read file")
+                finally:
+                    if fi is not None:
+                        fi.close()
             else:
                 self.ctx.die(100, "No command provided")
         else:

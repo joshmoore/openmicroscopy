@@ -27,7 +27,7 @@ from omero.rtypes import rstring
 import pytest
 from django.core.urlresolvers import reverse
 
-from weblibrary import IWebTest, _get_response
+from omeroweb.testlib import IWebTest, get
 
 
 class TestDownload(IWebTest):
@@ -71,40 +71,42 @@ class TestDownload(IWebTest):
         data = {
             "image": image.id.val
         }
-        _get_response(self.django_client, request_url, data, status_code=404)
+        get(self.django_client, request_url, data, status_code=404)
 
     def test_orphaned_image_direct_download(self):
         """
         Download of archived files for a non-SPW orphaned Image.
         """
 
-        image = self.importSingleImage()
-
+        images = self.import_fake_file()
+        image = images[0]
         # download archived files
         request_url = reverse('webgateway.views.archived_files',
                               args=[image.id.val])
-        _get_response(self.django_client, request_url, {}, status_code=200)
+        get(self.django_client, request_url)
 
     def test_orphaned_image_download(self):
         """
         Download of archived files for a non-SPW orphaned Image.
         """
 
-        image = self.importSingleImage()
+        images = self.import_fake_file()
+        image = images[0]
 
         # download archived files
         request_url = reverse('webgateway.views.archived_files')
         data = {
             "image": image.id.val
         }
-        _get_response(self.django_client, request_url, data, status_code=200)
+        get(self.django_client, request_url, data)
 
     def test_image_in_dataset_download(self):
         """
         Download of archived files for a non-SPW Image in Dataset.
         """
 
-        image = self.importSingleImage()
+        images = self.import_fake_file()
+        image = images[0]
         ds = self.make_dataset()
         self.link(ds, image)
 
@@ -113,14 +115,15 @@ class TestDownload(IWebTest):
         data = {
             "image": image.id.val
         }
-        _get_response(self.django_client, request_url, data, status_code=200)
+        get(self.django_client, request_url, data)
 
     def test_image_in_dataset_in_project_download(self):
         """
         Download of archived files for a non-SPW Image in Dataset in Project.
         """
 
-        image = self.importSingleImage()
+        images = self.import_fake_file()
+        image = images[0]
         ds = self.make_dataset()
         pr = self.make_project()
 
@@ -132,7 +135,7 @@ class TestDownload(IWebTest):
         data = {
             "image": image.id.val
         }
-        _get_response(self.django_client, request_url, data, status_code=200)
+        get(self.django_client, request_url, data)
 
     def test_well_download(self, image_well_plate):
         """
@@ -145,18 +148,19 @@ class TestDownload(IWebTest):
         data = {
             "well": well.id.val
         }
-        _get_response(self.django_client, request_url, data, status_code=404)
+        get(self.django_client, request_url, data, status_code=404)
 
     def test_attachement_download(self):
         """
         Download of attachement.
         """
 
-        image = self.importSingleImage()
+        images = self.import_fake_file()
+        image = images[0]
         fa = self.make_file_annotation()
         self.link(image, fa)
 
         # download archived files
         request_url = reverse('download_annotation',
                               args=[fa.id.val])
-        _get_response(self.django_client, request_url, {}, status_code=200)
+        get(self.django_client, request_url)

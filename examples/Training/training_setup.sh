@@ -7,11 +7,14 @@ set -x
 
 HOSTNAME=${HOSTNAME:-localhost}
 PORT=${PORT:-4064}
+WEBHOST=${WEBHOST:-http://localhost}
+SERVER_NAME=${SERVER_NAME:-omero}
 ROOT_PASSWORD=${ROOT_PASSWORD:-omero}
 GROUP_NAME=${GROUP_NAME:-training_group}
 GROUP_NAME_2=${GROUP_NAME_2:-training_group-2}
 USER_NAME=${USER_NAME:-training_user}
 USER_NAME_2=${USER_NAME_2:-training_user-2}
+LIGHTADMIN_USER_NAME=${LIGHTADMIN_USER_NAME:-ladmin_user}
 USER_PASSWORD=${USER_PASSWORD:-ome}
 CONFIG_FILENAME=${CONFIG_FILENAME:-training_ice.config}
 
@@ -21,6 +24,9 @@ bin/omero group add $GROUP_NAME --type read-only --ignore-existing
 bin/omero group add $GROUP_NAME_2 --type read-only --ignore-existing
 bin/omero user add $USER_NAME $USER_NAME $USER_NAME $GROUP_NAME $GROUP_NAME_2 --ignore-existing -P $USER_PASSWORD
 bin/omero user add $USER_NAME_2 $USER_NAME_2 $USER_NAME_2 $GROUP_NAME $GROUP_NAME_2 --ignore-existing -P $USER_PASSWORD
+bin/omero user add $LIGHTADMIN_USER_NAME $LIGHTADMIN_USER_NAME $LIGHTADMIN_USER_NAME $GROUP_NAME $GROUP_NAME_2 -a --ignore-existing -P $USER_PASSWORD
+id=$(bin/omero user info $LIGHTADMIN_USER_NAME  --style plain |  cut -d, -f1)
+bin/omero obj map-set Experimenter:$id config AdminPrivilege:Sudo true
 bin/omero logout
 
 # Create fake files
@@ -54,6 +60,11 @@ echo "Importing image file"
 touch "test&sizeT=10&sizeZ=5&sizeC=3.fake"
 bin/omero import "test&sizeT=10&sizeZ=5&sizeC=3.fake" > image_import.log 2>&1
 imageid=$(sed -n -e 's/^Image://p' image_import.log)
+
+# Add a Map annotation
+MAP=$(bin/omero obj new MapAnnotation)
+bin/omero obj map-set $MAP mapValue testkey testvalue
+bin/omero obj new ImageAnnotationLink parent=Image:$imageid child=$MAP
 
 # Create screen/plate
 screen=$(bin/omero obj new Screen name='Screen')
@@ -91,6 +102,8 @@ bin/omero logout
 # Create ice.config file
 echo "omero.host=$HOSTNAME" > "$CONFIG_FILENAME"
 echo "omero.port=$PORT" >> "$CONFIG_FILENAME"
+echo "omero.webhost=$WEBHOST" >> "$CONFIG_FILENAME"
+echo "omero.servername=$SERVER_NAME" >> "$CONFIG_FILENAME"
 echo "omero.user=$USER_NAME" >> "$CONFIG_FILENAME"
 echo "omero.pass=$USER_PASSWORD" >> "$CONFIG_FILENAME"
 echo "omero.group=$GROUP_NAME" >> "$CONFIG_FILENAME"
@@ -100,6 +113,7 @@ echo "omero.imageid=${imageid}" >> "$CONFIG_FILENAME"
 echo "omero.plateid=${plateid}" >> "$CONFIG_FILENAME"
 echo "omero.screenid=${screen##*:}" >> "$CONFIG_FILENAME"
 echo "omero.group2=$GROUP_NAME_2" >> "$CONFIG_FILENAME"
+echo "omero.ladmin=$LIGHTADMIN_USER_NAME" >> "$CONFIG_FILENAME"
 
 # Remove fake file
 rm *.fake

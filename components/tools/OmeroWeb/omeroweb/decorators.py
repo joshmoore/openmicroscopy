@@ -25,7 +25,8 @@ Decorators for use with OMERO.web applications.
 
 import logging
 import traceback
-from django.http import Http404, HttpResponse, HttpResponseRedirect
+from django.http import Http404, HttpResponse, HttpResponseRedirect, \
+    JsonResponse
 from django.http import HttpResponseForbidden, StreamingHttpResponse
 
 from django.conf import settings
@@ -36,8 +37,7 @@ from django.template import loader as template_loader
 from django.template import RequestContext
 from django.core.cache import cache
 
-from omeroweb.http import HttpJsonResponse
-
+from omeroweb.utils import reverse_with_params
 from omeroweb.connector import Connector
 from omero.gateway.utils import propertiesToDict
 
@@ -45,15 +45,15 @@ logger = logging.getLogger(__name__)
 
 
 def parse_url(lookup_view):
+    if not lookup_view:
+        raise ValueError("No lookup_view")
     url = None
     try:
-        if "args" in lookup_view.keys():
-            url = reverse(viewname=lookup_view["viewname"],
-                          args=lookup_view["args"])
-        else:
-            url = reverse(viewname=lookup_view["viewname"])
-        if "query_string" in lookup_view.keys():
-            url = url + "?" + lookup_view["query_string"]
+        url = reverse_with_params(
+            viewname=lookup_view['viewname'],
+            args=lookup_view['args'],
+            query_string=lookup_view['query_string']
+        )
     except KeyError:
         # assume we've been passed a url
         try:
@@ -238,46 +238,30 @@ class login_required(object):
                             'disabling OMERO.webpublic.')
                 settings.PUBLIC_ENABLED = False
                 return False
+            if settings.PUBLIC_GET_ONLY and (request.method != 'GET'):
+                return False
             if self.allowPublic is None:
                 return settings.PUBLIC_URL_FILTER.search(request.path) \
                     is not None
             return self.allowPublic
         return False
 
-    def _cleanup_deprecated(self, s):
-        # TODO: remove in 5.3, cleanup deprecated
-        if 'omero.client.ui.tree.orphans.enabled' not in s:
-            s['omero.client.ui.tree.orphans.enabled'] = True
-
-        if 'omero.client.ui.menu.dropdown.everyone.label' not in s:
-            s['omero.client.ui.menu.dropdown.everyone.label'] = \
-                s['omero.client.ui.menu.dropdown.everyone']
-        if 'omero.client.ui.menu.dropdown.leaders.label' not in s:
-            s['omero.client.ui.menu.dropdown.leaders.label'] = \
-                s['omero.client.ui.menu.dropdown.leaders']
-        if 'omero.client.ui.menu.dropdown.colleagues.label' not in s:
-            s['omero.client.ui.menu.dropdown.colleagues.label'] = \
-                s['omero.client.ui.menu.dropdown.colleagues']
-
-        if 'omero.client.ui.menu.dropdown.everyone' in s:
-            del s['omero.client.ui.menu.dropdown.everyone']
-        if 'omero.client.ui.menu.dropdown.leaders' in s:
-            del s['omero.client.ui.menu.dropdown.leaders']
-        if 'omero.client.ui.menu.dropdown.colleagues' in s:
-            del s['omero.client.ui.menu.dropdown.colleagues']
-        return s
-
     def load_server_settings(self, conn, request):
-        """Loads Client preferences from the server."""
+        """Loads Client preferences and Read-Only status from the server."""
+        try:
+            request.session['can_create']
+        except KeyError:
+            request.session.modified = True
+            request.session['can_create'] = conn.canCreate()
         try:
             request.session['server_settings']
         except:
             request.session.modified = True
             request.session['server_settings'] = {}
             try:
-                s = self._cleanup_deprecated(conn.getClientSettings())
                 request.session['server_settings'] = \
-                    propertiesToDict(s, prefix="omero.client.")
+                    propertiesToDict(conn.getClientSettings(),
+                                     prefix="omero.client.")
             except:
                 logger.error(traceback.format_exc())
             # make extra call for omero.mail, not a part of omero.client
@@ -320,7 +304,7 @@ class login_required(object):
                 server_id = settings.PUBLIC_SERVER_ID
             username = settings.PUBLIC_USER
             password = settings.PUBLIC_PASSWORD
-            is_secure = request.GET.get('ssl', False)
+            is_secure = settings.SECURE
             logger.debug('Is SSL? %s' % is_secure)
             # Try and use a cached OMERO.webpublic user session key.
             public_user_connector = self.get_public_user_connector()
@@ -344,6 +328,13 @@ class login_required(object):
                 self.useragent, username, password, is_public=True,
                 userip=get_client_ip(request))
             request.session['connector'] = connector
+            # Clear any previous context so we don't try to access this
+            # NB: we also do this in WebclientLoginView.handle_logged_in()
+            if 'active_group' in request.session:
+                del request.session['active_group']
+            if 'user_id' in request.session:
+                del request.session['user_id']
+            request.session.modified = True
             self.set_public_user_connector(connector)
         elif connection is not None:
             is_anonymous = connection.isAnonymous()
@@ -362,7 +353,7 @@ class login_required(object):
         userip = get_client_ip(request)
         session = request.session
         request = request.GET
-        is_secure = request.get('ssl', False)
+        is_secure = settings.SECURE
         logger.debug('Is SSL? %s' % is_secure)
         connector = session.get('connector', None)
         logger.debug('Connector: %s' % connector)
@@ -442,7 +433,7 @@ class login_required(object):
             return None
 
         session['connector'] = connector
-        return connection
+        return None
 
     def __call__(ctx, f):
         """
@@ -493,18 +484,18 @@ class login_required(object):
 
                     # kwargs['error'] = request.GET.get('error')
                     kwargs['url'] = url
-
-            retval = f(request, *args, **kwargs)
             try:
-                logger.debug(
-                    'Doing connection cleanup? %s' % doConnectionCleanup)
-                if doConnectionCleanup:
-                    if conn is not None and conn.c is not None:
-                        for v in conn._proxies.values():
-                            v.close()
-                        conn.c.closeSession()
-            except:
-                logger.warn('Failed to clean up connection.', exc_info=True)
+                retval = f(request, *args, **kwargs)
+            finally:
+                # If f() raised Exception, e.g. Http404() we must still cleanup
+                try:
+                    logger.debug(
+                        'Doing connection cleanup? %s' % doConnectionCleanup)
+                    if doConnectionCleanup:
+                        if conn is not None and conn.c is not None:
+                            conn.close(hard=False)
+                except:
+                    logger.warn('Failed to clean up connection', exc_info=True)
             return retval
         return update_wrapper(wrapped, f)
 
@@ -558,7 +549,9 @@ class render_response(object):
             # allows us to return the dict as json  (NB: BlitzGateway objects
             # don't serialize)
             if template is None or template == 'json':
-                return HttpJsonResponse(context)
+                # We still need to support non-dict data:
+                safe = type(context) is dict
+                return JsonResponse(context, safe=safe)
             else:
                 # allow additional processing of context dict
                 ctx.prepare_context(request, context, *args, **kwargs)

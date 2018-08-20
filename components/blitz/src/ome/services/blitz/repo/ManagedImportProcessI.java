@@ -57,7 +57,7 @@ import omero.model.FilesetJobLink;
  * all running server-side.
  *
  * @author Josh Moore, josh at glencoesoftware.com
- * @since 4.5
+ * @since 5.0.0
  */
 public class ManagedImportProcessI extends AbstractCloseableAmdServant
     implements _ImportProcessOperations, ServiceFactoryAware,
@@ -88,7 +88,7 @@ public class ManagedImportProcessI extends AbstractCloseableAmdServant
     private final Ice.Current current;
 
     /**
-     * The managed repo instance which created (and ultimately is reponsible
+     * The managed repo instance which created (and ultimately is responsible
      * for) this import process.
      */
     private final ManagedRepositoryI repo;
@@ -330,6 +330,10 @@ public class ManagedImportProcessI extends AbstractCloseableAmdServant
         req.location = location;
         req.settings = settings;
         req.logFile = logFile;
+        if (req instanceof ManagedImportRequestI && current.ctx != null) {
+            /* propagate this process' call context to the new import request */
+            ((ManagedImportRequestI) req).setCallContext(current.ctx);
+        }
         final AMD_submit submit = repo.submitRequest(sf, req, this.current);
         this.handle = submit.ret;
         // TODO: in 5.1 this should be added to the request object

@@ -1,10 +1,7 @@
 /*
- * omeis.providers.re.RenderingEngine
- *
- *   Copyright 2006-2014 University of Dundee. All rights reserved.
+ *   Copyright 2006-2016 University of Dundee. All rights reserved.
  *   Use is subject to license terms supplied in LICENSE.txt
  */
-
 package omeis.providers.re;
 
 import java.util.List;
@@ -14,6 +11,7 @@ import ome.api.StatefulServiceInterface;
 import ome.conditions.ValidationException;
 import ome.model.core.Pixels;
 import ome.model.display.QuantumDef;
+import ome.model.display.RenderingDef;
 import ome.model.enums.Family;
 import ome.model.enums.RenderingModel;
 import omeis.providers.re.codomain.CodomainMapContext;
@@ -459,7 +457,21 @@ public interface RenderingEngine extends StatefulServiceInterface {
      * @see #updateCodomainMap(CodomainMapContext)
      * @see #removeCodomainMap(CodomainMapContext)
      */
+    @Deprecated
     public void addCodomainMap(CodomainMapContext mapCtx);
+
+    /**
+     * Adds the context to the mapping chain. Only one context of the same type
+     * can be added to the chain. The codomain transformations are functions
+     * from the device space to device space. Each time a new context is added,
+     * the second LUT is rebuilt.
+     * 
+     * @param mapCtx
+     *            The context to add.
+     * @param w The channel to add the context to.
+     * @see #removeCodomainMapFromChannel(CodomainMapContext, int)
+     */
+    public void addCodomainMapToChannel(CodomainMapContext mapCtx, int w);
 
     /**
      * Updates the specified context. The codomain chain already contains the
@@ -471,6 +483,7 @@ public interface RenderingEngine extends StatefulServiceInterface {
      * @see #addCodomainMap(CodomainMapContext)
      * @see #removeCodomainMap(CodomainMapContext)
      */
+    @Deprecated
     public void updateCodomainMap(CodomainMapContext mapCtx);
 
     /**
@@ -482,7 +495,46 @@ public interface RenderingEngine extends StatefulServiceInterface {
      * @see #addCodomainMap(CodomainMapContext)
      * @see #updateCodomainMap(CodomainMapContext)
      */
+    @Deprecated
     public void removeCodomainMap(CodomainMapContext mapCtx);
+
+    /**
+     * Removes the specified context from the chain. Each time a new context is
+     * removed, the second LUT is rebuilt.
+     * 
+     * @param mapCtx
+     *            The context to remove.
+     * @see #addCodomainMapToChannel(CodomainMapContext, int)
+     */
+    public void removeCodomainMapFromChannel(CodomainMapContext mapCtx, int w);
+
+    /**
+     * Updates the current rendering settings based on a provided rendering
+     * definition and associated sub-objects.
+     * @param settings Rendering definition to copy from. Each sub-object
+     * will be processed as though the specific method was called with
+     * related attributes provided as arguments. The following methods are
+     * called underneath: <ul>
+     * <li>{@link RenderingEngine#setModel(RenderingModel)}</li>
+     * <li>{@link RenderingEngine#setDefaultZ(int)}</li>
+     * <li>{@link RenderingEngine#setDefaultT(int)}</li>
+     * <li>{@link RenderingEngine#setQuantumStrategy(int)}</li>
+     * <li>{@link RenderingEngine#setCodomainInterval(int, int)}</li>
+     * <li>{@link RenderingEngine#setActive(int, boolean)}</li>
+     * <li>{@link RenderingEngine#setChannelWindow(int, double, double)}</li>
+     * <li>{@link RenderingEngine#setQuantizationMap(int, Family, double, boolean)}</li>
+     * <li>{@link RenderingEngine#setRGBA(int, int, int, int, int)}</li>
+     * <li>{@link RenderingEngine#setChannelLookupTable(int, String)}</li>
+     * </ul>
+     * If one or more attributes that apply to a particular method are
+     * <code>null</code> it will be <b>skipped</b> in its entirety. The
+     * underlying Renderer is not able to handle partial field updates.
+     * Furthermore, {@link ome.model.display.ChannelBinding} references that are
+     * <code>null</code> and indexes in the {@link RenderingDef#WAVERENDERING}
+     * array greater than the currently looked up {@link Pixels#SIZEC} will be
+     * skipped.
+     */
+    public void updateSettings(RenderingDef settings);
 
     /** Saves the current rendering settings in the database. */
     public void saveCurrentSettings();
@@ -550,10 +602,13 @@ public interface RenderingEngine extends StatefulServiceInterface {
 
     public Object getResolutionDescriptions();
 
+    /* @see ome.io.nio.PixelBuffer#getResolutionLevels() */
     public int getResolutionLevels();
 
+    /* @see ome.io.nio.PixelBuffer#getResolutionLevel() */
     public int getResolutionLevel();
 
+    /* @see ome.io.nio.PixelBuffer#setResolutionLevel(int) */
     public void setResolutionLevel(int resolutionLevel);
 
     public int[] getTileSize();
@@ -562,5 +617,13 @@ public interface RenderingEngine extends StatefulServiceInterface {
 
     public String getChannelLookupTable(int w);
 
+    /**
+     * Returns the list of codomain contexts associated to the specified
+     * channel.
+     *
+     * @param w The channel the contexts are associated to.
+     * @return see above.
+     */
+    public List<CodomainMapContext> getCodomainMapContext(int w);
 }
 

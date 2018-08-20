@@ -13,7 +13,7 @@ from types import StringTypes
 from path import path
 
 BASEPATH = os.path.dirname(os.path.abspath(__file__))
-TESTIMG_URL = 'http://downloads.openmicroscopy.org/images/gateway_tests/'
+TESTIMG_URL = 'https://downloads.openmicroscopy.org/images/gateway_tests/'
 DEFAULT_GROUP_PERMS = 'rwr---'
 
 if not omero.gateway.BlitzGateway.ICE_CONFIG:
@@ -37,7 +37,7 @@ def refreshConfig():
         ru = bg.c.ic.getProperties().getProperty('omero.rootuser')
         rp = bg.c.ic.getProperties().getProperty('omero.rootpass')
     finally:
-        bg.seppuku()
+        bg.close()
 
     if ru:
         ROOT.name = ru
@@ -230,7 +230,7 @@ class UserEntry (object):
         finally:
             # Always clean up the results of login
             if admin_gateway:
-                admin_gateway.seppuku()
+                admin_gateway.close()
 
     @staticmethod
     def setGroupForSession(client, groupname, groupperms=None):
@@ -297,7 +297,7 @@ class ProjectEntry (ObjectEntry):
             try:
                 UserEntry.addGroupToUser(s, groupname, self.group_perms)
             finally:
-                s.seppuku()
+                s.close()
 
             UserEntry.setGroupForSession(client, groupname, self.group_perms)
         p = omero.gateway.ProjectWrapper(
@@ -406,15 +406,20 @@ class ImageEntry (ObjectEntry):
         if not os.path.exists(fpath):
             if not os.path.exists(os.path.dirname(fpath)):
                 os.makedirs(os.path.dirname(fpath))
-            # First try to download the image
-            try:
-                # print "Trying to get test image from " + TESTIMG_URL +
-                # self.filename
-                sys.stderr.write('<')
-                f = urllib2.urlopen(TESTIMG_URL + self.filename)
-                open(fpath, 'wb').write(f.read())
-            except urllib2.HTTPError:
-                raise IOError('No such file %s' % fpath)
+            if self.filename.endswith('.fake'):
+                # If it's a .fake file, simply create it
+                os.close(os.open(fpath, os.O_CREAT | os.O_EXCL))
+            else:
+                # First try to download the image
+                try:
+                    # print "Trying to get test image from " + TESTIMG_URL +
+                    # self.filename
+                    sys.stderr.write('<')
+                    fin = urllib2.urlopen(TESTIMG_URL + self.filename)
+                    with open(fpath, 'wb') as fout:
+                        fout.write(fin.read())
+                except urllib2.HTTPError:
+                    raise IOError('No such file %s' % fpath)
         host = dataset._conn.c.ic.getProperties().getProperty(
             'omero.host') or 'localhost'
         port = dataset._conn.c.ic.getProperties().getProperty(
@@ -445,7 +450,7 @@ class ImageEntry (ObjectEntry):
                 newconn, dataset.getDetails().getGroup().getName())
             session = newconn._sessionUuid
             # print session
-            exe += ' -s %s -k %s -p %s import -d %i -n' % (
+            exe += ' -s %s -k %s -p %s import -d %i --output legacy -n' % (
                 host, session, port, dataset.getId())
             exe = exe.split() + [self.name, fpath]
             print ' '.join(exe)
@@ -477,7 +482,8 @@ class ImageEntry (ObjectEntry):
                 self.callback(img)
             return img
         finally:
-            newconn.seppuku()  # Always cleanup the return from clone/connect
+            # Always cleanup the return from clone/connect
+            newconn.close()
 
     def _createWithoutPixels(self, client, dataset):
         img = omero.model.ImageI()
@@ -512,7 +518,7 @@ def getImage(client, alias, forceds=None, autocreate=False):
     rv = IMAGES[alias].get(client, forceds)
     if rv is None and autocreate:
         i = IMAGES[alias].create()
-        i._conn.seppuku()
+        i._conn.close()
         rv = IMAGES[alias].get(client, forceds)
     return rv
 
@@ -529,17 +535,17 @@ def bootstrap(onlyUsers=False, skipImages=True):
             return
         for k, p in PROJECTS.items():
             p = p.create()
-            p._conn.seppuku()
+            p._conn.close()
             # print p.get(client).getDetails().getPermissions().isUserWrite()
         for k, d in DATASETS.items():
             d = d.create()
-            d._conn.seppuku()
+            d._conn.close()
         if not skipImages:
             for k, i in IMAGES.items():
                 i = i.create()
-                i._conn.seppuku()
+                i._conn.close()
     finally:
-        client.seppuku()
+        client.close()
 
 
 def cleanup():
@@ -554,11 +560,11 @@ def cleanup():
                 client._waitOnCmd(handle)
             finally:
                 handle.close()
-    client.seppuku()
+    client.close()
     client = loginAsRoot()
     for k, u in USERS.items():
         u.changePassword(client, None, ROOT.passwd)
-    client.seppuku()
+    client.close()
 
 ROOT = UserEntry('root', 'ome', admin=True)
 

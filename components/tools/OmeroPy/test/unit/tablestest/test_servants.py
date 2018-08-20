@@ -15,12 +15,15 @@ import omero
 import omero.tables
 import uuid
 import logging
-import library as lib
+from library import TestCase
 
 from omero.columns import LongColumnI, DoubleColumnI, ObjectFactories
 from path import path
 
 logging.basicConfig(level=logging.DEBUG)
+
+# Don't retry since we expect errors
+omero.tables.RETRIES = 1
 
 
 class communicator_provider(object):
@@ -119,6 +122,10 @@ class mocked_config_service(object):
         return self.db_uuid
 
     def getConfigValue(self, str):
+        # Not testing read-only yet.
+        # Server sets these runtime properties at startup.
+        if str.startswith("omero.cluster.read_only.runtime."):
+            return "false"
         rv = self.return_values.pop(0)
         if isinstance(rv, omero.ServerError):
             raise rv
@@ -180,10 +187,10 @@ class mock_storage(object):
         return 0
 
 
-class TestTables(lib.TestCase):
+class TestTables(TestCase):
 
     def setup_method(self, method):
-        lib.TestCase.setup_method(self, method)
+        TestCase.setup_method(self, method)
 
         # Session
         self.sf_provider = mocked_internal_service_factory()

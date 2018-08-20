@@ -1,6 +1,6 @@
 /*
  *------------------------------------------------------------------------------
- *  Copyright (C) 2015-2016 University of Dundee. All rights reserved.
+ *  Copyright (C) 2015-2017 University of Dundee. All rights reserved.
  *
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -21,8 +21,13 @@
 package omero.gateway.facility;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.StringUtils;
 
 import omero.ApiUsageException;
 import omero.ServerError;
@@ -31,6 +36,8 @@ import omero.gateway.Gateway;
 import omero.gateway.SecurityContext;
 import omero.gateway.exception.DSAccessException;
 import omero.gateway.exception.DSOutOfServiceException;
+import omero.model.AdminPrivilege;
+import omero.model.AdminPrivilegeI;
 import omero.model.Experimenter;
 import omero.model.ExperimenterGroup;
 import omero.model.ExperimenterGroupI;
@@ -40,11 +47,13 @@ import omero.sys.Roles;
 import omero.gateway.model.ExperimenterData;
 import omero.gateway.model.GroupData;
 import omero.gateway.util.PojoMapper;
+import omero.gateway.util.Pojos;
+import omero.gateway.util.Utils;
 
 /**
  * {@link Facility} for handling admin issues, e.g. creating users, groups,
  * etc.
- * 
+ *
  * @author Dominik Lindner &nbsp;&nbsp;&nbsp;&nbsp; <a
  *         href="mailto:d.lindner@dundee.ac.uk">d.lindner@dundee.ac.uk</a>
  * @since 5.1
@@ -54,6 +63,9 @@ public class AdminFacility extends Facility {
 
     /** Reference to the roles.*/
     private Roles roles;
+
+    /** All available admin privileges */
+    private Collection<String> adminPrivileges;
 
     /**
      * Creates a new instance.
@@ -72,7 +84,7 @@ public class AdminFacility extends Facility {
      * @param permissions The group's permissions.
      * @return See above.
      * @throws DSOutOfServiceException
-     *             If the connection is broken, or not logged in
+     *             If the connection is broken, or not logged in.
      * @throws DSAccessException
      *             If an error occurred while trying to retrieve data from OMERO
      *             service.
@@ -110,25 +122,71 @@ public class AdminFacility extends Facility {
     /**
      * Creates an experimenter and returns it.
      *
-     * @param ctx The security context.
-     * @param exp The experimenter to create.
-     * @param username The user name to use.
-     * @param password The password to use.
-     * @param groups The groups to add the user to.
-     * @param isAdmin Pass <code>true</code> if the user is an administrator,
-     *                <code>false</code> otherwise.
-     * @param isGroupOwner Pass <code>true</code> if the user is a group owner,
-     *                <code>false</code> otherwise.
+     * @param ctx
+     *            The security context.
+     * @param exp
+     *            The experimenter to create.
+     * @param username
+     *            The user name to use.
+     * @param password
+     *            The password to use.
+     * @param groups
+     *            The groups to add the user to.
+     * @param isAdmin
+     *            Pass <code>true</code> if the user is an administrator,
+     *            <code>false</code> otherwise.
+     * @param isGroupOwner
+     *            Pass <code>true</code> if the user is a group owner,
+     *            <code>false</code> otherwise.
      * @return See above.
      * @throws DSOutOfServiceException
-     *             If the connection is broken, or not logged in
+     *             If the connection is broken, or not logged in.
      * @throws DSAccessException
      *             If an error occurred while trying to retrieve data from OMERO
-     *             service. 
+     *             service.
      */
     public ExperimenterData createExperimenter(SecurityContext ctx,
             ExperimenterData exp, String username, String password,
             List<GroupData> groups, boolean isAdmin, boolean isGroupOwner)
+            throws DSOutOfServiceException, DSAccessException {
+        return createExperimenter(ctx, exp, username, password, groups,
+                isAdmin, isGroupOwner, null);
+    }
+
+    /**
+     * Creates an experimenter and returns it.
+     *
+     * @param ctx
+     *            The security context.
+     * @param exp
+     *            The experimenter to create.
+     * @param username
+     *            The user name to use.
+     * @param password
+     *            The password to use.
+     * @param groups
+     *            The groups to add the user to.
+     * @param isAdmin
+     *            Pass <code>true</code> if the user is an administrator,
+     *            <code>false</code> otherwise.
+     * @param isGroupOwner
+     *            Pass <code>true</code> if the user is a group owner,
+     *            <code>false</code> otherwise.
+     * @param privileges
+     *            Only grant these admin privileges (only applies if isAdmin ==
+     *            <code>true</code>); pass an empty list to create a user in
+     *            system group but no admin privileges (unspecified or
+     *            <code>null</code> creates full admin with all privileges)
+     * @return See above.
+     * @throws DSOutOfServiceException
+     *             If the connection is broken, or not logged in.
+     * @throws DSAccessException
+     *             If an error occurred while trying to retrieve data from OMERO
+     *             service.
+     */
+    public ExperimenterData createExperimenter(SecurityContext ctx,
+            ExperimenterData exp, String username, String password,
+            List<GroupData> groups, boolean isAdmin, boolean isGroupOwner, List<String> privileges)
             throws DSOutOfServiceException, DSAccessException {
 
         try {
@@ -172,6 +230,12 @@ public class AdminFacility extends Facility {
                         .getExperimenter(id));
                 if (isGroupOwner && !systemGroup)
                     svc.setGroupOwner(g, exp.asExperimenter());
+
+                if (privileges != null)
+                    svc.setAdminPrivileges(exp.asExperimenter(), Utils.toEnum(
+                            AdminPrivilege.class, AdminPrivilegeI.class,
+                            privileges));
+
                 return exp;
             }
 
@@ -190,13 +254,15 @@ public class AdminFacility extends Facility {
      *            The name of the group.
      * @return See above
      * @throws DSOutOfServiceException
-     *             If the connection is broken, or not logged in
+     *             If the connection is broken, or not logged in.
      * @throws DSAccessException
      *             If an error occurred while trying to retrieve data from OMERO
      *             service.
      */
     public GroupData lookupGroup(SecurityContext ctx, String name)
             throws DSOutOfServiceException, DSAccessException {
+        if(StringUtils.isBlank(name))
+            return null;
 
         try {
             IAdminPrx svc = gateway.getAdminService(ctx);
@@ -220,13 +286,15 @@ public class AdminFacility extends Facility {
      *            The name of the experimenter.
      * @return See above
      * @throws DSOutOfServiceException
-     *             If the connection is broken, or not logged in
+     *             If the connection is broken, or not logged in.
      * @throws DSAccessException
      *             If an error occurred while trying to retrieve data from OMERO
      *             service.
      */
     public ExperimenterData lookupExperimenter(SecurityContext ctx, String name)
             throws DSOutOfServiceException, DSAccessException {
+        if(StringUtils.isBlank(name))
+            return null;
 
         try {
             IAdminPrx svc = gateway.getAdminService(ctx);
@@ -241,11 +309,225 @@ public class AdminFacility extends Facility {
     }
 
     /**
+     * Get the logged in user's admin privileges
+     * (see omero.model.enums)
+     * @param ctx
+     *            The security context.
+     * @return See above
+     * @throws DSOutOfServiceException
+     *             If the connection is broken, or not logged in
+     * @throws DSAccessException
+     *             If an error occurred while trying to retrieve data from OMERO
+     *             service.
+     */
+    public Collection<String> getAdminPrivileges(SecurityContext ctx)
+            throws DSOutOfServiceException, DSAccessException {
+        return getAdminPrivileges(ctx, gateway.getLoggedInUser());
+    }
+
+    /**
+     * Get the admin privileges of a certain user
+     * (see omero.model.enums)
+     *
+     * @param ctx
+     *            The security context.
+     * @param user
+     *            The user.
+     * @return See above
+     * @throws DSOutOfServiceException
+     *             If the connection is broken, or not logged in.
+     * @throws DSAccessException
+     *             If an error occurred while trying to retrieve data from OMERO
+     *             service.
+     */
+    public Collection<String> getAdminPrivileges(SecurityContext ctx,
+            ExperimenterData user) throws DSOutOfServiceException,
+            DSAccessException {
+        if (!Pojos.hasID(user))
+            return null;
+        try {
+            IAdminPrx adm = gateway.getAdminService(ctx);
+            return Utils
+                    .fromEnum(adm.getAdminPrivileges(user.asExperimenter()));
+        } catch (Exception e) {
+            handleException(this, e, "Cannot get admin privileges.");
+        }
+        return Collections.emptyList();
+    }
+
+    /**
+     * Set the admin privileges of a certain user
+     * (see omero.model.enums)
+     *
+     * @param ctx
+     *            The security context.
+     * @param user
+     *            The user.
+     * @param privileges
+     *            The admin privileges.
+     * @throws DSOutOfServiceException
+     *             If the connection is broken, or not logged in.
+     * @throws DSAccessException
+     *             If an error occurred while trying to retrieve data from OMERO
+     *             service.
+     */
+    public void setAdminPrivileges(SecurityContext ctx, ExperimenterData user,
+            Collection<String> privileges) throws DSOutOfServiceException,
+            DSAccessException {
+        if (!Pojos.hasID(user))
+            return;
+
+        try {
+            IAdminPrx adm = gateway.getAdminService(ctx);
+            adm.setAdminPrivileges(user.asExperimenter(), Utils.toEnum(
+                    AdminPrivilege.class, AdminPrivilegeI.class, privileges));
+        } catch (Exception e) {
+            handleException(this, e, "Cannot set admin privileges.");
+        }
+    }
+
+    /**
+     * Grant an user additional admin privileges.
+     *
+     * @param ctx
+     *            The security context.
+     * @param user
+     *            The user.
+     * @param privileges
+     *            The admin privileges to grant.
+     * @throws DSOutOfServiceException
+     *             If the connection is broken, or not logged in.
+     * @throws DSAccessException
+     *             If an error occurred while trying to retrieve data from OMERO
+     *             service.
+     */
+    public void addAdminPrivileges(SecurityContext ctx, ExperimenterData user,
+            Collection<String> privileges) throws DSOutOfServiceException,
+            DSAccessException {
+
+        if (!Pojos.hasID(user) || CollectionUtils.isEmpty(privileges)) {
+            return;
+        }
+
+        try {
+            Collection<String> privs = getAdminPrivileges(ctx, user);
+            for (String priv : privileges)
+                if (!privs.contains(priv))
+                    privs.add(priv);
+            setAdminPrivileges(ctx, user, privs);
+        } catch (Exception e) {
+            handleException(this, e, "Cannot add admin privileges.");
+        }
+    }
+
+    /**
+     * Revoke admin privileges for a user
+     *
+     * @param ctx
+     *            The security context.
+     * @param user
+     *            The user.
+     * @param privileges
+     *            The admin privileges to revoke.
+     * @throws DSOutOfServiceException
+     *             If the connection is broken, or not logged in.
+     * @throws DSAccessException
+     *             If an error occurred while trying to retrieve data from OMERO
+     *             service.
+     */
+    public void removeAdminPrivileges(SecurityContext ctx,
+            ExperimenterData user, Collection<String> privileges)
+            throws DSOutOfServiceException, DSAccessException {
+
+        if (!Pojos.hasID(user) || CollectionUtils.isEmpty(privileges)) {
+            return;
+        }
+
+        try {
+            Collection<String> privs = getAdminPrivileges(ctx, user);
+            privs.removeAll(privileges);
+            setAdminPrivileges(ctx, user, privs);
+        } catch (Exception e) {
+            handleException(this, e, "Cannot remove admin privileges.");
+        }
+    }
+
+    /**
+     * Get all available admin privileges
+     *
+     * @param ctx
+     *            The security context.
+     * @return See above.
+     * @throws DSOutOfServiceException
+     *             If the connection is broken, or not logged in.
+     * @throws DSAccessException
+     *             If an error occurred while trying to retrieve data from OMERO
+     *             service.
+     */
+    public Collection<String> getAvailableAdminPrivileges(SecurityContext ctx)
+            throws DSOutOfServiceException, DSAccessException {
+        if (adminPrivileges == null) {
+            try {
+                adminPrivileges = Collections.unmodifiableList(Utils
+                        .fromEnum(gateway.getTypesService(ctx).allEnumerations(
+                                "AdminPrivilege")));
+            } catch (Exception e) {
+                handleException(this, e, "Cannot get admin privileges.");
+            }
+        }
+        return adminPrivileges;
+    }
+
+    /**
+     * Checks if the currently logged in user has full admin privileges
+     *
+     * @param ctx
+     *            The security context.
+     * @return See above.
+     * @throws DSOutOfServiceException
+     *             If the connection is broken, or not logged in.
+     * @throws DSAccessException
+     *             If an error occurred while trying to retrieve data from OMERO
+     *             service.
+     */
+    public boolean isFullAdmin(SecurityContext ctx)
+            throws DSOutOfServiceException, DSAccessException {
+        return isFullAdmin(ctx, gateway.getLoggedInUser());
+    }
+
+    /**
+     * Checks if a user has full admin privileges
+     *
+     * @param ctx
+     *            The security context.
+     * @param user
+     *            The user.
+     * @return See above.
+     * @throws DSOutOfServiceException
+     *             If the connection is broken, or not logged in.
+     * @throws DSAccessException
+     *             If an error occurred while trying to retrieve data from OMERO
+     *             service.
+     */
+    public boolean isFullAdmin(SecurityContext ctx, ExperimenterData user)
+            throws DSOutOfServiceException, DSAccessException {
+        if (!Pojos.hasID(user))
+            return false;
+        try {
+            return getAdminPrivileges(ctx, user).size() == getAvailableAdminPrivileges(
+                    ctx).size();
+        } catch (Exception e) {
+            handleException(this, e, "Cannot get admin privileges.");
+        }
+        return false;
+    }
+
+    /**
      * Creates the permissions corresponding to the specified level.
      *
      * @param level
      *            The level to handle.
-     * @return The {@link Permissions}
+     * @return The {@link Permissions}.
      */
     private Permissions createPermissions(int level) {
         String perms = "rw----"; // private group
@@ -281,5 +563,4 @@ public class AdminFacility extends Facility {
         }
         return null;
     }
-
 }

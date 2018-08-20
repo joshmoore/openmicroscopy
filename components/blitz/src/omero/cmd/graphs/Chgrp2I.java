@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2016 University of Dundee & Open Microscopy Environment.
+ * Copyright (C) 2014-2017 University of Dundee & Open Microscopy Environment.
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -21,6 +21,7 @@ package omero.cmd.graphs;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,7 @@ import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationContext;
 
 import com.google.common.base.Function;
 import com.google.common.collect.ImmutableMap;
@@ -37,15 +39,18 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.SetMultimap;
 
 import ome.model.IObject;
+import ome.model.enums.AdminPrivilege;
 import ome.model.internal.Permissions;
 import ome.model.meta.ExperimenterGroup;
 import ome.security.ACLVoter;
-import ome.security.SystemTypes;
+import ome.security.basic.LightAdminPrivileges;
 import ome.services.delete.Deletion;
 import ome.services.graphs.GraphException;
 import ome.services.graphs.GraphPathBean;
 import ome.services.graphs.GraphPolicy;
 import ome.services.graphs.GraphTraversal;
+import ome.services.graphs.GroupPredicate;
+import ome.services.util.ReadOnlyStatus;
 import ome.system.EventContext;
 import ome.system.Login;
 import ome.system.Roles;
@@ -58,11 +63,11 @@ import omero.cmd.IRequest;
 import omero.cmd.Response;
 
 /**
- * Request to move model objects to a different experiment group, replacing version 5.0's {@code ChgrpI}.
+ * Request to move model objects to a different experiment group.
  * @author m.t.b.carroll@dundee.ac.uk
  * @since 5.1.0
  */
-public class Chgrp2I extends Chgrp2 implements IRequest, WrappableRequest<Chgrp2> {
+public class Chgrp2I extends Chgrp2 implements IRequest, ReadOnlyStatus.IsAware, WrappableRequest<Chgrp2> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Chgrp2I.class);
 
@@ -71,12 +76,14 @@ public class Chgrp2I extends Chgrp2 implements IRequest, WrappableRequest<Chgrp2
     private static final Set<GraphPolicy.Ability> REQUIRED_ABILITIES = ImmutableSet.of(GraphPolicy.Ability.OWN);
 
     private final ACLVoter aclVoter;
-    private final SystemTypes systemTypes;
+    private final Roles securityRoles;
     private final GraphPathBean graphPathBean;
+    private final LightAdminPrivileges adminPrivileges;
     private final Deletion deletionInstance;
     private final Set<Class<? extends IObject>> targetClasses;
     private GraphPolicy graphPolicy;  /* not final because of adjustGraphPolicy */
     private final SetMultimap<String, String> unnullable;
+    private final ApplicationContext applicationContext;
 
     private List<Function<GraphPolicy, GraphPolicy>> graphPolicyAdjusters = new ArrayList<Function<GraphPolicy, GraphPolicy>>();
     private Helper helper;
@@ -94,23 +101,26 @@ public class Chgrp2I extends Chgrp2 implements IRequest, WrappableRequest<Chgrp2
      * Construct a new <q>chgrp</q> request; called from {@link GraphRequestFactory#getRequest(Class)}.
      * @param aclVoter ACL voter for permissions checking
      * @param securityRoles the security roles
-     * @param systemTypes for identifying the system types
      * @param graphPathBean the graph path bean to use
+     * @param adminPrivileges the light administrator privileges helper
      * @param deletionInstance a deletion instance for deleting files
      * @param targetClasses legal target object classes for chgrp
      * @param graphPolicy the graph policy to apply for chgrp
      * @param unnullable properties that, while nullable, may not be nulled by a graph traversal operation
+     * @param applicationContext the OMERO application context from Spring
      */
-    public Chgrp2I(ACLVoter aclVoter, Roles securityRoles, SystemTypes systemTypes, GraphPathBean graphPathBean,
+    public Chgrp2I(ACLVoter aclVoter, Roles securityRoles, GraphPathBean graphPathBean, LightAdminPrivileges adminPrivileges,
             Deletion deletionInstance, Set<Class<? extends IObject>> targetClasses, GraphPolicy graphPolicy,
-            SetMultimap<String, String> unnullable) {
+            SetMultimap<String, String> unnullable, ApplicationContext applicationContext) {
         this.aclVoter = aclVoter;
-        this.systemTypes = systemTypes;
+        this.securityRoles = securityRoles;
         this.graphPathBean = graphPathBean;
+        this.adminPrivileges = adminPrivileges;
         this.deletionInstance = deletionInstance;
         this.targetClasses = targetClasses;
         this.graphPolicy = graphPolicy;
         this.unnullable = unnullable;
+        this.applicationContext = applicationContext;
     }
 
     @Override
@@ -135,7 +145,8 @@ public class Chgrp2I extends Chgrp2 implements IRequest, WrappableRequest<Chgrp2
 
         /* check that the user is a member of the destination group */
         final EventContext eventContext = helper.getEventContext();
-        if (!(eventContext.isCurrentUserAdmin() || eventContext.getMemberOfGroupsList().contains(groupId))) {
+        final boolean isChgrpPrivilege = graphHelper.checkIsAdministrator(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_CHGRP));
+        if (!(isChgrpPrivilege || eventContext.getMemberOfGroupsList().contains(groupId))) {
             final Exception e = new IllegalArgumentException("not a member of the chgrp destination group");
             throw helper.cancel(new ERR(), e, "not-in-group");
         }
@@ -148,8 +159,21 @@ public class Chgrp2I extends Chgrp2 implements IRequest, WrappableRequest<Chgrp2
             graphPolicy.setCondition("to_private");
         }
 
-        graphTraversal = graphHelper.prepareGraphTraversal(childOptions, REQUIRED_ABILITIES, graphPolicy, graphPolicyAdjusters,
-                aclVoter, systemTypes, graphPathBean, unnullable, new InternalProcessor(), dryRun);
+        final Set<GraphPolicy.Ability> requiredAbilities;
+        if (isChgrpPrivilege) {
+            requiredAbilities = Collections.<GraphPolicy.Ability>emptySet();
+        } else {
+            requiredAbilities = REQUIRED_ABILITIES;
+        }
+
+        graphPolicy.registerPredicate(new GroupPredicate(securityRoles));
+
+        graphTraversal = graphHelper.prepareGraphTraversal(childOptions, requiredAbilities, graphPolicy, graphPolicyAdjusters,
+                aclVoter, graphPathBean, unnullable, new InternalProcessor(requiredAbilities), dryRun);
+
+        if (isChgrpPrivilege) {
+            graphTraversal.setOwnsAll();
+        }
 
         graphPolicyAdjusters = null;
     }
@@ -163,7 +187,7 @@ public class Chgrp2I extends Chgrp2 implements IRequest, WrappableRequest<Chgrp2
                 final SetMultimap<String, Long> targetMultimap = graphHelper.getTargetMultimap(targetClasses, targetObjects);
                 targetObjectCount += targetMultimap.size();
                 final Entry<SetMultimap<String, Long>, SetMultimap<String, Long>> plan =
-                        graphTraversal.planOperation(helper.getSession(), targetMultimap, true, true);
+                        graphTraversal.planOperation(targetMultimap, true, true);
                 return Maps.immutableEntry(plan.getKey(), GraphUtil.arrangeDeletionTargets(helper.getSession(), plan.getValue()));
             case 1:
                 graphTraversal.assertNoPolicyViolations();
@@ -267,6 +291,11 @@ public class Chgrp2I extends Chgrp2 implements IRequest, WrappableRequest<Chgrp2
         return ((Chgrp2Response) response).includedObjects;
     }
 
+    @Override
+    public boolean isReadOnly(ReadOnlyStatus readOnly) {
+        return dryRun;
+    }
+
     /**
      * A <q>chgrp</q> processor that updates model objects' group.
      * @author m.t.b.carroll@dundee.ac.uk
@@ -278,8 +307,17 @@ public class Chgrp2I extends Chgrp2 implements IRequest, WrappableRequest<Chgrp2
 
         private final ExperimenterGroup group = new ExperimenterGroup(groupId, false);
 
-        public InternalProcessor() {
+        private final Set<GraphPolicy.Ability> requiredAbilities;
+
+        public InternalProcessor(Set<GraphPolicy.Ability> requiredAbilities) {
             super(helper.getSession());
+            this.requiredAbilities = requiredAbilities;
+        }
+
+        @Override
+        public void deleteInstances(String className, Collection<Long> ids) throws GraphException {
+            super.deleteInstances(className, ids);
+            graphHelper.publishEventLog(applicationContext, "DELETE", className, ids);
         }
 
         @Override
@@ -287,6 +325,7 @@ public class Chgrp2I extends Chgrp2 implements IRequest, WrappableRequest<Chgrp2
             final String update = "UPDATE " + className + " SET details.group = :group WHERE id IN (:ids)";
             final int count =
                     session.createQuery(update).setParameter("group", group).setParameterList("ids", ids).executeUpdate();
+            graphHelper.publishEventLog(applicationContext, "UPDATE", className, ids);
             if (count != ids.size()) {
                 LOGGER.warn("not all the objects of type " + className + " could be processed");
             }
@@ -294,7 +333,7 @@ public class Chgrp2I extends Chgrp2 implements IRequest, WrappableRequest<Chgrp2
 
         @Override
         public Set<GraphPolicy.Ability> getRequiredPermissions() {
-            return REQUIRED_ABILITIES;
+            return requiredAbilities;
         }
     }
 }

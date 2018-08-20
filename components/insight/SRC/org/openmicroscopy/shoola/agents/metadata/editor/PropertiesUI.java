@@ -123,10 +123,10 @@ public class PropertiesUI
     private static final String CREATIONDATE_TEXT = "Creation Date: ";
     
     /** Text indicating to edit the description.*/
-    private static final String EDIT_DESC_TEXT = "Edit the description.";
+    private static final String EDIT_DESC_TEXT = "Edit the description";
     
     /**Text indicating to edit the channels.*/
-    private static final String EDIT_CHANNEL_TEXT = "Edit the channels.";
+    private static final String EDIT_CHANNEL_TEXT = "Edit channel names";
     
     /** The default height of the description.*/
     private static final int HEIGHT = 120;
@@ -934,15 +934,15 @@ public class PropertiesUI
         	try {
         		data = ((ImageData) refObject).getDefaultPixels();
     		} catch (Exception e) {}
-        } else if (refObject instanceof WellSampleData) {
+        }
+        else if (refObject instanceof WellData) {
+            add(Box.createVerticalStrut(5));
+            add(layoutWellContent((WellData) refObject));
+        }
+        else if (refObject instanceof WellSampleData) {
         	img = ((WellSampleData) refObject).getImage();
         	if (img != null && img.getId() > 0)
         		data = img.getDefaultPixels();
-        	Object parent = model.getParentRootObject();
-        	if (parent instanceof WellData) {
-        		add(Box.createVerticalStrut(5));
-            	add(layoutWellContent((WellData) parent));
-        	}
         } else if (refObject instanceof PlateData) {
         	add(Box.createVerticalStrut(5));
         	add(layoutPlateContent((PlateData) refObject));

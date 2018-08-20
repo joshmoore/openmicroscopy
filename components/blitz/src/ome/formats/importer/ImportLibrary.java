@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2014 University of Dundee & Open Microscopy Environment.
+ * Copyright (C) 2005-2018 University of Dundee & Open Microscopy Environment.
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -281,7 +281,6 @@ public class ImportLibrary implements IObservable
                         throw new RuntimeException("Failed to load target", e);
                     }
                 }
-
                 if (config.checksumAlgorithm.get() != null) {
                     ic.setChecksumAlgorithm(config.checksumAlgorithm.get());
                 }
@@ -496,6 +495,13 @@ public class ImportLibrary implements IObservable
                 container.getUsedFiles().length));
                 return Collections.emptyList();
             }
+        }
+        final IObject target = container.getTarget();
+        if (target != null && !target.getDetails().getPermissions().canLink()) {
+            /* stop this import before file upload commences */
+            final String message = "Cannot link to target";
+            log.error(message);
+            throw new IllegalArgumentException(message);
         }
         final ImportProcessPrx proc = createImport(container);
         final String[] srcFiles = container.getUsedFiles();

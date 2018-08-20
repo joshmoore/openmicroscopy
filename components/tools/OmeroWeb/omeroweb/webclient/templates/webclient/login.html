@@ -70,8 +70,6 @@
 <div id="login">
     {% block login %}
     <form class="standard_form inlined" action="{% url 'weblogin' %}{% if url %}?{{url}}{% endif %}" method="post">{% csrf_token %}
-        
-			
             {% if error %}
 				<span class="error">{% trans "Error:" %} {{ error }}</span>
 			{% endif %}
@@ -83,14 +81,6 @@
 					{% endcomment %}
 					
 			  		{{ form.server }}
-						
-				   <div id="ssl">
-					   <!--Padlock Image -->
-					   {{ form.ssl.help_text|safe }}{% if form.ssl.field.required %}*{% endif %}
-					   <!--Padlock Checkbox -->
-					   {{ form.ssl }}
-					   {{ form.ssl.errors }}
-				   </div>
 			   
 			   <!-- Form Error -->
 				{% if form.server.errors %}
@@ -99,9 +89,7 @@
 	                 {% endfor %}
 				{% endif %}
 		   </div>
-		   
-		   
-            
+
 			<div>
 				{% trans form.username.label_tag %}
 				<!--{% if form.username.field.required %}*{% endif %} -->
@@ -128,19 +116,28 @@
 
         	<input type="submit" value="Login" />
 
-            <div><p><a href="{% url 'waforgottenpassword' %}">Forgot your password?</a></p></div>
+            <div>
+                <p><a href="{% url 'waforgottenpassword' %}">Forgot your password?</a></p>
+            </div>
+
+            {% if public_enabled %}
+                <hr class="login-divider"/>
+                <div class="login-link">
+                    <a class="login-link-text" href="{{ public_login_redirect }}">Log in as public user</a>
+                </div>
+            {% endif %}
+
     </form>
+
     {% endblock %}
 </div>
 
 <div id="login-footer">
-	
-	
 	<p>
 		OMERO.web {{ version }}.<br/>
 		&copy; 2007-{{ build_year }} University of Dundee &amp; Open Microscopy Environment<br/>
 		OMERO is distributed under the terms of the GNU GPL.
-		For more information, visit <a href="http://www.openmicroscopy.org">openmicroscopy.org</a><br/>
+		For more information, visit <a href="https://www.openmicroscopy.org">openmicroscopy.org</a><br/>
 
         <img src="{% static 'webgateway/img/OME_logo_grey_110.png' %}"/>
     </p>

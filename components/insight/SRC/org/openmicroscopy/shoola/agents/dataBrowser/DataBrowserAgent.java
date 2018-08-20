@@ -1,6 +1,6 @@
 /*
  *------------------------------------------------------------------------------
- *  Copyright (C) 2006-2014 University of Dundee. All rights reserved.
+ *  Copyright (C) 2006-2017 University of Dundee. All rights reserved.
  *
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -41,10 +41,13 @@ import org.openmicroscopy.shoola.env.data.AdminService;
 import org.openmicroscopy.shoola.env.data.events.ReconnectedEvent;
 import org.openmicroscopy.shoola.env.data.events.UserGroupSwitched;
 import org.openmicroscopy.shoola.env.data.util.AgentSaveInfo;
+
 import omero.gateway.SecurityContext;
+
 import org.openmicroscopy.shoola.env.event.AgentEvent;
 import org.openmicroscopy.shoola.env.event.AgentEventListener;
 import org.openmicroscopy.shoola.env.event.EventBus;
+
 import omero.gateway.model.ExperimenterData;
 import omero.gateway.model.GroupData;
 
@@ -143,6 +146,58 @@ public class DataBrowserAgent
 	}
 	
 	/**
+     * Returns <code>true</code> if the currently logged in user
+     * can edit users, <code>false</code> otherwise.
+     * 
+     * @return See above.
+     */
+    public static boolean isEditUser()
+    {
+        Boolean b = (Boolean) registry.lookup(LookupNames.PRIV_EDIT_USER);
+        if (b == null) return false;
+        return b.booleanValue();
+    }
+    
+	/**
+     * Returns <code>true</code> if the currently logged in user
+     * can edit groups, <code>false</code> otherwise.
+     * 
+     * @return See above.
+     */
+    public static boolean isEditGroup()
+    {
+        Boolean b = (Boolean) registry.lookup(LookupNames.PRIV_EDIT_GROUP);
+        if (b == null) return false;
+        return b.booleanValue();
+    }
+    
+    /**
+     * Returns <code>true</code> if the currently logged in user
+     * can add users to groups, <code>false</code> otherwise.
+     * 
+     * @return See above.
+     */
+    public static boolean isAddToGroup()
+    {
+        Boolean b = (Boolean) registry.lookup(LookupNames.PRIV_GROUP_ADD);
+        if (b == null) return false;
+        return b.booleanValue();
+    }
+    
+    /**
+     * Returns <code>true</code> if the currently logged in user
+     * can move object to/from groups, <code>false</code> otherwise.
+     * 
+     * @return See above.
+     */
+    public static boolean isMoveGroup()
+    {
+        Boolean b = (Boolean) registry.lookup(LookupNames.PRIV_MOVE_GROUP);
+        if (b == null) return false;
+        return b.booleanValue();
+    }
+	
+	/**
 	 * Returns the collection of groups the current user is the leader of.
 	 * 
 	 * @return See above.
@@ -213,7 +268,19 @@ public class DataBrowserAgent
 		}
 		return null;
 	}
-	
+
+    /**
+     * Returns <code>true</code> data objects can be created,
+     * <code>false</code> otherwise. This will be <code>false</code> if the
+     * server is for example read-only.
+     *
+     * @return See above.
+     */
+    public static boolean canCreate() {
+        Boolean b = (Boolean) registry.lookup(LookupNames.CAN_CREATE);
+        return b.booleanValue();
+    }
+
 	/**
      * Handles the {@link RndSettingsCopied} event.
      * 

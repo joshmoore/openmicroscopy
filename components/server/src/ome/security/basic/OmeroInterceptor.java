@@ -1,7 +1,5 @@
 /*
- *   $Id$
- *
- *   Copyright 2006 University of Dundee. All rights reserved.
+ *   Copyright 2006-2017 University of Dundee. All rights reserved.
  *   Use is subject to license terms supplied in LICENSE.txt
  */
 
@@ -13,9 +11,12 @@ import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.ObjectUtils;
 import org.hibernate.CallbackException;
 import org.hibernate.EmptyInterceptor;
 import org.hibernate.EntityMode;
@@ -26,7 +27,10 @@ import org.hibernate.engine.CollectionEntry;
 import org.hibernate.engine.PersistenceContext;
 import org.hibernate.type.ComponentType;
 import org.hibernate.type.Type;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.Assert;
+
+import com.google.common.base.Splitter;
 
 import ome.conditions.ApiUsageException;
 import ome.conditions.GroupSecurityViolation;
@@ -40,9 +44,11 @@ import ome.model.IAnnotationLink;
 import ome.model.IMutable;
 import ome.model.IObject;
 import ome.model.core.Image;
+import ome.model.core.OriginalFile;
 import ome.model.core.Pixels;
 import ome.model.display.RenderingDef;
 import ome.model.display.Thumbnail;
+import ome.model.enums.AdminPrivilege;
 import ome.model.internal.Details;
 import ome.model.internal.NamedValue;
 import ome.model.internal.Permissions;
@@ -51,6 +57,7 @@ import ome.model.internal.Permissions.Role;
 import ome.model.meta.Experimenter;
 import ome.model.meta.ExperimenterGroup;
 import ome.model.meta.ExternalInfo;
+import ome.model.meta.GroupExperimenterMap;
 import ome.model.roi.Roi;
 import ome.security.SecuritySystem;
 import ome.security.SystemTypes;
@@ -59,6 +66,8 @@ import ome.system.EventContext;
 import ome.system.Roles;
 import ome.tools.hibernate.ExtendedMetadata;
 import ome.tools.hibernate.HibernateUtils;
+import ome.tools.lsid.LsidUtils;
+import ome.util.SqlAction;
 
 /**
  * implements {@link org.hibernate.Interceptor} for controlling various aspects
@@ -68,7 +77,6 @@ import ome.tools.hibernate.HibernateUtils;
  * Current responsibilities include the proper (re-)setting of {@link Details}
  *
  * @author Josh Moore, josh.moore at gmx.de
- * @version $Revision$, $Date$
  * @see EmptyInterceptor
  * @see Interceptor
  * @since 3.0-M3
@@ -80,6 +88,11 @@ public class OmeroInterceptor implements Interceptor {
     static volatile int count = 1;
 
     private static Logger log = LoggerFactory.getLogger(OmeroInterceptor.class);
+
+    /* array indices for OriginalFile "repo", "path" and "name" properties */
+    private static final String IDX_FILE_REPO = LsidUtils.parseField(OriginalFile.REPO);
+    private static final String IDX_FILE_PATH = LsidUtils.parseField(OriginalFile.PATH);
+    private static final String IDX_FILE_NAME = LsidUtils.parseField(OriginalFile.NAME);
 
     private final Interceptor EMPTY = EmptyInterceptor.INSTANCE;
 
@@ -95,8 +108,16 @@ public class OmeroInterceptor implements Interceptor {
 
     private final Roles roles;
 
+    private final LightAdminPrivileges adminPrivileges;
+
+    private final SqlAction sqlAction;
+
+    /* thread-safe */
+    private final Set<String> managedRepoUuids, scriptRepoUuids;
+
     public OmeroInterceptor(Roles roles, SystemTypes sysTypes, ExtendedMetadata em,
-            CurrentDetails cd, TokenHolder tokenHolder, SessionStats stats) {
+            CurrentDetails cd, TokenHolder tokenHolder, SessionStats stats,
+            LightAdminPrivileges adminPrivileges, SqlAction sqlAction, Set<String> managedRepoUuids, Set<String> scriptRepoUuids) {
         Assert.notNull(tokenHolder);
         Assert.notNull(sysTypes);
         // Assert.notNull(em); Permitting null for testing
@@ -109,6 +130,10 @@ public class OmeroInterceptor implements Interceptor {
         this.stats = stats;
         this.roles = roles;
         this.em = em;
+        this.adminPrivileges = adminPrivileges;
+        this.sqlAction = sqlAction;
+        this.managedRepoUuids = managedRepoUuids;
+        this.scriptRepoUuids = scriptRepoUuids;
     }
 
     /**
@@ -143,7 +168,7 @@ public class OmeroInterceptor implements Interceptor {
     }
 
     /**
-     * callsback to {@link BasicSecuritySystem#newTransientDetails(IObject)} for
+     * calls back to {@link BasicSecuritySystem#newTransientDetails(IObject)} for
      * properly setting {@link IObject#getDetails() Details}
      */
     public boolean onSave(Object entity, Serializable id, Object[] state,
@@ -165,6 +190,22 @@ public class OmeroInterceptor implements Interceptor {
     }
 
     /**
+     * Do not allow <q>.</q> and <q>..</q> components in file paths.
+     * @param filepath a file path
+     * @return if the file path contains any prohibited components
+     */
+    private static boolean isProblemFilepath(String filepath) {
+        for (final String component : Splitter.on('/').split(filepath)) {
+            switch (component) {
+            case ".":
+            case "..":
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * calls back to
      * {@link BasicSecuritySystem#checkManagedDetails(IObject, Details)} for
      * properly setting {@link IObject#getDetails() Details}.
@@ -181,9 +222,30 @@ public class OmeroInterceptor implements Interceptor {
 
             Details newDetails = evaluateLinkages(iobj);
 
+            if (previousState != null && iobj instanceof OriginalFile && !currentUser.current().isCurrentUserAdmin()) {
+                final int pathIndex = HibernateUtils.index(IDX_FILE_PATH, propertyNames);
+                final int nameIndex = HibernateUtils.index(IDX_FILE_NAME, propertyNames);
+                final String currentPath = (String) currentState[pathIndex];
+                final String currentName = (String) currentState[nameIndex];
+                if (currentPath != null && currentName != null &&
+                        !(currentPath.equals(previousState[pathIndex]) && currentName.equals(previousState[nameIndex])) &&
+                        isProblemFilepath(currentPath + currentName)) {
+                    throw new SecurityViolation("only administrators may introduce non-canonical OriginalFile path or name");
+                }
+            }
+
             altered |= resetDetails(iobj, currentState, previousState, idx,
                     newDetails);
 
+        }
+        /* Cannot yet change OriginalFile.repo except via SQL.
+         * TODO: Need to first work through implications before permitting this. */
+        if (entity instanceof OriginalFile) {
+            final int repoIndex = HibernateUtils.index(IDX_FILE_REPO, propertyNames);
+            if (previousState != null && !ObjectUtils.equals(previousState[repoIndex], currentState[repoIndex])) {
+                log.warn("reverting change to OriginalFile.repo");
+                currentState[repoIndex] = previousState[repoIndex];
+            }
         }
         return altered;
     }
@@ -291,7 +353,18 @@ public class OmeroInterceptor implements Interceptor {
 
     public void postFlush(Iterator entities) throws CallbackException {
         debug("Intercepted postFlush.");
-        EMPTY.postFlush(entities);
+
+        if (TransactionSynchronizationManager.isCurrentTransactionReadOnly()) {
+            debug("detected read-only transaction");
+        } else if (sqlAction != null) {
+            /* read-write transactions may trigger checks */
+            debug("updating current light administrator privileges");
+            final Set<AdminPrivilege> privileges = currentUser.current().getCurrentAdminPrivileges();
+            sqlAction.deleteCurrentAdminPrivileges();
+            if (CollectionUtils.isNotEmpty(privileges)) {
+                sqlAction.insertCurrentAdminPrivileges(privileges);
+            }
+        }
     }
 
     // ~ Serialization
@@ -620,13 +693,49 @@ public class OmeroInterceptor implements Interceptor {
         // Allow values to be passed in.
         newDetails.copyWhereUnset(null, currentUser.createDetails());
 
+        // Light administrator privileges
+        final boolean isPrivilegedCreator;
+        final boolean sysType = sysTypes.isSystemType(obj.getClass());
+        final Set<AdminPrivilege> privileges = bec.getCurrentAdminPrivileges();
+
+        if (!bec.isCurrentUserAdmin()) {
+            isPrivilegedCreator = false;
+        } else if (sysType) {
+            isPrivilegedCreator = true;
+        } else if (obj instanceof Experimenter) {
+            isPrivilegedCreator = privileges.contains(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_MODIFY_USER));
+        } else if (obj instanceof ExperimenterGroup) {
+            isPrivilegedCreator = privileges.contains(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_MODIFY_GROUP));
+        } else if (obj instanceof GroupExperimenterMap) {
+            isPrivilegedCreator = privileges.contains(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_MODIFY_GROUP_MEMBERSHIP));
+        } else if (obj instanceof OriginalFile) {
+            final String repo = ((OriginalFile) obj).getRepo();
+            if (repo != null) {
+                if (managedRepoUuids.contains(repo)) {
+                    isPrivilegedCreator =
+                            privileges.contains(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_WRITE_MANAGED_REPO));
+                } else if (scriptRepoUuids.contains(repo)) {
+                    isPrivilegedCreator =
+                            privileges.contains(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_WRITE_SCRIPT_REPO));
+                } else {
+                    /* other repository */
+                    isPrivilegedCreator = privileges.contains(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_WRITE_FILE));
+                }
+            } else {
+                /* not in repository */
+                isPrivilegedCreator = privileges.contains(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_WRITE_FILE));
+            }
+        } else {
+            isPrivilegedCreator = privileges.contains(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_WRITE_OWNED));
+        }
+
         // OWNER
         // users *aren't* allowed to set the owner of an item.
         if (source.getOwner() != null
                 && !newDetails.getOwner().getId().equals(
                         source.getOwner().getId())) {
-            // but this is root
-            if (bec.isCurrentUserAdmin()) {
+            if (isPrivilegedCreator) {
+                // but this is an administrator
                 newDetails.setOwner(source.getOwner());
             } else {
                 throw new SecurityViolation(String.format(
@@ -645,7 +754,6 @@ public class OmeroInterceptor implements Interceptor {
         if (source.getGroup() != null && source.getGroup().getId() != null) {
 
             final long sourceGroupId = source.getGroup().getId();
-            final boolean isAdmin = bec.isCurrentUserAdmin();
 
             // ticket:1434
             if (bec.getCurrentGroupId().equals(sourceGroupId)) {
@@ -653,7 +761,7 @@ public class OmeroInterceptor implements Interceptor {
             }
 
             // ticket:1794
-            else if (bec.isCurrentUserAdmin() &&
+            else if (isPrivilegedCreator &&
                     Long.valueOf(roles.getUserGroupId())
                     .equals(source.getGroup().getId())) {
                 newDetails.setGroup(source.getGroup());
@@ -661,7 +769,7 @@ public class OmeroInterceptor implements Interceptor {
 
             // ticket:3529
             else if ((bec.getCurrentGroupId() < 0) &&
-                    (isAdmin || bec.getMemberOfGroupsList()
+                    (isPrivilegedCreator || bec.getMemberOfGroupsList()
                         .contains(sourceGroupId))) {
                 newDetails.setGroup(source.getGroup());
             }
@@ -672,8 +780,18 @@ public class OmeroInterceptor implements Interceptor {
                         "You are not authorized to set the ExperimenterGroup"
                                 + " for %s to %s", obj, source.getGroup()));
             }
+        } else if (isPrivilegedCreator || bec.getMemberOfGroupsList().contains(newDetails.getGroup().getId())) {
+            // admin or group member so okay
+        } else if (bec.getCurrentGroupPermissions().isGranted(Role.WORLD,
+                obj instanceof IAnnotationLink ? Right.ANNOTATE : Right.WRITE)) {
+            // group allows non-members to write
+        } else if ("ome.model.display".equals(obj.getClass().getPackage().getName()) &&
+                bec.getCurrentGroupPermissions().isGranted(Role.WORLD, Right.READ)) {
+            // group allows non-members to read so allow creation of "display" objects
+        } else {
+            /* TODO: may need to loosen further for rwrwra groups */
+            throw new SecurityViolation(String.format("You are not authorized to create %s", obj));
         }
-
 
         // PERMISSIONS: ticket:1434 and #1731 and #1779 (systypes)
         // before 4.2, users were allowed to manually set the permissions
@@ -687,16 +805,13 @@ public class OmeroInterceptor implements Interceptor {
             Permissions groupPerms = currentUser.getCurrentEventContext()
                 .getCurrentGroupPermissions();
 
-            boolean isInSysGrp = sysTypes.isInSystemGroup(newDetails);
             boolean isInUsrGrp = sysTypes.isInUserGroup(newDetails);
             if (groupPerms.identical(source.getPermissions())) {
                 // ok. weird that they're set. probably an instance
                 // of a managed object being passed in as with
                 // ticket:2055
             } else if (!sysTypes.isSystemType(obj.getClass())) {
-                if (isInSysGrp) {
-                    // allow admin to do what they want. is this right?
-                } else if (isInUsrGrp) {
+                if (isInUsrGrp) {
                     // similarly, allow whatever in user group for the moment.
                 } else {
                     throw new PermissionMismatchGroupSecurityViolation(
@@ -909,6 +1024,8 @@ public class OmeroInterceptor implements Interceptor {
             IObject obj, Details previousDetails, Details currentDetails,
             Details newDetails, final BasicEventContext bec) {
 
+        final Set<AdminPrivilege> privileges = bec.getCurrentAdminPrivileges();
+
         if (!HibernateUtils.idEqual(previousDetails.getOwner(), currentDetails
                 .getOwner())) {
 
@@ -922,7 +1039,8 @@ public class OmeroInterceptor implements Interceptor {
 
             // if the current user is an admin or if the entity has been
             // marked privileged, then use the current owner.
-            else if (bec.isCurrentUserAdmin() || privileged) {
+            else if (bec.isCurrentUserAdmin() && privileges.contains(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_CHOWN))
+                    || privileged) {
                 // ok
             }
 
@@ -959,6 +1077,8 @@ public class OmeroInterceptor implements Interceptor {
             }
         }
 
+        final Set<AdminPrivilege> privileges = bec.getCurrentAdminPrivileges();
+
         // previous and current have different ids. either change it and return
         // true if permitted, or throw an exception.
         if (!HibernateUtils.idEqual(previousDetails.getGroup(), currentDetails
@@ -980,7 +1100,8 @@ public class OmeroInterceptor implements Interceptor {
                          roles.getUserGroupId()) &&
                        bec.getMemberOfGroupsList().contains(
                          currentDetails.getGroup().getId())) // ticket:1794
-                    || bec.isCurrentUserAdmin() || privileged) {
+                    || bec.isCurrentUserAdmin() && privileges.contains(adminPrivileges.getPrivilege(AdminPrivilege.VALUE_CHGRP))
+                    || privileged) {
                 newDetails.setGroup(currentDetails.getGroup());
                 return true;
             }
@@ -1032,7 +1153,7 @@ public class OmeroInterceptor implements Interceptor {
             }
             // otherwise throw an exception, because as seen in ticket:346,
             // it can lead to confusion otherwise. See:
-            // http://trac.openmicroscopy.org.uk/ome/ticket/346
+            // https://trac.openmicroscopy.org/ome/ticket/346
             else {
 
                 // no one change them.
@@ -1066,7 +1187,7 @@ public class OmeroInterceptor implements Interceptor {
             }
             // otherwise throw an exception, because as seen in ticket:346,
             // it can lead to confusion otherwise. See:
-            // http://trac.openmicroscopy.org.uk/ome/ticket/346
+            // https://trac.openmicroscopy.org/ome/ticket/346
             else {
 
                 // no one change them, but this is less likely intentional

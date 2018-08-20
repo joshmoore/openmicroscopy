@@ -21,8 +21,10 @@ import omero.api.AMD_PyramidService_getTileSize;
 import omero.api.AMD_PyramidService_requiresPixelsPyramid;
 import omero.api.AMD_PyramidService_setResolutionLevel;
 import omero.api.AMD_RawPixelsStore_calculateMessageDigest;
+import omero.api.AMD_RawPixelsStore_findMinMax;
 import omero.api.AMD_RawPixelsStore_getByteWidth;
 import omero.api.AMD_RawPixelsStore_getCol;
+import omero.api.AMD_RawPixelsStore_getHistogram;
 import omero.api.AMD_RawPixelsStore_getHypercube;
 import omero.api.AMD_RawPixelsStore_getPixelsId;
 import omero.api.AMD_RawPixelsStore_getPixelsPath;
@@ -58,6 +60,7 @@ import omero.api.AMD_StatefulServiceInterface_close;
 import omero.api.AMD_StatefulServiceInterface_getCurrentEventContext;
 import omero.api.AMD_StatefulServiceInterface_passivate;
 import omero.api._RawPixelsStoreDisp;
+import omero.romio.PlaneDef;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -342,7 +345,17 @@ public class BfPixelsStoreI extends _RawPixelsStoreDisp {
             byte[] buf, int t, Current __current) throws ServerError {
         throw new UnsupportedOperationException("Cannot write to repository");
     }
+    
+    public void getHistogram_async(AMD_RawPixelsStore_getHistogram __cb,
+            int[] channels, int binCount, boolean globalRange, PlaneDef plane, Current __current) throws ServerError {
+        throw new UnsupportedOperationException("NYI");
+    }
 
+    public void findMinMax_async(AMD_RawPixelsStore_findMinMax __cb,
+            int[] channels, Current __current) throws ServerError {
+        throw new UnsupportedOperationException("NYI");
+    }
+    
     public void activate_async(AMD_StatefulServiceInterface_activate __cb,
             Current __current) throws ServerError {
         throw new UnsupportedOperationException("NYI");

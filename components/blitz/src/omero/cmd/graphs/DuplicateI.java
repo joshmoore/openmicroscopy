@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2016 University of Dundee & Open Microscopy Environment.
+ * Copyright (C) 2014-2017 University of Dundee & Open Microscopy Environment.
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,7 +22,6 @@ package omero.cmd.graphs;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -33,13 +32,13 @@ import java.util.Set;
 
 import org.apache.commons.beanutils.NestedNullException;
 import org.apache.commons.beanutils.PropertyUtils;
-import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.hibernate.Hibernate;
 import org.hibernate.Session;
 import org.hibernate.proxy.HibernateProxy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationContext;
 
 import com.google.common.base.Function;
 import com.google.common.base.Functions;
@@ -55,13 +54,14 @@ import com.google.common.collect.SetMultimap;
 
 import ome.model.IObject;
 import ome.security.ACLVoter;
-import ome.security.SystemTypes;
+import ome.security.basic.LightAdminPrivileges;
 import ome.services.delete.Deletion;
 import ome.services.graphs.GraphException;
 import ome.services.graphs.GraphPathBean;
 import ome.services.graphs.GraphPolicy;
 import ome.services.graphs.GraphTraversal;
 import ome.services.graphs.PermissionsPredicate;
+import ome.services.util.ReadOnlyStatus;
 import ome.system.Roles;
 import omero.cmd.Duplicate;
 import omero.cmd.DuplicateResponse;
@@ -76,7 +76,7 @@ import omero.cmd.Response;
  * @author m.t.b.carroll@dundee.ac.uk
  * @since 5.2.1
  */
-public class DuplicateI extends Duplicate implements IRequest, WrappableRequest<Duplicate> {
+public class DuplicateI extends Duplicate implements IRequest, ReadOnlyStatus.IsAware, WrappableRequest<Duplicate> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DuplicateI.class);
 
@@ -95,7 +95,6 @@ public class DuplicateI extends Duplicate implements IRequest, WrappableRequest<
     };
 
     private final ACLVoter aclVoter;
-    private final SystemTypes systemTypes;
     private final GraphPathBean graphPathBean;
     private final Set<Class<? extends IObject>> targetClasses;
     private GraphPolicy graphPolicy;  /* not final because of adjustGraphPolicy */
@@ -120,45 +119,21 @@ public class DuplicateI extends Duplicate implements IRequest, WrappableRequest<
     private final SetMultimap<IObject, IObject> blockedBy = HashMultimap.create();
 
     /**
-     * Given class names provided by the user, find the corresponding set of actual classes.
-     * @param classNames names of model object classes
-     * @return the named classes
-     */
-    private Set<Class<? extends IObject>> getClassesFromNames(Collection<String> classNames) {
-        if (CollectionUtils.isEmpty(classNames)) {
-            return Collections.emptySet();
-        }
-        final Set<Class<? extends IObject>> classes = new HashSet<Class<? extends IObject>>();
-        for (String className : classNames) {
-            final int lastDot = className.lastIndexOf('.');
-            if (lastDot > 0) {
-                className = className.substring(lastDot + 1);
-            }
-            final Class<? extends IObject> actualClass = graphPathBean.getClassForSimpleName(className);
-            if (actualClass == null) {
-                throw new IllegalArgumentException("unknown model object class named: " + className);
-            }
-            classes.add(actualClass);
-        }
-        return classes;
-    }
-
-    /**
      * Construct a new <q>duplicate</q> request; called from {@link GraphRequestFactory#getRequest(Class)}.
      * @param aclVoter ACL voter for permissions checking
      * @param securityRoles the security roles
-     * @param systemTypes for identifying the system types
      * @param graphPathBean the graph path bean to use
+     * @param adminPrivileges the light administrator privileges helper
      * @param deletionInstance a deletion instance for deleting files
      * @param targetClasses legal target object classes for duplicate
      * @param graphPolicy the graph policy to apply for duplicate
      * @param unnullable properties that, while nullable, may not be nulled by a graph traversal operation
+     * @param applicationContext the OMERO application context from Spring
      */
-    public DuplicateI(ACLVoter aclVoter, Roles securityRoles, SystemTypes systemTypes, GraphPathBean graphPathBean,
+    public DuplicateI(ACLVoter aclVoter, Roles securityRoles, GraphPathBean graphPathBean, LightAdminPrivileges adminPrivileges,
             Deletion deletionInstance, Set<Class<? extends IObject>> targetClasses, GraphPolicy graphPolicy,
-            SetMultimap<String, String> unnullable) {
+            SetMultimap<String, String> unnullable, ApplicationContext applicationContext) {
         this.aclVoter = aclVoter;
-        this.systemTypes = systemTypes;
         this.graphPathBean = graphPathBean;
         this.targetClasses = targetClasses;
         this.graphPolicy = graphPolicy;
@@ -195,9 +170,9 @@ public class DuplicateI extends Duplicate implements IRequest, WrappableRequest<
                     }});
 
         try {
-            classifier.addClass(Inclusion.DUPLICATE, getClassesFromNames(typesToDuplicate));
-            classifier.addClass(Inclusion.REFERENCE, getClassesFromNames(typesToReference));
-            classifier.addClass(Inclusion.IGNORE,    getClassesFromNames(typesToIgnore));
+            classifier.addClass(Inclusion.DUPLICATE, graphHelper.getClassesFromNames(typesToDuplicate));
+            classifier.addClass(Inclusion.REFERENCE, graphHelper.getClassesFromNames(typesToReference));
+            classifier.addClass(Inclusion.IGNORE,    graphHelper.getClassesFromNames(typesToIgnore));
         } catch (IllegalArgumentException e) {
             throw helper.cancel(new ERR(), e, "bad-class");
         }
@@ -217,7 +192,7 @@ public class DuplicateI extends Duplicate implements IRequest, WrappableRequest<
         graphPolicy.registerPredicate(new PermissionsPredicate());
 
         graphTraversal = graphHelper.prepareGraphTraversal(childOptions, REQUIRED_ABILITIES, graphPolicy, graphPolicyAdjusters,
-                aclVoter, systemTypes, graphPathBean, unnullable, new InternalProcessor(), dryRun);
+                aclVoter, graphPathBean, unnullable, new InternalProcessor(), dryRun);
 
         graphPolicyAdjusters = null;
     }
@@ -695,7 +670,7 @@ public class DuplicateI extends Duplicate implements IRequest, WrappableRequest<
                 final SetMultimap<String, Long> targetMultimap = graphHelper.getTargetMultimap(targetClasses, targetObjects);
                 targetObjectCount += targetMultimap.size();
                 final Entry<SetMultimap<String, Long>, SetMultimap<String, Long>> plan =
-                        graphTraversal.planOperation(helper.getSession(), targetMultimap, true, true);
+                        graphTraversal.planOperation(targetMultimap, true, true);
                 if (plan.getValue().isEmpty()) {
                     graphTraversal.assertNoUnlinking();
                 } else {
@@ -813,6 +788,11 @@ public class DuplicateI extends Duplicate implements IRequest, WrappableRequest<
     @Override
     public Map<String, List<Long>> getStartFrom(Response response) {
         return ((DuplicateResponse) response).duplicates;
+    }
+
+    @Override
+    public boolean isReadOnly(ReadOnlyStatus readOnly) {
+        return dryRun;
     }
 
     /**

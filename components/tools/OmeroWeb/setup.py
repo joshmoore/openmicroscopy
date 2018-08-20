@@ -10,8 +10,8 @@ import glob
 import sys
 import os
 
-sys.path.append("..")
-from test_setup import PyTest
+sys.path.append("../OmeroPy/src")
+from omero_setup import PyTest
 
 for tools in glob.glob("../../../lib/repository/setuptools*.egg"):
     if tools.find(".".join(map(str, sys.version_info[0:2]))) > 0:
@@ -44,12 +44,12 @@ setup(name="OmeroWeb",
       long_description="""\
 OmeroWeb is the container of the web clients for OMERO."
 """,
-      author="Aleksandra Tarkowska",
+      author="The Open Microscopy Team",
       author_email="",
-      url="http://trac.openmicroscopy.org.uk/ome/wiki/OmeroWeb",
-      download_url="http://trac.openmicroscopy.org.uk/ome/wiki/OmeroWeb",
+      url="https://github.com/openmicroscopy/openmicroscopy/",
+      download_url="https://github.com/openmicroscopy/openmicroscopy/",
       packages=[''],
       test_suite='test.suite',
       cmdclass={'test': PyTest},
-      tests_require=['pytest != 3.0.0, != 3.0.1, != 3.0.2'],
+      tests_require=['pytest<3'],
       )

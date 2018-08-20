@@ -16,7 +16,7 @@ arguments, sys.argv, and finally from standard-in using the
 cmd.Cmd.cmdloop method.
 
 Josh Moore, josh at glencoesoftware.com
-Copyright (c) 2007-2015, Glencoe Software, Inc.
+Copyright (c) 2007-2016, Glencoe Software, Inc.
 See LICENSE for details.
 
 """
@@ -36,6 +36,8 @@ import shlex
 import errno
 from threading import Lock
 from path import path
+from contextlib import contextmanager
+from functools import wraps
 
 from omero_ext.argparse import ArgumentError
 from omero_ext.argparse import ArgumentTypeError
@@ -50,6 +52,7 @@ from omero_ext.argparse import SUPPRESS
 from omero.util.concurrency import get_event
 
 import omero
+import warnings
 
 #
 # Static setup
@@ -402,6 +405,25 @@ ENV_HELP = """Environment variables:
                     Default: $OMERO_USERDIR/sessions
   OMERO_TMPDIR      Set the base directory containing temporary files.
                     Default: $OMERO_USERDIR/tmp
+  OMERO_PASSWORD    Set the user's password for creating new sessions.
+                    Ignored if -w or --password is used.
+"""
+
+SUDO_HELP = """
+The --sudo option is available to all
+commands accepting connection arguments.
+
+Below are a few examples showing how to use the sudo option
+
+Examples (admin or group owner only):
+
+    # Import data for user *username*
+    bin/omero import --sudo root -s servername -u username image.tiff
+    # Create a connection as another user
+    bin/omero login --sudo root -s servername -u username -g groupname
+    Password for root:
+    bin/omero login --sudo owner -s servername -u username -g groupname
+    Password for owner:
 """
 
 
@@ -429,7 +451,7 @@ class Context:
         self.isquiet = False
         # This usage will go away and default will be False
         self.isdebug = DEBUG
-        self.topics = {"debug": DEBUG_HELP, "env": ENV_HELP}
+        self.topics = {"debug": DEBUG_HELP, "env": ENV_HELP, "sudo": SUDO_HELP}
         self.parser = Parser(prog=prog, description=OMERODOC)
         self.subparsers = self.parser_init(self.parser)
 
@@ -580,23 +602,48 @@ class Context:
 #
 
 
-def admin_only(func):
+def admin_only(*fargs, **fkwargs):
     """
-    Checks that the current user is an admin or throws an exception.
+    Checks that the current user is an admin and has sufficient privileges,
+    or throws an exception. If no arguments are present or if full_admin is
+    passed and is True, then this method assumes that the user must be a
+    full admin and have all privileges. To disable this behavior, set
+    `full_admin` to False.
     """
-    def _check_admin(*args, **kwargs):
-        args = list(args)
-        self = args[0]
-        plugin_args = args[1]
-        client = self.ctx.conn(plugin_args)
-        ec = client.sf.getAdminService().getEventContext()
-        if not ec.isAdmin:
-            self.error_admin_only(fatal=True)
-        return func(*args, **kwargs)
+    def _admin_only(func):
+        @wraps(func)
+        def _check_admin(*args, **kwargs):
+            self = args[0]
+            plugin_args = args[1]
+            client = self.ctx.conn(plugin_args)
+            ec = client.sf.getAdminService().getEventContext()
+            have_privs = set(ec.adminPrivileges)
 
-    from omero.util.decorators import wraps
-    _check_admin = wraps(func)(_check_admin)
-    return _check_admin
+            if fargs:
+                need_privs = set(fargs)
+            else:
+                full_admin = fkwargs.get("full_admin", True)
+                if not full_admin:
+                    need_privs = set()
+                else:
+                    try:
+                        types = client.sf.getTypesService()
+                        privs = types.allEnumerations("AdminPrivilege")
+                        need_privs = set(omero.rtypes.unwrap(
+                            [x.getValue() for x in privs]))
+                    except Exception, e:
+                        self.ctx.err("Error: denying access: %s" % e)
+                        # If the user can't load enums assume the worst
+                        self.error_admin_only(fatal=True)
+
+            if not ec.isAdmin:
+                self.error_admin_only(fatal=True)
+            elif not need_privs <= have_privs:
+                self.error_admin_only_privs(need_privs - have_privs,
+                                            fatal=True)
+            return func(*args, **kwargs)
+        return _check_admin
+    return _admin_only
 
 
 class BaseControl(object):
@@ -802,6 +849,12 @@ class BaseControl(object):
             break
         return root_pass
 
+    def _add_wait(self, parser, default=-1):
+        parser.add_argument(
+            "--wait", type=long,
+            help="Number of seconds to wait for the processing to complete "
+            "(Indefinite < 0; No wait=0).", default=default)
+
     def get_subcommands(self):
         """Return a list of subcommands"""
         parser = Parser()
@@ -890,6 +943,96 @@ class BaseControl(object):
             self.ctx.die(code, msg)
         else:
             self.ctx.err(msg)
+
+    def error_admin_only_privs(self, restrictions,
+                               msg="SecurityViolation: Admin restrictions: ",
+                               code=111, fatal=True):
+        msg += ", ".join(sorted(restrictions))
+        self.error_admin_only(msg=msg, code=code, fatal=fatal)
+
+    def _order_and_range_ids(self, ids):
+        from itertools import groupby
+        from operator import itemgetter
+        out = ""
+        ids = sorted(ids)
+        for k, g in groupby(enumerate(ids), lambda (i, x): i-x):
+            g = map(str, map(itemgetter(1), g))
+            out += g[0]
+            if len(g) > 2:
+                out += "-" + g[-1]
+            elif len(g) == 2:
+                out += "," + g[1]
+            out += ","
+        return out.rstrip(",")
+
+
+class DiagnosticsControl(BaseControl):
+    """
+    Superclass (and SPI-interface) for any control commands that would
+    like to provide a "diagnostics" method, like bin/omero admin diagnostics
+    and bin/omero web diagnostics. The top-level diagnostics command then
+    can find each such plugin and iterate over it.
+    """
+
+    def _add_diagnostics(self, parser, sub):
+        diagnostics = parser.add(
+            sub, self.diagnostics,
+            "Run a set of checks on the current, "
+            "preferably active server")
+        diagnostics.add_argument(
+            "--no-logs", action="store_true",
+            help="Skip log parsing")
+
+    def _diagnostics_banner(self, control_name):
+
+        self.ctx.out("""
+%s
+OMERO Diagnostics (%s) %s
+%s
+        """ % ("="*80, control_name, VERSION, "="*80))
+
+    def _sz_str(self, sz):
+        for x in ["KB", "MB", "GB"]:
+            sz /= 1000
+            if sz < 1000:
+                break
+        sz = "%.1f %s" % (sz, x)
+        return sz
+
+    def _item(self, cat, msg):
+        cat = cat + ":"
+        cat = "%-12s" % cat
+        self.ctx.out(cat, False)
+        msg = "%-30s " % msg
+        self.ctx.out(msg, False)
+
+    def _exists(self, p):
+        if p.isdir():
+            if not p.exists():
+                self.ctx.out("doesn't exist")
+            else:
+                self.ctx.out("exists")
+        else:
+            if not p.exists():
+                self.ctx.out("n/a")
+            else:
+                warn_regex = ('(-! )?[\d\-/]+\s+[\d:,.]+\s+([\w.]+:\s+)?'
+                              'warn(i(ng:)?)?\s')
+                err_regex = ('(!! )?[\d\-/]+\s+[\d:,.]+\s+([\w.]+:\s+)?'
+                             'error:?\s')
+                warn = 0
+                err = 0
+                for l in p.lines():
+                    # ensure errors/warnings search is case-insensitive
+                    lcl = l.lower()
+                    if re.match(warn_regex, lcl):
+                        warn += 1
+                    elif re.match(err_regex, lcl):
+                        err += 1
+                msg = ""
+                if warn or err:
+                    msg = " errors=%-4s warnings=%-4s" % (err, warn)
+                self.ctx.out("%-12s %s" % (self._sz_str(p.size), msg))
 
 
 class CLI(cmd.Cmd, Context):
@@ -1348,7 +1491,17 @@ class CLI(cmd.Cmd, Context):
         in the parser
         """
 
-        for plugin_path in self._plugin_paths:
+        paths = set(self._plugin_paths)
+        for x in sys.path:
+            x = path(x)
+            if x.isdir():
+                x = x / "omero" / "plugins"
+                if x.exists():
+                    paths.add(x)
+            else:
+                if self.isdebug:
+                    print "Can't load %s" % x
+        for plugin_path in paths:
             self.loadpath(path(plugin_path))
 
         self.configure_plugins()
@@ -1386,6 +1539,35 @@ class CLI(cmd.Cmd, Context):
 
     # End Cli
     ###########################################################
+
+
+@contextmanager
+def cli_login(*args, **kwargs):
+    """
+    args will be appended to ["-q", "login"] and then
+    passed to onecmd
+
+    kwargs:
+      - keep_alive
+    """
+
+    keep_alive = kwargs.get("keep_alive", 300)
+    try:
+        cli = omero.cli.CLI()
+        cli.loadplugins()
+        login = ["-q", "login"]
+        login.extend(list(args))
+        cli.onecmd(login)
+        if keep_alive is not None:
+            client = cli.get_client()
+            if client is not None:
+                keep_alive = int(keep_alive)
+                client.enableKeepAlive(keep_alive)
+            else:
+                raise Exception("Failed to login")
+        yield cli
+    finally:
+        cli.close()
 
 
 def argv(args=sys.argv):
@@ -1517,7 +1699,17 @@ class GraphArg(object):
             assert '+' not in parts[0]
             parts[0] = parts[0].lstrip("/")
             graph = parts[0].split("/")
-            ids = [long(id) for id in parts[1].split(",")]
+            ids = []
+            needsForce = False
+            for id in parts[1].split(","):
+                if "-" in id:
+                    needsForce = True
+                    low, high = map(long, id.split("-"))
+                    if high < low:
+                        raise ValueError("Bad range: %s", arg)
+                    ids.extend(range(low, high+1))
+                else:
+                    ids.append(long(id))
             targetObjects[graph[0]] = ids
             cmd.targetObjects = targetObjects
             if len(graph) > 1:
@@ -1526,7 +1718,7 @@ class GraphArg(object):
                 skiphead.targetObjects = targetObjects
                 skiphead.startFrom = [graph[-1]]
                 cmd = skiphead
-            return cmd
+            return cmd, needsForce
         except:
             raise ValueError("Bad object: %s", arg)
 
@@ -1545,10 +1737,7 @@ class CmdControl(BaseControl):
 
     def _configure(self, parser):
         parser.set_defaults(func=self.main_method)
-        parser.add_argument(
-            "--wait", type=long,
-            help="Number of seconds to wait for the processing to complete "
-            "(Indefinite < 0; No wait=0).", default=-1)
+        self._add_wait(parser, default=-1)
 
     def main_method(self, args):
         client = self.ctx.conn(args)
@@ -1595,6 +1784,8 @@ class CmdControl(BaseControl):
         if err:
             self.ctx.err(err)
         else:
+            if hasattr(req, 'dryRun') and req.dryRun:
+                self.ctx.out("Dry run performed")
             self.ctx.out("ok")
 
         if detailed:
@@ -1661,16 +1852,13 @@ class GraphControl(CmdControl):
 
     def _configure(self, parser):
         parser.set_defaults(func=self.main_method)
-        parser.add_argument(
-            "--wait", type=long,
-            help="Number of seconds to wait for the processing to complete "
-            "(Indefinite < 0; No wait=0).", default=-1)
+        self._add_wait(parser, default=-1)
         parser.add_argument(
             "--include",
-            help="Modifies the given option by including a list of objects")
+            help="Modifies the given option by including a list of classes")
         parser.add_argument(
             "--exclude",
-            help="Modifies the given option by excluding a list of objects")
+            help="Modifies the given option by excluding a list of classes")
         parser.add_argument(
             "--ordered", action="store_true",
             help=("Pass multiple objects to commands strictly in the order "
@@ -1687,16 +1875,25 @@ class GraphControl(CmdControl):
             "--dry-run", action="store_true",
             help=("Do a dry run of the command, providing a "
                   "report of what would have been done"))
-        self._pre_objects(parser)
         parser.add_argument(
-            "obj", nargs="*", type=GraphArg(self.cmd_type()),
-            help="Objects to be processed in the form <Class>:<Id>")
+            "--force", action="store_true",
+            help=("Force an action that otherwise defaults to a dry run"))
+        self._pre_objects(parser)
+        self._objects(parser)
 
     def _pre_objects(self, parser):
         """
         Allows configuring before the "obj" n-argument is added.
         """
         pass
+
+    def _objects(self, parser):
+        """
+        Allows configuring the "obj" n-argument by overriding this method.
+        """
+        parser.add_argument(
+            "obj", nargs="*", type=GraphArg(self.cmd_type()),
+            help="Objects to be processed in the form <Class>:<Id>")
 
     def as_doall(self, req_or_doall):
         if not isinstance(req_or_doall, omero.cmd.DoAll):
@@ -1747,9 +1944,18 @@ class GraphControl(CmdControl):
             if exc:
                 opt.excludeType = exc
 
-        commands = args.obj
+        commands, forces = zip(*args.obj)
+        show = not (args.force or args.dry_run)
+        needsForce = any(forces)
+        if needsForce and show:
+            warnings.warn("\nUsing '--dry-run'.\
+                          Future versions will switch to '--force'.\
+                          Explicitly set the parameter for portability",
+                          DeprecationWarning)
         for req in commands:
-            req.dryRun = args.dry_run
+            req.dryRun = args.dry_run or needsForce
+            if args.force:
+                req.dryRun = False
             if inc or exc:
                 req.childOptions = [opt]
             if isinstance(req, omero.cmd.SkipHead):
@@ -1763,7 +1969,7 @@ class GraphControl(CmdControl):
             self._check_command(command_check)
 
         if len(commands) == 1:
-            cmd = args.obj[0]
+            cmd = commands[0]
         else:
             cmd = omero.cmd.DoAll(commands)
 
@@ -1819,10 +2025,7 @@ class GraphControl(CmdControl):
         elif len(others) > 1:
             for req in others[1:]:
                 type, ids = req.targetObjects.items()[0]
-                if type in others[0].targetObjects:
-                    others[0].targetObjects[type].extend(ids)
-                else:
-                    others[0].targetObjects[type] = ids
+                others[0].targetObjects.setdefault(type, []).extend(ids)
             rv.append(others[0])
 
         # Group skipheads by their startFrom attribute.
@@ -1868,21 +2071,6 @@ class GraphControl(CmdControl):
             key = k[k.rfind('.')+1:]
             objIds[key] = newIds[k]
         return objIds
-
-    def _order_and_range_ids(self, ids):
-        from itertools import groupby
-        from operator import itemgetter
-        out = ""
-        ids = sorted(ids)
-        for k, g in groupby(enumerate(ids), lambda (i, x): i-x):
-            g = map(str, map(itemgetter(1), g))
-            out += g[0]
-            if len(g) > 2:
-                out += "-" + g[-1]
-            elif len(g) == 2:
-                out += "," + g[1]
-            out += ","
-        return out.rstrip(",")
 
 
 class UserGroupControl(BaseControl):
@@ -2259,6 +2447,14 @@ class UserGroupControl(BaseControl):
                            help="Name of the user(s)%s" % action)
         return group
 
+    def add_single_user_argument(self, parser, action="", required=True):
+        group = parser.add_mutually_exclusive_group(required=required)
+        group.add_argument("--user-id", metavar="user",
+                           help="ID of the user%s" % action)
+        group.add_argument("--user-name", metavar="user",
+                           help="Name of the user%s" % action)
+        return group
+
     def list_users(self, a, args, use_context=False):
         """
         Retrieve users from the arguments defined in
@@ -2317,6 +2513,14 @@ class UserGroupControl(BaseControl):
         group.add_argument(
             "--group-name", metavar="group", nargs="+",
             help="Name of the group(s)%s" % action)
+        return group
+
+    def add_single_group_argument(self, parser, action="", required=True):
+        group = parser.add_mutually_exclusive_group(required=required)
+        group.add_argument("--group-id", metavar="group",
+                           help="ID of the group%s" % action)
+        group.add_argument("--group-name", metavar="group",
+                           help="Name of the group%s" % action)
         return group
 
     def list_groups(self, a, args, use_context=False):
@@ -2399,3 +2603,25 @@ class UserGroupControl(BaseControl):
                     groups.append(gid)
 
         return users, groups
+
+    def get_single_user_group(self, args, iadmin):
+        u = None
+        g = None
+        if args.user_name:
+            uid, u = self.find_user_by_name(
+                iadmin, args.user_name, fatal=False)
+
+        if args.user_id:
+            uid, u = self.find_user_by_id(
+                iadmin, args.user_id, fatal=False)
+
+        if args.group_name:
+            gid, g = self.find_group_by_name(
+                iadmin, args.group_name, fatal=False)
+
+        if args.group_id:
+            for group_id in args.group_id:
+                gid, g = self.find_group_by_id(
+                    iadmin, args.group_id, fatal=False)
+
+        return u, g

@@ -1,6 +1,6 @@
 /*
  *------------------------------------------------------------------------------
- *  Copyright (C) 2015 University of Dundee. All rights reserved.
+ *  Copyright (C) 2015-2018 University of Dundee. All rights reserved.
  *
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -22,6 +22,7 @@ package integration.gateway;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 
@@ -74,6 +75,26 @@ public class RawDataFacilityTest extends GatewayTest {
     }
     
     @Test
+    public void testGetPixelValues() throws DataSourceException,
+            DSOutOfServiceException, DSAccessException {
+        ImageData img = browseFacility.getImage(rootCtx, imgId);
+        Plane2D plane = rawdataFacility.getPlane(rootCtx,
+                img.getDefaultPixels(), 0, 0, 0);
+        double[][] pixelData = new double[100][100];
+        double[][] expPixelData = new double[100][100];
+        for (int i = 0; i < 10000; i++) {
+            int x = i % 100;
+            int y = i / 100;
+            pixelData[x][y] = plane.getPixelValue(x, y);
+            expPixelData[x][y] = (double) toUnsignedInt(plane
+                    .getRawValue(y * 100 + x));
+        }
+
+        Assert.assertEquals(pixelData, expPixelData);
+        Assert.assertEquals(plane.getPixelValues(), expPixelData);
+    }
+    
+    @Test
     public void testGetTile() throws DataSourceException, DSOutOfServiceException, DSAccessException {
         ImageData img = browseFacility.getImage(rootCtx, imgId);
         int x = 0, y=0, w=img.getDefaultPixels().getSizeX(), h=1;
@@ -90,20 +111,42 @@ public class RawDataFacilityTest extends GatewayTest {
         Assert.assertEquals(planeData, rawDataPart);
     }
     
+    @Test
+    public void testGetHistogram() throws DataSourceException,
+            DSOutOfServiceException, DSAccessException {
+        ImageData img = browseFacility.getImage(rootCtx, imgId);
+
+        int[] exp = new int[256];
+        for (byte b : rawData) {
+            int bin = ((int) b) & 0xFF;
+            exp[bin]++;
+        }
+
+        Map<Integer, int[]> histo = rawdataFacility.getHistogram(rootCtx,
+                img.getDefaultPixels(), new int[] { 0 }, 0, 0);
+        int[] data = histo.entrySet().iterator().next().getValue();
+        Assert.assertEquals(data.length, 256);
+
+        for (int i = 0; i < 256; i++) {
+            Assert.assertEquals(data[i], exp[i]);
+        }
+    }
+    
     private void initData() throws Exception {
         ProjectData p = createProject(rootCtx);
         DatasetData d = createDataset(rootCtx, p);
 
         String name = UUID.randomUUID().toString();
         IPixelsPrx svc = gw.getPixelsService(rootCtx);
-        List<IObject> types = svc
-                .getAllEnumerations(PixelsType.class.getName());
+        List<IObject> types = gw.getTypesService(rootCtx)
+                .allEnumerations(PixelsType.class.getName());
+        PixelsType type = (PixelsType) types.get(2); // unit8
         List<Integer> channels = new ArrayList<Integer>();
         for (int i = 0; i < 3; i++) {
             channels.add(i);
         }
         imgId = svc.createImage(100, 100, 1, 1, channels,
-                (PixelsType) types.get(1), name, "").getValue();
+                type, name, "").getValue();
 
         List<Long> ids = new ArrayList<Long>(1);
         ids.add(imgId);
@@ -122,8 +165,21 @@ public class RawDataFacilityTest extends GatewayTest {
         store.setPixelsId(img.getDefaultPixels().getId(), false);
         Random rand = new Random();
         rawData = new byte[100 * 100];
-        rand.nextBytes(rawData);
+        for (int i = 0; i < rawData.length; i++) {
+            int r = rand.nextInt(256);
+            rawData[i] = (byte) r;
+        }
         store.setPlane(rawData, 0, 0, 0);
         gw.closeService(rootCtx, store);
+    }
+    
+    /**
+     * This is basically Byte.toUnsignedInt(byte b) in Java >= 8
+     * (TODO: Remove this method when Java 7 support is dropped)
+     * @param x The byte value
+     * @return The byte as unsigned integer value
+     */
+    private int toUnsignedInt(byte x) {
+        return ((int) x) & 0xff;
     }
 }

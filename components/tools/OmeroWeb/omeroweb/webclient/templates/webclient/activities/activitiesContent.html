@@ -270,7 +270,8 @@
                                                     {% ifequal v.type "Image" %}
                                                         <!-- View Image -->
                                                         <li class="btn_view">
-                                                            <a href="#" onClick="return OME.openPopup('{% url 'webgateway.views.full_viewer' v.id %}');" title="Open Image in Viewer">View Image</a>
+                                                            <a href="#" onClick="return window.open('{% url 'webgateway.views.full_viewer' v.id %}', '_blank');"
+                                                            title="Open Image in Viewer">View Image</a>
                                                         </li>
                                                     {% endifequal %}
 
@@ -328,9 +329,7 @@
                             {% ifequal j.status 'no processor available' %}
 
                             <span class="activity_title">No Processor Available</span>
-                            <span class="message">Please try again later.<br/>
-                                See <a target="new" href="http://trac.openmicroscopy.org.uk/ome/ticket/8266">more info</a> for Admins.
-                            </span>
+                            <span class="message">Please try again later.</span>
 
                             {% else %}
                             <span class="activity_title">{{ j.job_name }}</span>

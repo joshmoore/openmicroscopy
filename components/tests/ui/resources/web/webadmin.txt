@@ -12,9 +12,8 @@ Unique name
     [Return]       ${name}_${unique}
 
 Log In As
-    [Arguments]                  ${username}    ${password}        ${server_id}     ${ssl}=${False}
+    [Arguments]                  ${username}    ${password}        ${server_id}
     Select From List By Value    id_server      ${server_id}
-    Run Keyword If               ${ssl}         Select Checkbox    id_ssl
     Input Text                   username       ${username}
     Input Text                   password       ${password}
     Click Button                 Login
@@ -41,7 +40,7 @@ Open Browser To Webadmin And Log In As Root
 Log Out
     Click Element                   xpath=//div[@id='show_user_dropdown']/span
     Click Link                      link=Logout
-    Page Should Be Open             ${WEBCLIENT LOGIN URL}                OMERO.web - Login
+    Page Should Be Open             ${LOGIN URL}                OMERO.web - Login
 
 Logout and Teardown
     Log Out

@@ -35,8 +35,8 @@ import glob
 import sys
 import os
 
-sys.path.append("..")
-from test_setup import PyTest
+sys.path.append("src")
+from omero_setup import PyTest
 
 for tools in glob.glob("../../../lib/repository/setuptools*.egg"):
     if tools.find(".".join(map(str, sys.version_info[0:2]))) > 0:
@@ -52,19 +52,21 @@ if os.path.exists("target"):
 else:
     packages = [""]
 
+url = 'https://docs.openmicroscopy.org/latest/omero/developers'
+
 setup(
     name="omero_client",
     version=ov,
     description="Python bindings to the OMERO.blitz server",
     long_description="Python bindings to the OMERO.blitz server.",
-    author="Josh Moore",
-    author_email="josh@glencoesoftware.com",
-    url="http://trac.openmicroscopy.org.uk/ome/wiki/OmeroPy",
-    download_url="http://trac.openmicroscopy.org.uk/ome/wiki/OmeroPy",
+    author="The Open Microscopy Team",
+    author_email="ome-devel@lists.openmicroscopy.org.uk",
+    url=url,
+    download_url=url,
     package_dir={"": "target"},
     packages=packages,
     package_data={
         'omero.gateway': ['pilfonts/*'],
         'omero.gateway.scripts': ['imgs/*']},
     cmdclass={'test': PyTest},
-    tests_require=['pytest != 3.0.0, != 3.0.1, != 3.0.2'])
+    tests_require=['pytest<3'])

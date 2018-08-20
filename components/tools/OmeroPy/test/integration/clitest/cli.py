@@ -20,16 +20,22 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 
+import pytest
+import warnings
+
 import omero
 from omero.cli import CLI
 from omero.plugins.sessions import SessionsControl
 from omero.rtypes import rstring
 
-from library import ITest
+from omero.testlib import ITest
 from omero_ext.mox import Mox
 
 
 class AbstractCLITest(ITest):
+    warnings.warn("Deprecated in 5.4.2."
+                  "Use omero.testlib.cli",
+                  DeprecationWarning)
 
     @classmethod
     def setup_class(cls):
@@ -46,6 +52,9 @@ class AbstractCLITest(ITest):
 
 
 class CLITest(AbstractCLITest):
+    warnings.warn("Deprecated in 5.4.2."
+                  "Use omero.testlib.cli",
+                  DeprecationWarning)
 
     def setup_method(self, method):
         self.args = self.login_args()
@@ -71,8 +80,20 @@ class CLITest(AbstractCLITest):
 
         return new_object.id.val
 
+    @pytest.fixture()
+    def simpleHierarchy(self):
+        proj = self.make_project()
+        dset = self.make_dataset()
+        img = self.update.saveAndReturnObject(self.new_image())
+        self.link(proj, dset)
+        self.link(dset, img)
+        return proj, dset, img
+
 
 class RootCLITest(AbstractCLITest):
+    warnings.warn("Deprecated in 5.4.2."
+                  "Use omero.testlib.cli",
+                  DeprecationWarning)
 
     def setup_method(self, method):
         self.args = self.root_login_args()
@@ -83,6 +104,9 @@ class ArgumentFixture(object):
     """
     Used to test the user/group argument
     """
+    warnings.warn("Deprecated in 5.4.2."
+                  "Use omero.testlib.cli",
+                  DeprecationWarning)
 
     def __init__(self, prefix, attr):
         self.prefix = prefix

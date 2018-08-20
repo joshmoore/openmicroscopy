@@ -1,6 +1,6 @@
 /*
  *------------------------------------------------------------------------------
- *  Copyright (C) 2015-2016 University of Dundee. All rights reserved.
+ *  Copyright (C) 2015-2017 University of Dundee. All rights reserved.
  *
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -37,13 +37,16 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.StringUtils;
+
 import omero.ServerError;
 import omero.api.IContainerPrx;
 import omero.api.IUpdatePrx;
 import omero.cmd.CmdCallbackI;
 import omero.api.RawFileStorePrx;
-import omero.cmd.Request;
-import omero.cmd.Response;
+import omero.cmd.Delete2;
+import omero.cmd.graphs.ChildOption;
 import omero.gateway.Gateway;
 import omero.gateway.SecurityContext;
 import omero.gateway.exception.DSAccessException;
@@ -52,7 +55,9 @@ import omero.gateway.model.DataObject;
 import omero.gateway.model.DatasetData;
 import omero.gateway.model.ImageData;
 import omero.gateway.util.PojoMapper;
+import omero.gateway.util.Pojos;
 import omero.gateway.util.Requests;
+import omero.gateway.util.Requests.Delete2Builder;
 import omero.model.ChecksumAlgorithm;
 import omero.model.ChecksumAlgorithmI;
 import omero.model.DatasetAnnotationLink;
@@ -80,8 +85,10 @@ import omero.model.enums.ChecksumAlgorithmSHA1160;
 import omero.sys.Parameters;
 import omero.gateway.model.AnnotationData;
 import omero.gateway.model.FileAnnotationData;
+import omero.gateway.model.FolderData;
 import omero.gateway.model.PlateData;
 import omero.gateway.model.ProjectData;
+import omero.gateway.model.ROIData;
 import omero.gateway.model.ScreenData;
 import omero.gateway.model.WellData;
 import omero.gateway.model.WellSampleData;
@@ -114,27 +121,6 @@ public class DataManagerFacility extends Facility {
     }
 
     /**
-     * Deletes the specified object.
-     *
-     * @deprecated Use the asynchronous method
-     *             {@link #delete(SecurityContext, IObject)} instead
-     * @param ctx
-     *            The security context.
-     * @param object
-     *            The object to delete.
-     * @return The {@link Response} handle
-     * @throws DSOutOfServiceException
-     *             If the connection is broken, or not logged in
-     * @throws DSAccessException
-     *             If an error occurred while trying to retrieve data from OMERO
-     *             service.
-     */
-    public Response deleteObject(SecurityContext ctx, IObject object)
-            throws DSOutOfServiceException, DSAccessException {
-        return deleteObjects(ctx, Collections.singletonList(object));
-    }
-
-    /**
      * Deletes the specified object asynchronously
      * 
      * @param ctx
@@ -154,6 +140,60 @@ public class DataManagerFacility extends Facility {
     }
 
     /**
+     * Delete Folders (asynchronous)
+     * 
+     * @param ctx
+     *            The {@link SecurityContext}
+     * @param folders
+     *            The Folder to delete
+     * @param includeSubFolders
+     *            Pass <code>true</code> to recursively delete sub folders
+     * @param includeContent
+     *            Pass <code>true</code> to also delete content of the folders,
+     *            otherwise content (ROIs, Images) will be orphaned
+     * @return The Callback reference
+     * @throws DSOutOfServiceException
+     *             If the connection is broken, or not logged in
+     * @throws DSAccessException
+     *             If an error occurred while trying to retrieve data from OMERO
+     *             service.
+     */
+    public CmdCallbackI deleteFolders(SecurityContext ctx,
+            Collection<FolderData> folders, boolean includeSubFolders,
+            boolean includeContent) throws DSOutOfServiceException,
+            DSAccessException {
+        if (CollectionUtils.isEmpty(folders))
+            return null;
+        
+        try {
+            Map<String, List<Long>> targetObjects = new HashMap<String, List<Long>>();
+            targetObjects.put(PojoMapper.getGraphType(FolderData.class),
+                    new ArrayList<Long>(Pojos.extractIds(folders)));
+
+            List<String> inc = new ArrayList<String>();
+            List<String> ex = new ArrayList<String>();
+            if (includeSubFolders)
+                inc.add(PojoMapper.getGraphType(FolderData.class));
+            else
+                ex.add(PojoMapper.getGraphType(FolderData.class));
+            if (includeContent) {
+                inc.add(PojoMapper.getGraphType(ROIData.class));
+                inc.add(PojoMapper.getGraphType(ImageData.class));
+            } else {
+                ex.add(PojoMapper.getGraphType(ROIData.class));
+                ex.add(PojoMapper.getGraphType(ImageData.class));
+            }
+
+            Delete2 del = Requests.delete().target(targetObjects)
+                    .option(new ChildOption(inc, ex, null, null)).build();
+            return gateway.submit(ctx, del);
+        } catch (Throwable t) {
+            handleException(this, t, "Cannot delete the object.");
+        }
+        return null;
+    }
+    
+    /**
      * Deletes the specified objects asynchronously
      *
      * @param ctx
@@ -169,97 +209,21 @@ public class DataManagerFacility extends Facility {
      */
     public CmdCallbackI delete(SecurityContext ctx, List<IObject> objects)
             throws DSOutOfServiceException, DSAccessException {
+        if (CollectionUtils.isEmpty(objects))
+            return null;
+        
         try {
-            /*
-             * convert the list of objects to lists of IDs by OMERO model class
-             * name
-             */
-            final Map<String, List<Long>> objectIds = new HashMap<String, List<Long>>();
+            final Delete2Builder request = Requests.delete();
             for (final IObject object : objects) {
-                /* determine actual model class name for this object */
-                Class<? extends IObject> objectClass = object.getClass();
-                while (true) {
-                    final Class<?> superclass = objectClass.getSuperclass();
-                    if (IObject.class == superclass) {
-                        break;
-                    } else {
-                        objectClass = superclass.asSubclass(IObject.class);
-                    }
-                }
-                final String objectClassName = objectClass.getSimpleName();
-                /* then add the object's ID to the list for that class name */
-                final Long objectId = object.getId().getValue();
-                List<Long> idsThisClass = objectIds.get(objectClassName);
-                if (idsThisClass == null) {
-                    idsThisClass = new ArrayList<Long>();
-                    objectIds.put(objectClassName, idsThisClass);
-                }
-                idsThisClass.add(objectId);
+                request.target(object);
             }
-            /* now delete the objects */
-            final Request request = Requests.delete(objectIds);
-            return gateway.submit(ctx, request);
+            return gateway.submit(ctx, request.build());
         } catch (Throwable t) {
             handleException(this, t, "Cannot delete the object.");
         }
         return null;
     }
-
-    /**
-     * Deletes the specified objects.
-     *
-     * @deprecated Use the asynchronous method
-     *             {@link #delete(SecurityContext, List)} instead
-     * 
-     * @param ctx
-     *            The security context.
-     * @param objects
-     *            The objects to delete.
-     * @return The {@link Response} handle
-     * @throws DSOutOfServiceException
-     *             If the connection is broken, or not logged in
-     * @throws DSAccessException
-     *             If an error occurred while trying to retrieve data from OMERO
-     *             service.
-     */
-    public Response deleteObjects(SecurityContext ctx, List<IObject> objects)
-            throws DSOutOfServiceException, DSAccessException {
-        try {
-            /*
-             * convert the list of objects to lists of IDs by OMERO model class
-             * name
-             */
-            final Map<String, List<Long>> objectIds = new HashMap<String, List<Long>>();
-            for (final IObject object : objects) {
-                /* determine actual model class name for this object */
-                Class<? extends IObject> objectClass = object.getClass();
-                while (true) {
-                    final Class<?> superclass = objectClass.getSuperclass();
-                    if (IObject.class == superclass) {
-                        break;
-                    } else {
-                        objectClass = superclass.asSubclass(IObject.class);
-                    }
-                }
-                final String objectClassName = objectClass.getSimpleName();
-                /* then add the object's ID to the list for that class name */
-                final Long objectId = object.getId().getValue();
-                List<Long> idsThisClass = objectIds.get(objectClassName);
-                if (idsThisClass == null) {
-                    idsThisClass = new ArrayList<Long>();
-                    objectIds.put(objectClassName, idsThisClass);
-                }
-                idsThisClass.add(objectId);
-            }
-            /* now delete the objects */
-            final Request request = Requests.delete(objectIds);
-            return gateway.submit(ctx, request).loop(50, 250);
-        } catch (Throwable t) {
-            handleException(this, t, "Cannot delete the object.");
-        }
-        return null;
-    }
-
+    
     /**
      * Updates the specified object.
      *
@@ -279,6 +243,9 @@ public class DataManagerFacility extends Facility {
      */
     public IObject saveAndReturnObject(SecurityContext ctx, IObject object,
             Map options) throws DSOutOfServiceException, DSAccessException {
+        if (object == null)
+            return null;
+        
         try {
             IUpdatePrx service = gateway.getUpdateService(ctx);
             if (options == null)
@@ -307,6 +274,9 @@ public class DataManagerFacility extends Facility {
      */
     public DataObject saveAndReturnObject(SecurityContext ctx, DataObject object)
             throws DSOutOfServiceException, DSAccessException {
+        if (object == null)
+            return null;
+        
         return PojoMapper.asDataObject(saveAndReturnObject(ctx,
                 object.asIObject()));
     }
@@ -328,6 +298,9 @@ public class DataManagerFacility extends Facility {
      */
     public IObject saveAndReturnObject(SecurityContext ctx, IObject object)
             throws DSOutOfServiceException, DSAccessException {
+        if (object == null)
+            return null;
+        
         try {
             IUpdatePrx service = gateway.getUpdateService(ctx);
             IObject result = service.saveAndReturnObject(object);
@@ -360,6 +333,9 @@ public class DataManagerFacility extends Facility {
     public IObject saveAndReturnObject(SecurityContext ctx, IObject object,
             Map options, String userName) throws DSOutOfServiceException,
             DSAccessException {
+        if (object == null)
+            return null;
+        
         try {
             IUpdatePrx service = gateway.getUpdateService(ctx, userName);
 
@@ -392,6 +368,9 @@ public class DataManagerFacility extends Facility {
     public DataObject saveAndReturnObject(SecurityContext ctx,
             DataObject object, String userName) throws DSOutOfServiceException,
             DSAccessException {
+        if (object == null)
+            return null;
+        
         return PojoMapper.asDataObject(saveAndReturnObject(ctx,
                 object.asIObject(), userName));
     }
@@ -415,6 +394,9 @@ public class DataManagerFacility extends Facility {
      */
     public IObject saveAndReturnObject(SecurityContext ctx, IObject object,
             String userName) throws DSOutOfServiceException, DSAccessException {
+        if (object == null)
+            return null;
+        
         try {
             IUpdatePrx service = gateway.getUpdateService(ctx, userName);
             IObject result = service.saveAndReturnObject(object);
@@ -447,6 +429,9 @@ public class DataManagerFacility extends Facility {
     public List<IObject> saveAndReturnObject(SecurityContext ctx,
             List<IObject> objects, Map options, String userName)
             throws DSOutOfServiceException, DSAccessException {
+        if (CollectionUtils.isEmpty(objects))
+            return Collections.emptyList();
+        
         try {
             IUpdatePrx service = gateway.getUpdateService(ctx, userName);
             return service.saveAndReturnArray(objects);
@@ -476,6 +461,9 @@ public class DataManagerFacility extends Facility {
     public IObject updateObject(SecurityContext ctx, IObject object,
             Parameters options) throws DSOutOfServiceException,
             DSAccessException {
+        if (object == null)
+            return null;
+        
         try {
             IContainerPrx service = gateway.getPojosService(ctx);
             IObject r = service.updateDataObject(object, options);
@@ -507,6 +495,9 @@ public class DataManagerFacility extends Facility {
     public List<IObject> updateObjects(SecurityContext ctx,
             List<IObject> objects, Parameters options)
             throws DSOutOfServiceException, DSAccessException {
+        if (CollectionUtils.isEmpty(objects))
+            return Collections.emptyList();
+        
         try {
             IContainerPrx service = gateway.getPojosService(ctx);
             List<IObject> l = service.updateDataObjects(objects, options);
@@ -544,6 +535,9 @@ public class DataManagerFacility extends Facility {
      */
     public void addImageToDataset(SecurityContext ctx, ImageData image,
             DatasetData ds) throws DSOutOfServiceException, DSAccessException {
+        if (image == null || ds == null)
+            return;
+        
         List<ImageData> l = new ArrayList<ImageData>(1);
         l.add(image);
         addImagesToDataset(ctx, l, ds);
@@ -567,6 +561,9 @@ public class DataManagerFacility extends Facility {
     public void addImagesToDataset(SecurityContext ctx,
             Collection<ImageData> images, DatasetData ds)
             throws DSOutOfServiceException, DSAccessException {
+        if (ds == null || CollectionUtils.isEmpty(images))
+            return;
+        
         List<IObject> links = new ArrayList<IObject>();
         for (ImageData img : images) {
             DatasetImageLink l = new DatasetImageLinkI();
@@ -594,6 +591,9 @@ public class DataManagerFacility extends Facility {
     public DatasetData createDataset(SecurityContext ctx, DatasetData dataset,
             ProjectData project) throws DSOutOfServiceException,
             DSAccessException {
+        if (dataset == null)
+            return null;
+        
         if (project != null) {
             ProjectDatasetLink link = new ProjectDatasetLinkI();
             link = new ProjectDatasetLinkI();
@@ -626,6 +626,9 @@ public class DataManagerFacility extends Facility {
     public Future<FileAnnotationData> attachFile(final SecurityContext ctx,
             final File file, String mimetype, final String description,
             final String namespace, final DataObject target) {
+        if (file == null || target == null)
+            return null;
+        
         final String name = file.getName();
         String absolutePath = file.getAbsolutePath();
         final String path = absolutePath.substring(0, absolutePath.length()
@@ -730,6 +733,9 @@ public class DataManagerFacility extends Facility {
     public <T extends AnnotationData> T attachAnnotation(SecurityContext ctx,
             T annotation, DataObject target) throws DSOutOfServiceException,
             DSAccessException {
+        if (annotation == null)
+            return null;
+        
         if (target != null) {
             if (target instanceof ProjectData) {
                 ProjectData project = browse.findObject(ctx, ProjectData.class,

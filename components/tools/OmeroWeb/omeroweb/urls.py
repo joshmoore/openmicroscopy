@@ -26,6 +26,7 @@
 import logging
 import django
 from django.conf import settings
+from django.apps import AppConfig
 from django.conf.urls import url, patterns, include
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.shortcuts import redirect
@@ -68,44 +69,15 @@ def redirect_urlpatterns():
 
 # url patterns
 
-urlpatterns = patterns(
-    '',
-    (r'^favicon\.ico$',
-     lambda request: redirect('%swebgateway/img/ome.ico'
-                              % settings.STATIC_URL)),
-
-    (r'^(?i)webgateway/', include('omeroweb.webgateway.urls')),
-    (r'^(?i)webadmin/', include('omeroweb.webadmin.urls')),
-    (r'^(?i)webclient/', include('omeroweb.webclient.urls')),
-
-    (r'^(?i)url/', include('omeroweb.webredirect.urls')),
-    (r'^(?i)feedback/', include('omeroweb.feedback.urls')),
-
-    url(r'^index/$', 'omeroweb.webclient.views.custom_index',
-        name="webindex_custom"),
-)
-
-urlpatterns += redirect_urlpatterns()
-
-
-def remove_prefix(appname, prefix="omero_"):
-    if appname.startswith(prefix):
-        return appname[len(prefix):]
-    return appname
+urlpatterns = patterns('',)
 
 for app in settings.ADDITIONAL_APPS:
-    if django.VERSION > (1, 7):
-        from django.apps import AppConfig
-        if isinstance(app, AppConfig):
-            app_config = app
-        else:
-            app_config = AppConfig.create(app)
-        label = app_config.label
+    if isinstance(app, AppConfig):
+        app_config = app
     else:
-        logger.warn(
-            ("Django %s does not support AppConfig. Some OMERO.web plugins "
-             "may not work correctly.") % django.get_version())
-        label = remove_prefix(app)
+        app_config = AppConfig.create(app)
+    label = app_config.label
+
     # Depending on how we added the app to INSTALLED_APPS in settings.py,
     # include the urls the same way
     if 'omeroweb.%s' % app in settings.INSTALLED_APPS:
@@ -119,6 +91,27 @@ for app in settings.ADDITIONAL_APPS:
     else:
         regex = '^(?i)%s/' % label
         urlpatterns += patterns('', (regex, include(urlmodule)),)
+
+urlpatterns += patterns(
+    '',
+    (r'^favicon\.ico$',
+     lambda request: redirect('%swebgateway/img/ome.ico'
+                              % settings.STATIC_URL)),
+    (r'^(?i)webgateway/', include('omeroweb.webgateway.urls')),
+    (r'^(?i)webadmin/', include('omeroweb.webadmin.urls')),
+    (r'^(?i)webclient/', include('omeroweb.webclient.urls')),
+
+    (r'^(?i)url/', include('omeroweb.webredirect.urls')),
+    (r'^(?i)feedback/', include('omeroweb.feedback.urls')),
+
+    (r'^(?i)api/', include('omeroweb.api.urls')),
+
+    url(r'^index/$', 'omeroweb.webclient.views.custom_index',
+        name="webindex_custom"),
+)
+
+urlpatterns += redirect_urlpatterns()
+
 
 if settings.DEBUG:
     urlpatterns += staticfiles_urlpatterns()

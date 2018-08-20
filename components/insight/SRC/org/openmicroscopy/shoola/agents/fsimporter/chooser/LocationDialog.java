@@ -1,6 +1,6 @@
 /*
  *------------------------------------------------------------------------------
- *  Copyright (C) 2006-2016 University of Dundee & Open Microscopy Environment.
+ *  Copyright (C) 2006-2017 University of Dundee & Open Microscopy Environment.
  *  All rights reserved.
  *
  *
@@ -894,8 +894,8 @@ class LocationDialog extends JDialog implements ActionListener,
 	private void close()
 	{
 	    int plugin = ImporterAgent.runAsPlugin();
-        if (plugin == LookupNames.IMAGE_J_IMPORT ||
-                plugin == LookupNames.IMAGE_J_IMPORT) {
+        if (plugin == LookupNames.IMAGE_J
+                || plugin == LookupNames.IMAGE_J_IMPORT) {
             return;
         }
 		setVisible(false);
@@ -1551,9 +1551,11 @@ class LocationDialog extends JDialog implements ActionListener,
 
 		displayItems(projectsBox, sortByUser(projects),
 				selectedProject, this);
-		displayItemsWithTooltips(datasetsBox,
-				sortByUser(datasets.get(selectedProject)),
-				selectedDataset);
+		if (selectedProject != null) {
+		      displayItemsWithTooltips(datasetsBox,
+		                sortByUser(datasets.get(selectedProject)),
+		                selectedDataset);
+		}
 		displayItemsWithTooltips(screensBox,
 				sortByUser(screens), selectedScreen);
 	}

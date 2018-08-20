@@ -12,10 +12,15 @@ FOR TRAINING PURPOSES ONLY!
 """
 
 import omero
+import sys
+import codecs
 
 client = omero.client()
 
 omeroProperties = client.getProperties().getPropertiesForPrefix('omero')
+
+# Handle printing of unicode
+sys.stdout = codecs.getwriter('utf8')(sys.stdout)
 
 # Configuration
 # =================================================================
@@ -24,6 +29,8 @@ HOST = omeroProperties.get('omero.host', 'localhost')
 PORT = omeroProperties.get('omero.port', 4064)
 USERNAME = omeroProperties.get('omero.user')
 PASSWORD = omeroProperties.get('omero.pass')
+OMERO_WEB_HOST = omeroProperties.get('omero.webhost')
+SERVER_NAME = omeroProperties.get('omero.servername')
 projectId = omeroProperties.get('omero.projectid')
 datasetId = omeroProperties.get('omero.datasetid')
 imageId = omeroProperties.get('omero.imageid')

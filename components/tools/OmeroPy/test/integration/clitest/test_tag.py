@@ -24,8 +24,8 @@ import pytest
 import omero
 from omero.plugins.tag import TagControl
 from omero.cli import NonZeroReturnCode
-from library import PFS
-from test.integration.clitest.cli import CLITest
+from omero.testlib import PFS
+from omero.testlib.cli import CLITest
 from omero.rtypes import rstring, rlong
 from omero.util.temp_files import create_path
 import __builtin__

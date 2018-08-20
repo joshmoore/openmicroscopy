@@ -10,8 +10,8 @@
 #define OMERO_COLLECTIONS_ICE
 
 #include <omero/ModelF.ice>
+#include <omero/SystemF.ice>
 #include <omero/RTypes.ice>
-#include <omero/System.ice>
 #include <Ice/BuiltinSequences.ice>
 
 /*
@@ -139,6 +139,8 @@ module omero {
         dictionary<long,   ByteArray>                  LongByteArrayMap;
         dictionary<long,   omero::model::Pixels>       LongPixelsMap;
         dictionary<int,    string>                     IntStringMap;
+        dictionary<int,    IntegerArray>               IntegerIntegerArrayMap;
+        dictionary<int,    DoubleArray>                IntegerDoubleArrayMap;
         dictionary<string, omero::RType>               StringRTypeMap;
         dictionary<string, omero::model::Experimenter> UserMap;
         dictionary<string, omero::model::OriginalFile> OriginalFileMap;

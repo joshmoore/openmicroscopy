@@ -8,10 +8,12 @@
 package ome.api;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import ome.annotations.Validate;
 import ome.model.core.Pixels;
+import omeis.providers.re.data.PlaneDef;
 
 /**
  * Binary data provider. Initialized with the id of a
@@ -87,7 +89,11 @@ public interface RawPixelsStore extends StatefulServiceInterface {
     public byte[] getRow(int y, int z, int c, int t);
     
     public byte[] getCol(int x, int z, int c, int t);
-
+    
+    public Map<Integer, int[]> getHistogram(int[] channels, int binCount, boolean globalRange, PlaneDef plane);
+    
+    public Map<Integer, double[]> findMinMax(int[] channels);
+    
     public byte[] getHypercube(@Validate(Integer.class) List<Integer> offset, @Validate(Integer.class) List<Integer> size, @Validate(Integer.class) List<Integer> step);
 
     public byte[] getPlaneRegion(int z, int c, int t, int count, int offset);
@@ -124,10 +130,34 @@ public interface RawPixelsStore extends StatefulServiceInterface {
 
     public Object getResolutionDescriptions();
 
+    /**
+     * Retrieves the number of resolution levels that the backing
+     * pixels pyramid contains.
+     * @return The number of resolution levels. This value does not
+     * necessarily indicate either the presence or absence of a
+     * pixels pyramid.
+     **/
     public int getResolutionLevels();
 
+    /**
+     * Retrieves the active resolution level.
+     * @return The active resolution level.  The level will be non-negative and less
+     * than {@link #getResolutionLevels()}.  Resolution level 0 is the smallest
+     * resolution and resolution level <code>getResolutionLevels() - 1</code>
+     * is the largest resolution.  This is the inverse of how Bio-Formats indexes
+     * resolutions.
+     */
     public int getResolutionLevel();
 
+    /**
+     * Sets the active resolution level.
+     * @param resolutionLevel The resolution level to be used.
+     * The level should be non-negative and less than
+     * {@link #getResolutionLevels()}.  * Resolution level 0 is the smallest
+     * resolution and resolution level <code>getResolutionLevels() - 1</code>
+     * is the largest resolution.  This is the inverse of how Bio-Formats indexes
+     * resolutions.
+     */
     public void setResolutionLevel(int resolutionLevel);
 
     public int[] getTileSize();

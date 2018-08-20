@@ -34,7 +34,7 @@
         <exclude ext="pom"/>
     </dependency>
     <!-- For build -->
-    <dependency org="ome" name="appbundler" rev="${versions.appbundler}" conf="build->default"/>
+    <dependency org="com.panayotis" name="appbundler" rev="${versions.appbundler}" conf="build->default"/>
     <!-- From classpath -->
     <dependency org="org.apache.axis" name="axis" rev="${versions.axis}"/>
     <dependency org="backport-util-concurrent" name="backport-util-concurrent" rev="${versions.backport}"/>
@@ -61,19 +61,18 @@
     <dependency org="net.java.dev.jna" name="platform" rev="${versions.platform}"/>
     <dependency org="edu.ucar" name="grib" rev="${versions.grib}" transitive="false"/>
     <dependency org="edu.ucar" name="bufr" rev="${versions.bufr}" transitive="false"/>
-    <!-- Required for annotations in Permissions.java -->
-    <dependency org="org.hibernate.javax.persistence" name="hibernate-jpa-2.0-api" rev="${versions.persistence-api}"/>
+    <!-- from Java 9 on javax.activation is not included any longer -->
+    <dependency org="javax.activation" name="activation" rev="${versions.activation}"/>
     <!-- Bioformats -->
-    <dependency org="ome" name="formats-bsd" rev="${versions.bioformats}">
+    <dependency org="${org.bioformats}" name="formats-bsd" rev="${versions.bioformats}">
         <exclude org="com.jgoodies"/>
         <exclude org="org.slf4j"/>
         <exclude org="xml-apis"/>
     </dependency>
-    <dependency org="ome" name="formats-gpl" rev="${versions.bioformats}">
+    <dependency org="${org.bioformats}" name="formats-gpl" rev="${versions.bioformats}">
         <exclude org="org.slf4j"/>
         <exclude org="commons-logging"/>
     </dependency>
-    <dependency org="ome" name="lwf-stubs" rev="${versions.bioformats}" transitive="false"/>
     <!-- importer -->
     <dependency org="org.slf4j" name="slf4j-api" rev="${versions.slf4j}"/>
     <dependency org="ch.qos.logback" name="logback-classic" rev="${versions.logback}"/>

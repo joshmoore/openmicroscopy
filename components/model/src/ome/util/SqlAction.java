@@ -1,4 +1,3 @@
-
 /*
  *   Copyright 2010-2014 Glencoe Software, Inc. All rights reserved.
  *   Use is subject to license terms supplied in LICENSE.txt
@@ -10,6 +9,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -23,6 +23,7 @@ import java.util.UUID;
 
 import ome.conditions.InternalException;
 import ome.model.core.Channel;
+import ome.model.enums.AdminPrivilege;
 import ome.model.internal.Details;
 import ome.model.internal.Permissions;
 import ome.model.meta.ExperimenterGroup;
@@ -53,8 +54,8 @@ import com.google.common.collect.Lists;
  *
  * @author Josh Moore, josh at glencoesoftware.com
  * @since 4.2.1
- * @see <a href="http://trac.openmicroscopy.org.uk/ome/ticket/73">#73</a>
- * @see <a href="http://trac.openmicroscopy.org.uk/ome/ticket/2684">#2684</a>
+ * @see <a href="https://trac.openmicroscopy.org/ome/ticket/73">#73</a>
+ * @see <a href="https://trac.openmicroscopy.org/ome/ticket/2684">#2684</a>
  */
 public interface SqlAction {
 
@@ -332,6 +333,7 @@ public interface SqlAction {
 
     long countFormat(String name);
 
+    @Deprecated  // use ome.services.util.EnsureEnum
     int insertFormat(String name);
 
     int closeSessions(String uuid);
@@ -410,7 +412,7 @@ public interface SqlAction {
     void delCurrentEventLog(String key);
 
     /**
-     * Convert the _updated_annotations table to REINDEX entries in the event log.
+     * Convert the _reindexing_required table to REINDEX entries in the event log.
      */
     void refreshEventLogFromUpdatedAnnotations();
 
@@ -432,8 +434,7 @@ public interface SqlAction {
 
     void insertLogs(List<Object[]> batchData);
 
-    List<Map<String, Object>> roiByImageAndNs(final long imageId,
-            final String ns);
+    List<Map<String, Object>> roiByImage(final long imageId);
 
     List<Long> getShapeIds(long roiId);
 
@@ -564,6 +565,39 @@ public interface SqlAction {
      */
     boolean clearPermissionsBit(String table, long id, int bit);
 
+    /**
+     * Note the roles in the database.
+     * @param rootUserId the root user's ID
+     * @param guestUserId the guest user's ID
+     * @param systemGroupId the system group's ID
+     * @param userGroupId the user group's ID
+     * @param guestGroupId the guest group's ID
+     */
+    void setRoles(long rootUserId, long guestUserId, long systemGroupId, long userGroupId, long guestGroupId);
+
+    /**
+     * Find the completed transactions among the current light administrator privileges.
+     * @return the transaction IDs
+     */
+    Collection<Long> findOldAdminPrivileges();
+
+    /**
+     * Delete the current light administrator privileges for the given transactions.
+     * @param transactionIds the transaction IDs to delete
+     */
+    void deleteOldAdminPrivileges(Collection<Long> transactionIds);
+
+    /**
+     * Delete the current light administrator privileges for the current transaction.
+     */
+    void deleteCurrentAdminPrivileges();
+
+    /**
+     * Insert the current light administrator privileges for the current transaction.
+     * @param privileges some light administrator privileges
+     */
+    void insertCurrentAdminPrivileges(Iterable<AdminPrivilege> privileges);
+
     //
     // End PgArrayHelper
     //
@@ -678,6 +712,48 @@ public interface SqlAction {
             String sql = _lookup("clear_permissions_bit");
             sql = String.format(sql, table);
             return _jdbc().update(sql, bit, id) > 0;
+        }
+
+        @Override
+        public void setRoles(long rootUserId, long guestUserId, long systemGroupId, long userGroupId, long guestGroupId) {
+            _jdbc().update(_lookup("roles_update_ids"), rootUserId, guestUserId, systemGroupId, userGroupId, guestGroupId);
+        }
+
+        @Override
+        public Collection<Long> findOldAdminPrivileges() {
+            final List<Long> transactionIds = new ArrayList<>();
+            for (final Map<String, Object> resultRow :_jdbc().queryForList(_lookup("old_privileges_select"))) {
+                for (final Object transactionId : resultRow.values()) {
+                    transactionIds.add((Long) transactionId);
+                }
+            }
+            return transactionIds;
+        }
+
+        @Override
+        public void deleteOldAdminPrivileges(Collection<Long> transactionIds) {
+            if (transactionIds.isEmpty()) {
+                return;
+            }
+            final List<Object[]> transactionIdArrays = new ArrayList<>(transactionIds.size());
+            for (final Long transactionId : transactionIds) {
+                transactionIdArrays.add(new Long[] {transactionId});
+            }
+            _jdbc().batchUpdate(_lookup("old_privileges_delete"), transactionIdArrays, new int[] {Types.BIGINT});
+        }
+
+        @Override
+        public void deleteCurrentAdminPrivileges() {
+            _jdbc().update(_lookup("curr_privileges_delete"));
+        }
+
+        @Override
+        public void insertCurrentAdminPrivileges(Iterable<AdminPrivilege> privileges) {
+            final List<Object[]> batchArguments = new ArrayList<>();
+            for (final AdminPrivilege privilege : privileges) {
+                batchArguments.add(new String[] {privilege.getValue()});
+            }
+            _jdbc().batchUpdate(_lookup("curr_privileges_insert"), batchArguments, new int[] {Types.VARCHAR});
         }
 
         //
