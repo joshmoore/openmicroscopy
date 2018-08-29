@@ -53,7 +53,10 @@ public abstract class AbstractFileTransfer implements FileTransfer {
         cp(CopyFileTransfer.class),
         cp_rm(CopyMoveFileTransfer.class),
         upload(UploadFileTransfer.class),
-        upload_rm(UploadRmFileTransfer.class);
+        upload_rm(UploadRmFileTransfer.class),
+        parallel(ParallelUploadFileTransfer.class),
+        mmap(MMapUploadFileTransfer.class),
+        pmap(ParallelMMapUploadFileTransfer.class);
         Class<?> kls;
         Transfers(Class<?> kls) {
             this.kls = kls;
