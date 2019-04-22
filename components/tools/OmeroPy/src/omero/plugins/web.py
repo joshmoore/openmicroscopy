@@ -7,7 +7,11 @@
    Use is subject to license terms supplied in LICENSE.txt
 
 """
+from __future__ import division
+from __future__ import print_function
 
+from builtins import str
+from past.utils import old_div
 import traceback
 from datetime import datetime
 from omero.cli import DiagnosticsControl
@@ -76,7 +80,7 @@ def config_required(func):
             try:
                 import omeroweb.settings as settings
                 kwargs['settings'] = settings
-            except Exception, e:
+            except Exception as e:
                 self.ctx.die(682, e)
             return func(self, *args, **kwargs)
         return wrapper
@@ -271,7 +275,7 @@ class WebControl(DiagnosticsControl):
 
         d = {
             "ROOT": self.ctx.dir,
-            "OMEROWEBROOT": self._get_python_dir() / "omeroweb",
+            "OMEROWEBROOT": old_div(self._get_python_dir(), "omeroweb"),
             "STATIC_ROOT": settings.STATIC_ROOT,
             "STATIC_URL": settings.STATIC_URL.rstrip("/"),
             "NOW": str(datetime.now())}
@@ -302,7 +306,7 @@ class WebControl(DiagnosticsControl):
                          "wsgi or wsgi-tcp.")
 
         template_file = "%s.conf.template" % server
-        c = file(self._get_web_templates_dir() / template_file).read()
+        c = file(old_div(self._get_web_templates_dir(), template_file)).read()
         self.ctx.out(c % d)
 
     def syncmedia(self, args):
@@ -310,15 +314,13 @@ class WebControl(DiagnosticsControl):
 
     @config_required
     def enableapp(self, args, settings):
-        location = self._get_python_dir() / "omeroweb"
+        location = old_div(self._get_python_dir(), "omeroweb")
         if not args.appname:
-            apps = [x.name for x in filter(
-                lambda x: x.isdir() and
-                (x / 'scripts' / 'enable.py').exists(),
-                location.listdir(unreadable_as_empty=True))]
-            iapps = map(lambda x: x.startswith('omeroweb.') and x[9:] or
-                        x, settings.INSTALLED_APPS)
-            apps = filter(lambda x: x not in iapps, apps)
+            apps = [x.name for x in [x for x in location.listdir(unreadable_as_empty=True) if x.isdir() and
+                (x / 'scripts' / 'enable.py').exists()]]
+            iapps = [x.startswith('omeroweb.') and x[9:] or
+                        x for x in settings.INSTALLED_APPS]
+            apps = [x for x in apps if x not in iapps]
             self.ctx.out('[enableapp] available apps:\n - ' +
                          '\n - '.join(apps) + '\n')
         else:
@@ -335,9 +337,9 @@ class WebControl(DiagnosticsControl):
             self.syncmedia(None)
 
     def gateway(self, args):
-        location = self._get_python_dir() / "omeroweb"
-        args = [sys.executable, "-i", location /
-                "../omero/gateway/scripts/dbhelpers.py"]
+        location = old_div(self._get_python_dir(), "omeroweb")
+        args = [sys.executable, "-i", old_div(location,
+                "../omero/gateway/scripts/dbhelpers.py")]
         self.set_environ()
         os.environ['DJANGO_SETTINGS_MODULE'] = \
             os.environ.get('DJANGO_SETTINGS_MODULE', 'omeroweb.settings')
@@ -345,7 +347,7 @@ class WebControl(DiagnosticsControl):
 
     def call(self, args):
         try:
-            location = self._get_python_dir() / "omeroweb"
+            location = old_div(self._get_python_dir(), "omeroweb")
             cargs = []
             appname = args.appname
             scriptname = args.scriptname.split(' ')
@@ -360,12 +362,12 @@ class WebControl(DiagnosticsControl):
             self.set_environ()
             self.ctx.call(cargs, cwd=location)
         except:
-            print traceback.print_exc()
+            print(traceback.print_exc())
 
     @config_required
     def collectstatic(self, settings):
         """Ensure that static media is copied to the correct location"""
-        location = self._get_python_dir() / "omeroweb"
+        location = old_div(self._get_python_dir(), "omeroweb")
         args = [sys.executable, "manage.py", "collectstatic", "--noinput"]
         rv = self.ctx.call(args, cwd=location)
         if rv != 0:
@@ -376,7 +378,7 @@ class WebControl(DiagnosticsControl):
         """Clean out expired sessions."""
         self.ctx.out("Clearing expired sessions. This may take some time... ",
                      newline=False)
-        location = self._get_python_dir() / "omeroweb"
+        location = old_div(self._get_python_dir(), "omeroweb")
         cmd = [sys.executable, "manage.py", "clearsessions"]
         if not args.no_wait:
             rv = self.ctx.call(cmd, cwd=location)
@@ -466,7 +468,7 @@ class WebControl(DiagnosticsControl):
 
         link = ("%s:%d" % (settings.APPLICATION_SERVER_HOST,
                            settings.APPLICATION_SERVER_PORT))
-        location = self._get_python_dir() / "omeroweb"
+        location = old_div(self._get_python_dir(), "omeroweb")
         deploy = getattr(settings, 'APPLICATION_SERVER')
 
         if deploy in (settings.WSGI,):
@@ -621,13 +623,13 @@ class WebControl(DiagnosticsControl):
         os.environ['ICE_CONFIG'] = ice_config is None and \
             str(self.ctx.dir / "etc" / "ice.config") or str(ice_config)
         os.environ['PATH'] = str(os.environ.get('PATH', '.') + ':' +
-                                 self.ctx.dir / 'bin')
+                                 old_div(self.ctx.dir, 'bin'))
 
     def diagnostics(self, args):
         self._diagnostics_banner("web")
         try:
             self.status(args)
-        except Exception, e:
+        except Exception as e:
             try:
                 self.ctx.out("OMERO.web error: %s" % e.message[1].message)
             except:
@@ -650,7 +652,7 @@ class WebControl(DiagnosticsControl):
                 self._exists(log_dir)
                 log_file = "OMEROweb.log"
                 self._item("Log file ", log_file)
-                self._exists(log_dir / log_file)
+                self._exists(old_div(log_dir, log_file))
 
 try:
     register("web", WebControl, HELP)

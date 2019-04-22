@@ -12,7 +12,12 @@
  Use is subject to license terms supplied in LICENSE.txt
 
 """
+from __future__ import division
+from __future__ import print_function
 
+from builtins import str
+from past.utils import old_div
+from builtins import object
 import re
 import os
 import sys
@@ -550,7 +555,7 @@ present, the user will enter a console""")
                         win32security.LsaAddAccountRights(
                             policy_handle, sid_obj, ('SeServiceLogonRight',))
                         win32security.LsaClose(policy_handle)
-                    except pywintypes.error, details:
+                    except pywintypes.error as details:
                         self.ctx.die(200, "Error during service user set up:"
                                      " (%s) %s" % (details[0], details[2]))
                     if not pasw:
@@ -593,7 +598,7 @@ present, the user will enter a console""")
                         hscm, svc_name, win32service.SC_MANAGER_ALL_ACCESS)
                     win32service.StartService(hs, None)
                     self.ctx.out("Starting %s Windows service." % svc_name)
-                except pywintypes.error, details:
+                except pywintypes.error as details:
                     self.ctx.out("%s service startup failed: (%s) %s"
                                  % (svc_name, details[0], details[2]))
                     win32service.DeleteService(hs)
@@ -648,11 +653,11 @@ present, the user will enter a console""")
 
     def _get_etc_dir(self):
         """Return path to directory containing configuration files"""
-        return self.ctx.dir / "etc"
+        return old_div(self.ctx.dir, "etc")
 
     def _get_grid_dir(self):
         """Return path to directory containing Gridconfiguration files"""
-        return self._get_etc_dir() / "grid"
+        return old_div(self._get_etc_dir(), "grid")
 
     def _get_templates_dir(self):
         """Return path to directory containing templates"""
@@ -681,7 +686,7 @@ present, the user will enter a console""")
             __d__ = "default.xml"
             if self._isWindows():
                 __d__ = "windefault.xml"
-            descript = self._get_grid_dir() / __d__
+            descript = old_div(self._get_grid_dir(), __d__)
             self.ctx.err("No descriptor given. Using %s"
                          % os.path.sep.join(["etc", "grid", __d__]))
         return descript
@@ -787,7 +792,7 @@ present, the user will enter a console""")
         self.startasync(args, config)
         try:
             self.waitup(args)
-        except NonZeroReturnCode, nzrc:
+        except NonZeroReturnCode as nzrc:
             # stop() may itself throw,
             # if it does not, then we rethrow
             # the original
@@ -848,7 +853,7 @@ present, the user will enter a console""")
                         self.ctx.rv = 0
                 finally:
                     ic.destroy()
-            except Exception, exc:
+            except Exception as exc:
                 self.ctx.rv = 1
                 self.ctx.dbg("Server not reachable: "+str(exc))
 
@@ -931,7 +936,7 @@ present, the user will enter a console""")
             args.wait = DEFAULT_WAIT
 
         total_secs = args.wait
-        loop_secs = total_secs / 30.0
+        loop_secs = old_div(total_secs, 30.0)
         return 30, loop_secs, "%s seconds" % total_secs
 
     @with_config
@@ -956,7 +961,7 @@ present, the user will enter a console""")
             command = self._cmd("-e", "node shutdown %s" % self._node())
             try:
                 self.ctx.call(command)
-            except NonZeroReturnCode, nzrc:
+            except NonZeroReturnCode as nzrc:
                 self.ctx.rv = nzrc.rv
                 self.ctx.out("Was the server already stopped?")
 
@@ -1027,7 +1032,7 @@ present, the user will enter a console""")
         template_xml = XML(templates.text())
         try:
             rv = adjust_settings(config, template_xml)
-        except Exception, e:
+        except Exception as e:
             self.ctx.die(11, 'Cannot adjust memory settings in %s.\n%s'
                          % (templates, e))
 
@@ -1062,14 +1067,14 @@ present, the user will enter a console""")
         else:
             templates = self._get_templates_dir()/"grid"/"templates.xml"
 
-        generated = self._get_grid_dir() / "templates.xml"
+        generated = old_div(self._get_grid_dir(), "templates.xml")
         if generated.exists():
             generated.remove()
         config2 = omero.config.ConfigXml(str(generated))
         template_xml = XML(templates.text())
         try:
             rv = adjust_settings(config, template_xml)
-        except Exception, e:
+        except Exception as e:
             self.ctx.die(11, 'Cannot adjust memory settings in %s.\n%s'
                          % (templates, e))
 
@@ -1103,21 +1108,21 @@ present, the user will enter a console""")
 
             with open(input_file) as template:
                 data = template.read()
-            output_file = path(output_dir / os.path.basename(input_file))
+            output_file = path(old_div(output_dir, os.path.basename(input_file)))
             if output_file.exists():
                 output_file.remove()
             with open(output_file, 'w') as f:
-                for key, value in substitutions.iteritems():
+                for key, value in substitutions.items():
                     data = re.sub(key, value, data)
                 f.write(data)
 
         # Regenerate various configuration files from templates
-        for cfg_file in glob(self._get_templates_dir() / "*.cfg"):
+        for cfg_file in glob(old_div(self._get_templates_dir(), "*.cfg")):
             copy_template(cfg_file, self._get_etc_dir())
         for xml_file in glob(
                 self._get_templates_dir() / "grid" / "*default.xml"):
-            copy_template(xml_file, self._get_etc_dir() / "grid")
-        ice_config = self._get_templates_dir() / "ice.config"
+            copy_template(xml_file, old_div(self._get_etc_dir(), "grid"))
+        ice_config = old_div(self._get_templates_dir(), "ice.config")
         substitutions['@omero.master.host@'] = config.get(
             'omero.master.host', config.get('Ice.Default.Host', 'localhost'))
         copy_template(ice_config, self._get_etc_dir())
@@ -1134,12 +1139,12 @@ present, the user will enter a console""")
         from omero.install.jvmcfg import read_settings
 
         self.check_access(os.R_OK)
-        templates = self._get_grid_dir() / "templates.xml"
+        templates = old_div(self._get_grid_dir(), "templates.xml")
         if templates.exists():
             template_xml = XML(templates.text())
             try:
                 memory = read_settings(template_xml)
-            except Exception, e:
+            except Exception as e:
                 self.ctx.die(11, 'Cannot read memory settings in %s.\n%s'
                              % (templates, e))
         else:
@@ -1189,7 +1194,7 @@ present, the user will enter a console""")
                     where = "unknown"
                 self.ctx.out("(%s)" % where)
                 return True
-            except Exception, e:
+            except Exception as e:
                 self.ctx.err("error:%s" % e)
                 return False
 
@@ -1299,12 +1304,12 @@ present, the user will enter a console""")
             files.sort()
             for x in files:
                 self._item("Log files", x)
-                self._exists(log_dir / x)
+                self._exists(old_div(log_dir, x))
             self._item("Log files", "Total size")
             sz = 0
             for x in log_dir.walkfiles():
                 sz += x.size
-            self.ctx.out("%-.2f MB" % (float(sz)/1000000.0))
+            self.ctx.out("%-.2f MB" % (old_div(float(sz),1000000.0)))
             self.ctx.out("")
 
             # Parsing well known issues
@@ -1335,7 +1340,7 @@ present, the user will enter a console""")
                     import fileinput
                     for line in fileinput.input([str(p)]):
                         lno = fileinput.filelineno()
-                        for k, v in issues.items():
+                        for k, v in list(issues.items()):
                             if k.match(line):
                                 self._item('Parsing %s' % file,
                                            "[line:%s] %s" % (lno, v))
@@ -1449,10 +1454,10 @@ present, the user will enter a console""")
             cb = client.submit(
                 req, loops=loops, ms=ms,
                 failonerror=True, failontimeout=True)
-        except omero.CmdError, ce:
+        except omero.CmdError as ce:
             err = ce.err
             if err.name == "no-body" and err.parameters:
-                sb = err.parameters.items()
+                sb = list(err.parameters.items())
                 sb = ["%s:%s" % (k, v) for k, v in sb]
                 sb = "\n".join(sb)
                 self.ctx.die(12, sb)
@@ -1525,7 +1530,7 @@ present, the user will enter a console""")
     def check_access(self, mask=os.R_OK | os.W_OK, config=None):
         """Check that 'var' is accessible by the current user."""
 
-        var = self.ctx.dir / 'var'
+        var = old_div(self.ctx.dir, 'var')
         if not os.path.exists(var):
             self.ctx.out("Creating directory %s" % var)
             os.makedirs(var)
@@ -1610,8 +1615,8 @@ present, the user will enter a console""")
         Callers are responsible for closing the
         returned ConfigXml object.
         """
-        cfg_xml = self._get_grid_dir() / "config.xml"
-        cfg_tmp = self._get_grid_dir() / "config.xml.tmp"
+        cfg_xml = old_div(self._get_grid_dir(), "config.xml")
+        cfg_tmp = old_div(self._get_grid_dir(), "config.xml.tmp")
         grid_dir = self._get_grid_dir()
         if not cfg_xml.exists() and self.can_access(grid_dir):
             if cfg_tmp.exists() and self.can_access(cfg_tmp):
@@ -1628,7 +1633,7 @@ present, the user will enter a console""")
         try:
             try:
                 config = omero.config.ConfigXml(str(cfg_xml))
-            except Exception, e:
+            except Exception as e:
                 self.ctx.die(577, str(e))
             if config.save_on_close:
                 config.save()
@@ -1668,7 +1673,7 @@ present, the user will enter a console""")
                 xargs.append("-D%s=%s" % (k, v))
 
         xargs.append("-Domero.data.dir=%s" % omero_data_dir)
-        for k, v in cfg.items():
+        for k, v in list(cfg.items()):
             if k.startswith("omero.search"):
                 xargs.append("-D%s=%s" % (k, cfg[k]))
 
@@ -1702,8 +1707,8 @@ present, the user will enter a console""")
             for file in files:
                 size = os.path.getsize(file)
                 total += 0
-                print file, size
-            print "Total:", size
+                print(file, size)
+            print("Total:", size)
             yes = self.ctx.input("Enter 'y' to continue:")
             if not yes.lower().startswith("y"):
                 return

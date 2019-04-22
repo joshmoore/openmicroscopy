@@ -17,6 +17,7 @@
    Use is subject to license terms supplied in LICENSE.txt
 
 """
+from __future__ import print_function
 
 import sys
 
@@ -191,7 +192,7 @@ class HelpControl(BaseControl):
             "version": VERSION,
             "commands": commands,
             "topics": topics}
-        print HELP_USAGE % key_list
+        print(HELP_USAGE % key_list)
 
     def print_single_command_or_topic(self, args):
         """Print the help for a command or a topic"""
@@ -251,11 +252,11 @@ Use "--" to end parsing, e.g. '%(prog)s -- --help' for IPython help"""),
     "load": (LoadControl, LOAD_HELP)}
 
 try:
-    for k, v in controls.items():
+    for k, v in list(controls.items()):
         register(k, v[0], v[1])
 except NameError:
     if __name__ == "__main__":
         cli = CLI()
-        for k, v in controls.items():
+        for k, v in list(controls.items()):
             cli.register(k, v[0], v[1])
         cli.invoke(sys.argv[1:])

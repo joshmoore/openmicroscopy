@@ -22,7 +22,12 @@
 """
 Library for managing user sessions.
 """
+from __future__ import division
+from __future__ import print_function
 
+from builtins import str
+from builtins import object
+from past.utils import old_div
 import omero.constants
 from omero.util import get_omero_userdir, make_logname
 from omero.rtypes import rlong
@@ -63,15 +68,15 @@ class SessionsStore(object):
         """
         self.logger = logging.getLogger(make_logname(self))
         if dir is None:
-            self.dir = get_omero_userdir() / "sessions"
+            self.dir = old_div(get_omero_userdir(), "sessions")
         else:
             self.dir = path(dir)
         if not self.dir.exists():
             self.dir.makedirs()
         try:
-            self.dir.chmod(0700)
+            self.dir.chmod(0o700)
         except:
-            print "WARN: failed to chmod %s" % self.dir
+            print("WARN: failed to chmod %s" % self.dir)
 
     #
     # File-only methods
@@ -82,11 +87,11 @@ class SessionsStore(object):
         Simple dump utility
         """
         for host in self.dir.dirs():
-            print "[%s]" % host
+            print("[%s]" % host)
             for name in host.dirs():
-                print " -> %s : " % name
+                print(" -> %s : " % name)
                 for sess in name.files():
-                    print "    %s" % sess
+                    print("    %s" % sess)
 
     def add(self, host, name, id, props, sudo=None):
         """
@@ -101,14 +106,14 @@ class SessionsStore(object):
             props["omero.sudo"] = sudo
 
         lines = []
-        for k, v in props.items():
+        for k, v in list(props.items()):
             lines.append("%s=%s" % (k, v))
 
         dhn = self.dir / host / name
         if not dhn.exists():
             dhn.makedirs()
 
-        (dhn / id).write_lines(lines)
+        (old_div(dhn, id)).write_lines(lines)
 
     def conflicts(self, host, name, id, new_props, ignore_nulls=False,
                   check_group=True):
@@ -151,7 +156,7 @@ class SessionsStore(object):
             return
         d = self.dir / host / name
         if d.exists():
-            f = d / uuid
+            f = old_div(d, uuid)
             if f.exists():
                 f.remove()
                 self.logger.debug("Removed %s" % f)
@@ -166,7 +171,7 @@ class SessionsStore(object):
         """
         d = self.dir
         for x in (host, name, uuid):
-            d = d / x
+            d = old_div(d, x)
             if not d.exists():
                 return False
         return True
@@ -256,11 +261,11 @@ class SessionsStore(object):
         name since keys should be UUIDs. A None may be
         returned.
         """
-        s = self.dir / server
+        s = old_div(self.dir, server)
         if not s.exists():
             return None
         else:
-            n = [x.basename() for x in s.dirs() if (x / uuid).exists()]
+            n = [x.basename() for x in s.dirs() if (old_div(x, uuid)).exists()]
             if not n:
                 return None
             elif len(n) == 1:
@@ -375,7 +380,7 @@ class SessionsStore(object):
         # Retrieve timeout from properties
         timeout = None
         if props.get("omero.timeout", False):
-            timeout = long(props.get("omero.timeout")) * 1000
+            timeout = int(props.get("omero.timeout")) * 1000
 
         # Update timeout
         if timeout and timeout != timeToIdle:
@@ -386,7 +391,7 @@ class SessionsStore(object):
             try:
                 cb = client.submit(req)  # Response is "OK"
                 cb.close(True)
-            except omero.CmdError, ce:
+            except omero.CmdError as ce:
                 self.ctx.dbg(str(ce.err))
             except:
                 import traceback
@@ -418,7 +423,7 @@ class SessionsStore(object):
             try:
                 client = self.attach(hS, nS, sS)
                 client.killSession()
-            except Exception, e:
+            except Exception as e:
                 self.logger.debug("Exception on killSession: %s" % e)
             s.remove()
             removed.append(s)
@@ -431,25 +436,25 @@ class SessionsStore(object):
 
     def host_file(self):
         """ Returns the path-object which stores the last active host """
-        return self.dir / "._LASTHOST_"
+        return old_div(self.dir, "._LASTHOST_")
 
     def port_file(self):
         """ Returns the path-object which stores the last active port """
-        return self.dir / "._LASTPORT_"
+        return old_div(self.dir, "._LASTPORT_")
 
     def user_file(self, host):
         """ Returns the path-object which stores the last active user """
-        d = self.dir / host
+        d = old_div(self.dir, host)
         if not d.exists():
             d.makedirs()
-        return d / "._LASTUSER_"
+        return old_div(d, "._LASTUSER_")
 
     def sess_file(self, host, user):
         """ Returns the path-object which stores the last active session """
         d = self.dir / host / user
         if not d.exists():
             d.makedirs()
-        return d / "._LASTSESS_"
+        return old_div(d, "._LASTSESS_")
 
     def non_dot(self, d):
         """
