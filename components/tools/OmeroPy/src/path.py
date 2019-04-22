@@ -20,6 +20,9 @@
 # SOFTWARE.
 #
 
+from __future__ import division
+from __future__ import with_statement
+
 """
 path.py - An object representing a path to a file or directory.
 
@@ -39,7 +42,6 @@ Modified by the OME team as follows:
 
  * Added parpath (2009/09/21)
 """
-from __future__ import division
 
 from builtins import zip
 from builtins import chr
@@ -48,7 +50,6 @@ from builtins import str
 from past.builtins import basestring
 from past.utils import old_div
 from builtins import object
-from __future__ import with_statement
 
 import sys
 import warnings
